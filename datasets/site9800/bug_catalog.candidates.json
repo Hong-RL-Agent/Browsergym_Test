@@ -1,0 +1,333 @@
+{
+  "site_id": "site9800",
+  "site_name": "SmartCommerce Global",
+  "base_url": "http://localhost:9800",
+  "catalog_status": "candidate_requires_human_verification",
+  "note": "This is not a confirmed known-bug catalog. Promote only human-confirmed true positives to bug_catalog.json.",
+  "bugs": [
+    {
+      "bug_id": "site9800-bug-candidate-01",
+      "site_id": "site9800",
+      "category": "frontend",
+      "type": "form-no-feedback",
+      "severity": "Medium",
+      "selector": "",
+      "target_keywords": [
+        "Search",
+        "books,",
+        "logistics",
+        "products,",
+        "search",
+        "status"
+      ],
+      "section_keywords": [
+        "http://localhost:9800/dashboard",
+        "http://localhost:9800/dashboard"
+      ],
+      "negative_keywords": [],
+      "expected_elements": [
+        "validation message",
+        "toast",
+        "route change",
+        "result update"
+      ],
+      "expected_change": [
+        "route_change",
+        "validation_message",
+        "toast_visible",
+        "page_text_change",
+        "result_update"
+      ],
+      "anomaly_evidence_keywords": [
+        "form-no-feedback",
+        "clicked_text:Search products, books, logistics status Search products, books, logistics status  ",
+        "clicked_name:Search products, books, logistics status",
+        "route_changed:False",
+        "page_text_delta:0",
+        "candidate_delta:0"
+      ],
+      "action_hints": [
+        "click"
+      ],
+      "screen_location": "http://localhost:9800/dashboard",
+      "symptom": "Search products, books, logistics status produced no route, text, validation, toast, modal, or result feedback in open-ended evaluation.",
+      "expected_agent_behavior": "After entering a query, should Search update results or show validation/no-result feedback?",
+      "status": "candidate_requires_human_verification",
+      "human_review_status": "needs_review",
+      "suggested_decision": "needs_human_review",
+      "likely_false_positive_reason": "",
+      "source_evidence": {
+        "clicked_text": "Search products, books, logistics status Search products, books, logistics status  ",
+        "clicked_name": "Search products, books, logistics status",
+        "clicked_bid": "54",
+        "clicked_role": "textbox",
+        "clicked_tag": "",
+        "openended_keyword_matches": [],
+        "before_url": "http://localhost:9800/dashboard",
+        "after_url": "http://localhost:9800/dashboard",
+        "page_text_delta": 0,
+        "candidate_delta": 0,
+        "modal_opened": false,
+        "form_opened": false,
+        "route_changed": false,
+        "cart_state_changed": false,
+        "toast_visible": false,
+        "target": {
+          "bid": "54",
+          "data_bug_id": "",
+          "name": "Search products, books, logistics status",
+          "text": "Search products, books, logistics status",
+          "role": "textbox",
+          "tag": "",
+          "clickable": true,
+          "visible": true,
+          "visibility": 1.0,
+          "is_purchase_action": false,
+          "is_workout_add_action": false,
+          "is_chart_related": false,
+          "catalog_keyword_matches": [],
+          "catalog_selector_match": false,
+          "catalog_bug_id_matches": [],
+          "selector_hint": "",
+          "is_interactive": true,
+          "is_form_field": true,
+          "openended_keyword_matches": []
+        },
+        "query_text": "",
+        "search_input_found": true,
+        "search_result_count_before": 2,
+        "search_result_count_after": 2,
+        "empty_state_visible": false,
+        "error_message_visible": true
+      }
+    },
+    {
+      "bug_id": "site9800-bug-candidate-02",
+      "site_id": "site9800",
+      "category": "frontend",
+      "type": "form-no-feedback",
+      "severity": "Medium",
+      "selector": "",
+      "target_keywords": [
+        "Checkout",
+        "checkout"
+      ],
+      "section_keywords": [
+        "http://localhost:9800/checkout/step/shipping",
+        "http://localhost:9800/checkout/step/shipping",
+        "shipping"
+      ],
+      "negative_keywords": [],
+      "expected_elements": [
+        "validation message",
+        "toast",
+        "route change",
+        "result update"
+      ],
+      "expected_change": [
+        "route_change",
+        "validation_message",
+        "toast_visible",
+        "page_text_change",
+        "result_update"
+      ],
+      "anomaly_evidence_keywords": [
+        "form-no-feedback",
+        "clicked_text:Checkout Checkout  ",
+        "clicked_name:Checkout",
+        "route_changed:False",
+        "page_text_delta:0",
+        "candidate_delta:0",
+        "checkout_step:shipping"
+      ],
+      "action_hints": [
+        "click"
+      ],
+      "screen_location": "http://localhost:9800/checkout/step/shipping",
+      "symptom": "Checkout produced no route, text, validation, toast, modal, or result feedback in open-ended evaluation.",
+      "expected_agent_behavior": "Should Checkout advance to the next step or show validation feedback when clicked?",
+      "status": "candidate_requires_human_verification",
+      "human_review_status": "needs_review",
+      "suggested_decision": "needs_human_review",
+      "likely_false_positive_reason": "",
+      "source_evidence": {
+        "clicked_text": "Checkout Checkout  ",
+        "clicked_name": "Checkout",
+        "clicked_bid": "41",
+        "clicked_role": "button",
+        "clicked_tag": "",
+        "openended_keyword_matches": [],
+        "before_url": "http://localhost:9800/checkout/step/shipping",
+        "after_url": "http://localhost:9800/checkout/step/shipping",
+        "page_text_delta": 0,
+        "candidate_delta": 0,
+        "modal_opened": false,
+        "form_opened": false,
+        "route_changed": false,
+        "cart_state_changed": false,
+        "toast_visible": false,
+        "target": {
+          "bid": "41",
+          "data_bug_id": "",
+          "name": "Checkout",
+          "text": "Checkout",
+          "role": "button",
+          "tag": "",
+          "clickable": true,
+          "visible": true,
+          "visibility": 1.0,
+          "is_purchase_action": false,
+          "is_workout_add_action": false,
+          "is_chart_related": false,
+          "catalog_keyword_matches": [],
+          "catalog_selector_match": false,
+          "catalog_bug_id_matches": [],
+          "selector_hint": "",
+          "is_interactive": true,
+          "is_form_field": false,
+          "openended_keyword_matches": []
+        },
+        "checkout_step": "shipping",
+        "required_fields_found": [
+          "Search products, books, logistics status Search products, books, logistics status",
+          "82",
+          "HANG or ASYNC HANG or ASYNC",
+          "83"
+        ],
+        "empty_required_fields": [
+          "82",
+          "83"
+        ],
+        "validation_message_visible": true,
+        "next_step_reached": false,
+        "error_message_visible": true
+      }
+    },
+    {
+      "bug_id": "site9800-bug-candidate-03",
+      "site_id": "site9800",
+      "category": "frontend",
+      "type": "duplicated-rendering",
+      "severity": "Low",
+      "selector": "",
+      "target_keywords": [],
+      "section_keywords": [],
+      "negative_keywords": [],
+      "expected_elements": [
+        "single visible component instance"
+      ],
+      "expected_change": [],
+      "anomaly_evidence_keywords": [
+        "duplicated-rendering"
+      ],
+      "action_hints": [
+        "inspect_dom"
+      ],
+      "screen_location": "",
+      "symptom": "UI text appears duplicated in open-ended observation; visible UI confirmation required.",
+      "expected_agent_behavior": "Duplicated text may come from the accessibility tree; verify whether the same component is duplicated in the visible UI.",
+      "status": "candidate_requires_human_verification",
+      "human_review_status": "needs_review",
+      "suggested_decision": "verify_visible_ui_before_promotion",
+      "likely_false_positive_reason": "",
+      "source_evidence": {
+        "duplicated_titles": {
+          "add add": 6
+        },
+        "book_context": true
+      }
+    },
+    {
+      "bug_id": "site9800-bug-candidate-04",
+      "site_id": "site9800",
+      "category": "frontend",
+      "type": "form-no-feedback",
+      "severity": "Medium",
+      "selector": "",
+      "target_keywords": [
+        "Search",
+        "search"
+      ],
+      "section_keywords": [
+        "http://localhost:9800/shop/search",
+        "http://localhost:9800/shop/search"
+      ],
+      "negative_keywords": [],
+      "expected_elements": [
+        "validation message",
+        "toast",
+        "route change",
+        "result update"
+      ],
+      "expected_change": [
+        "route_change",
+        "validation_message",
+        "toast_visible",
+        "page_text_change",
+        "result_update"
+      ],
+      "anomaly_evidence_keywords": [
+        "form-no-feedback",
+        "clicked_text:Search Search  ",
+        "clicked_name:Search",
+        "route_changed:False",
+        "page_text_delta:0",
+        "candidate_delta:0"
+      ],
+      "action_hints": [
+        "click"
+      ],
+      "screen_location": "http://localhost:9800/shop/search",
+      "symptom": "Search produced no route, text, validation, toast, modal, or result feedback in open-ended evaluation.",
+      "expected_agent_behavior": "After entering a query, should Search update results or show validation/no-result feedback?",
+      "status": "candidate_requires_human_verification",
+      "human_review_status": "needs_review",
+      "suggested_decision": "needs_human_review",
+      "likely_false_positive_reason": "",
+      "source_evidence": {
+        "clicked_text": "Search Search  ",
+        "clicked_name": "Search",
+        "clicked_bid": "37",
+        "clicked_role": "button",
+        "clicked_tag": "",
+        "openended_keyword_matches": [],
+        "before_url": "http://localhost:9800/shop/search",
+        "after_url": "http://localhost:9800/shop/search",
+        "page_text_delta": 0,
+        "candidate_delta": 0,
+        "modal_opened": false,
+        "form_opened": false,
+        "route_changed": false,
+        "cart_state_changed": false,
+        "toast_visible": false,
+        "target": {
+          "bid": "37",
+          "data_bug_id": "",
+          "name": "Search",
+          "text": "Search",
+          "role": "button",
+          "tag": "",
+          "clickable": true,
+          "visible": true,
+          "visibility": 1.0,
+          "is_purchase_action": false,
+          "is_workout_add_action": false,
+          "is_chart_related": false,
+          "catalog_keyword_matches": [],
+          "catalog_selector_match": false,
+          "catalog_bug_id_matches": [],
+          "selector_hint": "",
+          "is_interactive": true,
+          "is_form_field": false,
+          "openended_keyword_matches": []
+        },
+        "query_text": "",
+        "search_input_found": true,
+        "search_result_count_before": 10,
+        "search_result_count_after": 10,
+        "empty_state_visible": false,
+        "error_message_visible": true
+      }
+    }
+  ]
+}

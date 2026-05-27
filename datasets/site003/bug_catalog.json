@@ -1,0 +1,93 @@
+[
+  {
+    "bug_id": "site003-bug01",
+    "site_id": "site003",
+    "category": "frontend",
+    "type": "button-no-response",
+    "severity": "High",
+    "selector": "[data-bug-id=\"site003-bug01\"]",
+    "target_keywords": ["운동 추가", "add workout", "add exercise"],
+    "section_keywords": ["대시보드", "dashboard"],
+    "negative_keywords": [],
+    "expected_elements": [],
+    "expected_change": ["modal_open", "form_visible", "route_change"],
+    "action_hints": ["click"],
+    "anomaly_evidence_keywords": ["운동 추가", "modal_opened:false", "form_opened:false"],
+    "screen_location": "대시보드 상단 우측 운동 추가 버튼",
+    "related_files": ["src/components/Dashboard.jsx"],
+    "symptom": "운동 추가 버튼을 클릭해도 폼이 열리거나 페이지가 이동하지 않음",
+    "intended_cause": "onClick 이벤트 핸들러가 빈 함수로 연결됨",
+    "expected_agent_behavior": "버튼 클릭 후 모달, 폼, 라우팅 변화가 없는 no-response 상태 탐지"
+  },
+  {
+    "bug_id": "site003-bug02",
+    "site_id": "site003",
+    "category": "frontend",
+    "type": "empty-state-rendering",
+    "severity": "Medium",
+    "selector": "[data-bug-id=\"site003-bug02\"]",
+    "target_keywords": [],
+    "section_keywords": ["주간 칼로리 소모량", "주간 칼로리", "weekly calories"],
+    "negative_keywords": ["이번 주 기록된 데이터가 없습니다", "데이터가 없습니다", "no data"],
+    "expected_elements": ["chart", "bar", "svg", "canvas"],
+    "expected_change": [],
+    "action_hints": ["inspect_dom"],
+    "anomaly_evidence_keywords": ["주간 칼로리", "데이터가 없습니다", "chart_visible:false"],
+    "screen_location": "대시보드 메인 영역 좌측 주간 칼로리 소모량 통계 카드",
+    "related_files": ["src/components/WeeklyStats.jsx"],
+    "symptom": "서버 데이터가 있어야 하지만 차트 대신 empty state가 표시됨",
+    "intended_cause": "렌더링 조건문 오류로 항상 empty state가 렌더링됨",
+    "expected_agent_behavior": "섹션 텍스트와 empty state 문구, chart 부재를 함께 탐지"
+  },
+  {
+    "bug_id": "site003-bug03",
+    "site_id": "site003",
+    "category": "frontend",
+    "type": "layout-overflow",
+    "severity": "Medium",
+    "selector": "[data-bug-id=\"site003-bug03\"]",
+    "target_keywords": [
+      "chart",
+      "chart-container",
+      "그래프",
+      "차트",
+      "칼로리",
+      "주간 칼로리",
+      "주간 칼로리 소모량"
+    ],
+    "section_keywords": [
+      "주간 칼로리 소모량",
+      "주간 칼로리",
+      "칼로리 소모량"
+    ],
+    "negative_keywords": [],
+    "expected_elements": [
+      "chart-container",
+      "chart",
+      "bar",
+      "svg",
+      "canvas"
+    ],
+    "expected_change": [],
+    "layout_check": "child_overflows_parent",
+    "action_hints": [
+      "inspect_layout"
+    ],
+    "anomaly_evidence_keywords": [
+      "overflow_right:true",
+      "overflow_bottom:true",
+      "child_overflows_parent",
+      "chart",
+      "chart-container",
+      "주간 칼로리"
+    ],
+    "screen_location": "주간 칼로리 소모량 카드 내 차트 영역",
+    "related_files": [
+      "src/styles/main.css",
+      "src/components/WeeklyStats.jsx"
+    ],
+    "symptom": "차트 영역 컨테이너가 부모 카드 범위를 벗어나 우측으로 삐져나와 UI가 깨져 보임.",
+    "intended_cause": ".chart-container의 너비가 120%로 지정되고 부모 overflow 처리가 없어 화면 밖으로 넘침.",
+    "expected_agent_behavior": "차트 영역 BoundingBox가 부모 컨테이너 범위를 벗어났는지 계산하여 layout-overflow 버그로 탐지."
+  }
+]

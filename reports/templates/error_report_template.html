@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>{{ report.title }}</title>
+  <style>
+    @page { size: A4; margin: 14mm 12mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #ffffff;
+      color: #17202a;
+      font-family: "Noto Sans KR", "Malgun Gothic", "Segoe UI", Arial, sans-serif;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    h1, h2, h3 { margin: 0; letter-spacing: 0; }
+    h1 { font-size: 24px; font-weight: 800; }
+    h2 { font-size: 16px; padding-bottom: 6px; border-bottom: 1px solid #d8dee8; margin-top: 22px; }
+    h3 { font-size: 14px; }
+    .header { border-bottom: 3px solid #1f3b57; padding-bottom: 16px; margin-bottom: 18px; }
+    .meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 18px; margin-top: 12px; color: #334155; }
+    .badge {
+      display: inline-block;
+      border: 1px solid #1f3b57;
+      background: #eef6ff;
+      color: #14324a;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+      margin-top: 8px;
+    }
+    .scenario { color: #0f766e; font-weight: 700; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0; }
+    .card { border: 1px solid #d8dee8; border-radius: 6px; padding: 10px; background: #ffffff; break-inside: avoid; }
+    .metric .label { color: #64748b; font-size: 11px; }
+    .metric .value { font-size: 18px; font-weight: 800; color: #0f172a; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { border: 1px solid #d8dee8; padding: 6px 7px; vertical-align: top; }
+    th { background: #f1f5f9; text-align: left; font-weight: 700; }
+    .bug { margin-top: 14px; border-left: 5px solid #64748b; }
+    .bug.detected { border-left-color: #15803d; }
+    .bug.missed { border-left-color: #b91c1c; }
+    .status { font-weight: 800; }
+    .status.ok { color: #15803d; }
+    .status.bad { color: #b91c1c; }
+    .kv { display: grid; grid-template-columns: 145px 1fr; gap: 4px 10px; margin-top: 8px; }
+    .key { color: #64748b; font-weight: 700; }
+    ul { margin: 5px 0 0 18px; padding: 0; }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      background: #f8fafc;
+      border: 1px solid #d8dee8;
+      border-radius: 5px;
+      padding: 8px;
+      font-size: 10px;
+      line-height: 1.45;
+      max-height: 260px;
+      overflow: hidden;
+    }
+    .muted { color: #64748b; }
+    .small { font-size: 11px; }
+    .page-break { break-before: page; }
+  </style>
+</head>
+<body>
+  <section class="header">
+    <h1>{{ report.title }}</h1>
+    <div class="badge">{{ report.mode or "Deterministic Detector" }}</div>
+    {% if report.environment and report.environment.scenario_used is sameas false %}
+      <div class="scenario">시나리오 없이 자율 탐색</div>
+    {% endif %}
+    <div class="meta">
+      <div><strong>Report ID</strong>: {{ report.report_id }}</div>
+      <div><strong>Created At</strong>: {{ report.created_at }}</div>
+      <div><strong>Site</strong>: {{ report.site_id }} / {{ report.page_name }}</div>
+      <div><strong>Base URL</strong>: {{ report.base_url }}</div>
+      <div><strong>Author</strong>: {{ report.author }}</div>
+      <div><strong>Execution Mode</strong>: {{ report.environment.execution_mode if report.environment else "-" }}</div>
+    </div>
+  </section>
+
+  <h2>탐지 요약 / Detection Summary</h2>
+  <div class="grid">
+    <div class="card metric"><div class="label">Recall</div><div class="value">{{ report.summary.recall|fmt }}</div></div>
+    <div class="card metric"><div class="label">Precision</div><div class="value">{{ report.summary.precision|fmt }}</div></div>
+    <div class="card metric"><div class="label">Known Bug Match Count</div><div class="value">{{ report.summary.known_bug_match_count|fmt }}</div></div>
+    <div class="card metric"><div class="label">Average Reward</div><div class="value">{{ report.summary.average_reward|fmt }}</div></div>
+    <div class="card metric"><div class="label">Total Detected Candidates</div><div class="value">{{ report.summary.total_detected_candidates|fmt }}</div></div>
+    <div class="card metric"><div class="label">Unique Detected Candidates</div><div class="value">{{ report.summary.unique_detected_candidates|fmt }}</div></div>
+  </div>
+
+  <div class="two-col">
+    <div class="card">
+      <h3>Matched Bugs</h3>
+      <ul>
+        {% for bug_id in report.summary.matched_bug_ids %}
+          <li>{{ bug_id }}</li>
+        {% else %}
+          <li>없음</li>
+        {% endfor %}
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Missed Bugs</h3>
+      <ul>
+        {% for bug_id in report.summary.missed_bug_ids %}
+          <li>{{ bug_id }}</li>
+        {% else %}
+          <li>없음</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  {% if report.model %}
+  <h2>RL 모델 정보 / RL Model</h2>
+  <table>
+    <tr><th>Model</th><td>{{ report.model.name }}</td><th>Policy</th><td>{{ report.model.policy_type }}</td></tr>
+    <tr><th>Environment</th><td>{{ report.model.environment }}</td><th>Model Path</th><td>{{ report.model.path }}</td></tr>
+    <tr><th>Engine</th><td>{{ report.environment.engine }}</td><th>Scenario Used</th><td>{{ "false" if report.environment.scenario_used is sameas false else report.environment.scenario_used }}</td></tr>
+  </table>
+  {% endif %}
+
+  <h2>Action Summary</h2>
+  {% set action_counts = report.summary.action_counts|default({}) %}
+  <table>
+    <tr>
+      <th>click_element</th>
+      <th>inspect_cart</th>
+      <th>inspect_layout</th>
+      <th>change_viewport_mobile</th>
+      <th>purchase_click_count</th>
+      <th>cart_count_detected_count</th>
+      <th>button_no_response_candidates</th>
+    </tr>
+    <tr>
+      <td>{{ action_counts.click_element|default(0) }}</td>
+      <td>{{ report.summary.inspect_cart_count|default(action_counts.inspect_cart|default(0)) }}</td>
+      <td>{{ action_counts.inspect_layout|default(0) }}</td>
+      <td>{{ action_counts.change_viewport_mobile|default(0) }}</td>
+      <td>{{ report.summary.purchase_click_count|default(0) }}</td>
+      <td>{{ report.summary.cart_count_detected_count|default(0) }}</td>
+      <td>{{ report.summary.button_no_response_candidates|default(0) }}</td>
+    </tr>
+  </table>
+
+  {% if report.transition_summary %}
+  <div class="card">
+    <h3>Transition Log Summary</h3>
+    <div class="kv">
+      <div class="key">Total Steps</div><div>{{ report.transition_summary.total_steps }}</div>
+      <div class="key">Episode Count</div><div>{{ report.transition_summary.episode_count }}</div>
+      <div class="key">Most Common Actions</div><div>{{ report.transition_summary.most_common_actions }}</div>
+      <div class="key">Reward Breakdown</div><div>{{ report.transition_summary.reward_breakdown_summary }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <h2 class="page-break">오류 상세 / Error Details</h2>
+  {% for bug in report.bugs %}
+  <section class="card bug {{ 'detected' if bug.detected else 'missed' }}">
+    <h3>{{ bug.bug_id }} / {{ bug.type }}</h3>
+    <div class="kv">
+      <div class="key">탐지 상태</div><div class="status {{ 'ok' if bug.detected else 'bad' }}">{{ bug.status_label }}</div>
+      <div class="key">Severity</div><div>{{ bug.severity }}</div>
+      <div class="key">Confidence</div><div>{{ bug.confidence|fmt }}</div>
+      <div class="key">Selector</div><div>{{ bug.selector }}</div>
+      <div class="key">화면 위치</div><div>{{ bug.screen_location }}</div>
+      <div class="key">관련 파일</div><div>{{ bug.related_files|join(", ") }}</div>
+      <div class="key">사용자 증상</div><div>{{ bug.symptom }}</div>
+      <div class="key">의도된 원인</div><div>{{ bug.intended_cause }}</div>
+      <div class="key">Expected Agent Behavior</div><div>{{ bug.expected_agent_behavior }}</div>
+      <div class="key">Detected By</div><div>{{ bug.detected_by }}</div>
+      <div class="key">Anomaly Type</div><div>{{ bug.anomaly_type }}</div>
+      <div class="key">Matched Bug ID</div><div>{{ bug.matched_bug_id }}</div>
+      <div class="key">Match Reason</div><div>{{ bug.match_reason }}</div>
+      <div class="key">PPO Actions</div><div>{{ bug.rl_actions|join(", ") }}</div>
+      <div class="key">Scenario Used</div><div>{{ bug.scenario_used }}</div>
+    </div>
+
+    {% if bug.browsergym_details %}
+    <h3 style="margin-top:10px;">BrowserGym PPO Evidence Summary</h3>
+    <table>
+      {% for key, value in bug.browsergym_details.items() %}
+      <tr><th>{{ key }}</th><td>{{ value }}</td></tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+
+    <div class="two-col">
+      <div>
+        <h3 style="margin-top:10px;">영향 범위</h3>
+        <ul>{% for item in bug.impact %}<li>{{ item }}</li>{% endfor %}</ul>
+      </div>
+      <div>
+        <h3 style="margin-top:10px;">권장 조치</h3>
+        <ul>{% for item in bug.recommended_fix %}<li>{{ item }}</li>{% endfor %}</ul>
+      </div>
+    </div>
+
+    <h3 style="margin-top:10px;">Anomaly Evidence JSON</h3>
+    <pre>{{ bug.evidence_json }}</pre>
+  </section>
+  {% endfor %}
+
+  <h2>테스트 환경 / Test Environment</h2>
+  <table>
+    <tr><th>Browser</th><td>{{ report.environment.browser if report.environment else "-" }}</td><th>Engine</th><td>{{ report.environment.engine if report.environment else "-" }}</td></tr>
+    <tr><th>RL Algorithm</th><td>{{ report.environment.rl_algorithm if report.environment else "-" }}</td><th>Base URL</th><td>{{ report.base_url }}</td></tr>
+  </table>
+
+  <h2>J.A.W.S AI 분석</h2>
+  <div class="card">
+    {{ report.analysis }}
+  </div>
+</body>
+</html>

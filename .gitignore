@@ -1,0 +1,63 @@
+# Python virtual environments
+BrowserGym/.venv/
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# Runtime artifacts
+artifacts/scans/
+artifacts/evaluations/
+artifacts/training/
+artifacts/preflight/
+artifacts/reports/
+artifacts/final/
+
+# Generated configs
+configs/generated/
+
+# Logs
+*.log
+stdout.txt
+stderr.txt
+raw_result.txt
+
+# Playwright
+.playwright/
+playwright-report/
+test-results/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+.env.local
+.env.production
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Model files are shared through Git LFS
+# artifacts/models/*.pt
+
+# Embedded external repositories / local setup folders
+BrowserGym/
+webarena-setup/
+
+# Extra local model checkpoints / temp artifacts
+artifacts/models/site*_browsergym_ppo.pt
+artifacts/multisite/
+artifacts/tmp_batches/
+artifacts/tmp_preflight_closed/
+artifacts/tmp_*.json

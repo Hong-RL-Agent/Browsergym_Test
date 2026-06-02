@@ -22,6 +22,11 @@ def main() -> int:
     parser.add_argument("--headless", default="true")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--base-artifact-dir", default="artifacts")
+    parser.add_argument("--enable-csv-logging", default="true")
+    parser.add_argument("--csv-log-dir", default="")
+    parser.add_argument("--log-observation-detail", default="true")
+    parser.add_argument("--log-action-space", default="true")
+    parser.add_argument("--log-raw-json", default="false")
     args = parser.parse_args()
 
     run_id = f"ports_{args.start_port}_{args.end_port}"
@@ -100,8 +105,22 @@ def main() -> int:
             str(args.seed),
             "--headless",
             args.headless,
+            "--artifact-root",
+            str(Path(args.base_artifact_dir) / "training"),
             "--save-model",
             args.model_path,
+            "--enable-csv-logging",
+            args.enable_csv_logging,
+            "--csv-log-dir",
+            args.csv_log_dir or str(Path(args.base_artifact_dir) / "training"),
+            "--log-observation-detail",
+            args.log_observation_detail,
+            "--log-action-space",
+            args.log_action_space,
+            "--log-raw-json",
+            args.log_raw_json,
+            "--run-id",
+            run_id,
         ]
         train_result = _run(train_cmd)
         if train_result.returncode != 0:
@@ -131,6 +150,18 @@ def main() -> int:
             args.headless,
             "--artifact-root",
             str(evaluations_dir),
+            "--enable-csv-logging",
+            args.enable_csv_logging,
+            "--csv-log-dir",
+            args.csv_log_dir or str(Path(args.base_artifact_dir) / "evaluations"),
+            "--log-observation-detail",
+            args.log_observation_detail,
+            "--log-action-space",
+            args.log_action_space,
+            "--log-raw-json",
+            args.log_raw_json,
+            "--run-id",
+            run_id,
         ]
         eval_result = _run(eval_cmd)
         if eval_result.returncode != 0:

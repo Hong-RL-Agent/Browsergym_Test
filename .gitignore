@@ -61,3 +61,6 @@ artifacts/multisite/
 artifacts/tmp_batches/
 artifacts/tmp_preflight_closed/
 artifacts/tmp_*.json
+
+artifacts/logs/
+artifacts/tmp_*/

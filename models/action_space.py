@@ -18,6 +18,11 @@ class ActionSpace:
         "inspect_network",
         "inspect_console",
         "inspect_cart",
+        "inspect_server_health",
+        "inspect_port_status",
+        "inspect_latency",
+        "inspect_server_logs",
+        "inspect_runtime_metrics",
         "fill_input",
         "press_enter",
         "change_viewport_mobile",
@@ -51,6 +56,15 @@ class ActionSpace:
     def is_element_action(self, action_type: str) -> bool:
         return action_type in {"click_element", "fill_input", "press_enter"}
 
+    def is_infra_action(self, action_type: str) -> bool:
+        return action_type in {
+            "inspect_server_health",
+            "inspect_port_status",
+            "inspect_latency",
+            "inspect_server_logs",
+            "inspect_runtime_metrics",
+        }
+
     def get_action_dim(self) -> int:
         return len(self.action_types) * self.max_candidates
 
@@ -60,13 +74,17 @@ class ActionSpace:
         candidate_count = len(candidates) if isinstance(candidates, list) else 0
         page_state = raw_observation.get("page_state", {}) if isinstance(raw_observation, Mapping) else {}
         runtime_signals = raw_observation.get("runtime_signals", {}) if isinstance(raw_observation, Mapping) else {}
+        infra_signals = raw_observation.get("infra_signals", {}) if isinstance(raw_observation, Mapping) else {}
         site_id = str(page_state.get("site_id") or runtime_signals.get("site_id") or "")
         if not site_id:
             url = str(page_state.get("url") or "")
             site_id = "site003" if ":9221" in url else "site001" if ":9220" in url else ""
+        infra_enabled = _is_infra_port(page_state, infra_signals)
 
         for action_type in self.action_types:
             if site_id and site_id not in {"site001", "site9800"} and action_type == "inspect_cart":
+                continue
+            if self.is_infra_action(action_type) and not infra_enabled:
                 continue
             if action_type == "finish_episode":
                 history = raw_observation.get("history", {}) if isinstance(raw_observation, Mapping) else {}
@@ -87,3 +105,21 @@ class ActionSpace:
         if not mask.any():
             mask[self.encode("noop", 0)] = 1.0
         return mask
+
+
+def _is_infra_port(page_state: Mapping[str, Any], infra_signals: Any) -> bool:
+    port = None
+    if isinstance(infra_signals, Mapping):
+        port = infra_signals.get("port")
+    if port in (None, ""):
+        url = str(page_state.get("url") or "")
+        for token in url.split(":")[2:3]:
+            digits = "".join(char for char in token if char.isdigit())
+            if digits:
+                port = digits
+                break
+    try:
+        value = int(port)
+    except (TypeError, ValueError):
+        return False
+    return 9000 <= value <= 9100

@@ -102,14 +102,23 @@ class BrowserGymObservationAdapter:
         previous_obs: Optional[Mapping[str, Any]] = None,
         history: Optional[Mapping[str, Any]] = None,
     ) -> Dict[str, Any]:
-        obs = obs or {}
+        return self.convert(obs, info=info, previous_obs=previous_obs, history=history)
+
+    def convert(
+        self,
+        raw_obs: Optional[Mapping[str, Any]],
+        info: Optional[Mapping[str, Any]] = None,
+        previous_obs: Optional[Mapping[str, Any]] = None,
+        history: Optional[Mapping[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        obs = raw_obs or {}
         info = info or {}
         history = history or {}
         site_profile = info.get("site_profile") if isinstance(info.get("site_profile"), Mapping) else self.site_profile
 
         site_id = _as_str(info.get("site_id"))
         url = _as_str(obs.get("url") or _active_page_value(obs, "open_pages_urls"))
-        title = _as_str(_active_page_value(obs, "open_pages_titles"))
+        title = _as_str(obs.get("title") or _active_page_value(obs, "open_pages_titles"))
         screenshot = obs.get("screenshot")
         viewport_width, viewport_height = _viewport_size(screenshot, info)
         page_text = _page_text(obs)
@@ -141,8 +150,14 @@ class BrowserGymObservationAdapter:
         url_changed = bool(previous_url and previous_url != url)
         last_action_error = bool(obs.get("last_action_error")) or bool(info.get("action_error"))
         viewport_type = _viewport_type(viewport_width)
+        raw_keys = _raw_observation_keys(obs)
+        raw_summary = _compact_raw_observation(obs)
 
         return {
+            "browsergym_raw_observation": raw_summary,
+            "browsergym_raw_observation_keys": raw_keys,
+            "browsergym_raw_observation_key_count": len(raw_keys),
+            "browsergym_raw_observation_source": "env.reset/env.step",
             "page_state": {
                 "site_id": site_id,
                 "url": url,
@@ -171,11 +186,19 @@ class BrowserGymObservationAdapter:
                 "cart_related_texts": cart_state["cart_related_texts"],
                 "dom_node_count": dom_node_count,
                 "elapsed_time": elapsed_time,
+                "browsergym_raw_observation_keys": raw_keys,
+                "browsergym_raw_observation_key_count": len(raw_keys),
+                "browsergym_text_source": _text_source(obs),
+                "browsergym_has_axtree": "axtree_object" in obs,
+                "browsergym_has_dom": "dom_object" in obs,
+                "browsergym_has_screenshot": "screenshot" in obs,
             },
             "candidate_elements": candidate_elements,
             "candidate_debug": candidate_debug,
             "runtime_signals": {
                 "site_id": site_id,
+                "browsergym_raw_observation_keys": raw_keys,
+                "browsergym_raw_observation_key_count": len(raw_keys),
                 "url_changed": url_changed,
                 "last_action_error": last_action_error,
                 "elapsed_time": elapsed_time,
@@ -789,6 +812,62 @@ def _active_page_value(obs: Mapping[str, Any], key: str) -> Any:
     return values[index] if 0 <= index < len(values) else values[0]
 
 
+def _raw_observation_keys(obs: Mapping[str, Any]) -> List[str]:
+    if not isinstance(obs, Mapping):
+        return []
+    return sorted(str(key) for key in obs.keys())
+
+
+def _compact_raw_observation(obs: Mapping[str, Any]) -> Dict[str, Any]:
+    if not isinstance(obs, Mapping):
+        return {}
+    return {str(key): _compact_raw_value(value, depth=0) for key, value in obs.items()}
+
+
+def _compact_raw_value(value: Any, depth: int = 0) -> Any:
+    if depth >= 4:
+        return _raw_value_summary(value)
+    if isinstance(value, Mapping):
+        result: Dict[str, Any] = {}
+        for index, (key, child) in enumerate(value.items()):
+            if index >= 120:
+                result["__truncated__"] = f"{len(value) - index} more keys"
+                break
+            result[str(key)] = _compact_raw_value(child, depth + 1)
+        return result
+    if isinstance(value, (list, tuple)):
+        limit = 80 if depth <= 1 else 30
+        items = [_compact_raw_value(item, depth + 1) for item in list(value)[:limit]]
+        if len(value) > limit:
+            items.append({"__truncated__": f"{len(value) - limit} more items"})
+        return items
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        text = value if not isinstance(value, str) else value[:4000]
+        return text
+    return _raw_value_summary(value)
+
+
+def _raw_value_summary(value: Any) -> Dict[str, Any]:
+    shape = getattr(value, "shape", None)
+    if shape is not None:
+        return {"type": type(value).__name__, "shape": [int(item) for item in tuple(shape)]}
+    if isinstance(value, bytes):
+        return {"type": "bytes", "length": len(value)}
+    return {"type": type(value).__name__, "repr": repr(value)[:1000]}
+
+
+def _text_source(obs: Mapping[str, Any]) -> str:
+    if obs.get("text"):
+        return "text"
+    if obs.get("axtree_object"):
+        return "axtree_object"
+    if obs.get("dom_object"):
+        return "dom_object"
+    if obs.get("goal"):
+        return "goal"
+    return ""
+
+
 def _axtree_nodes(axtree_object: Any) -> Iterable[Mapping[str, Any]]:
     if isinstance(axtree_object, Mapping):
         nodes = axtree_object.get("nodes")
@@ -860,6 +939,11 @@ def _viewport_type(width: int) -> str:
 
 def _page_text(obs: Mapping[str, Any]) -> str:
     parts: List[str] = []
+    raw_text = obs.get("text")
+    if isinstance(raw_text, str) and raw_text.strip():
+        parts.append(raw_text)
+    elif isinstance(raw_text, list):
+        parts.extend(str(item) for item in raw_text[:300] if str(item).strip())
     for node in _axtree_nodes(obs.get("axtree_object")):
         if isinstance(node, Mapping):
             text = _as_str(_ax_value(node.get("name")) or _ax_value(node.get("text"))).strip()

@@ -15,6 +15,7 @@ class ObservationEncoder:
     candidate_feature_dim = len(ROLE_ORDER) + 12
     runtime_feature_dim = 3
     layout_feature_dim = 1
+    infra_feature_dim = 11
     history_feature_dim = 3
 
     def __init__(self, max_candidates: int = 32) -> None:
@@ -35,6 +36,7 @@ class ObservationEncoder:
 
         features.extend(self._runtime_features(raw_observation.get("runtime_signals", {})))
         features.extend(self._layout_features(raw_observation.get("layout_signals", {})))
+        features.extend(self._infra_features(raw_observation.get("infra_signals", {})))
         features.extend(self._history_features(raw_observation.get("history", {})))
 
         vector = np.asarray(features, dtype=np.float32)
@@ -46,6 +48,7 @@ class ObservationEncoder:
             + self.max_candidates * self.candidate_feature_dim
             + self.runtime_feature_dim
             + self.layout_feature_dim
+            + self.infra_feature_dim
             + self.history_feature_dim
         )
 
@@ -97,6 +100,21 @@ class ObservationEncoder:
 
     def _layout_features(self, signals: Mapping[str, Any]) -> list[float]:
         return [_scale(signals.get("layout_overlap_count"), 128.0)]
+
+    def _infra_features(self, signals: Mapping[str, Any]) -> list[float]:
+        return [
+            _bool(signals.get("port_open")),
+            _bool(signals.get("health_check_ok")),
+            _scale(signals.get("response_status"), 1000.0),
+            _scale(signals.get("response_latency_ms"), 10000.0),
+            _bool(signals.get("timeout_occurred")),
+            _scale(signals.get("server_5xx_count"), 20.0),
+            _scale(signals.get("server_4xx_count"), 20.0),
+            _scale(signals.get("server_log_exception_count"), 50.0),
+            _bool(signals.get("process_alive")),
+            _scale(signals.get("cpu_usage_percent"), 100.0),
+            _scale(signals.get("memory_usage_mb"), 4096.0),
+        ]
 
     def _history_features(self, history: Mapping[str, Any]) -> list[float]:
         previous_action = str(history.get("previous_action_type", "noop"))

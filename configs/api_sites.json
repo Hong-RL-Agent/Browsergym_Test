@@ -1,0 +1,304 @@
+{
+  "sites": [
+    {
+      "site_id": "site9110",
+      "base_url": "http://localhost:9110",
+      "health_check": "/",
+      "apis": [
+        {
+          "api_id": "products-search",
+          "method": "GET",
+          "path": "/api/products",
+          "query_schema": {
+            "q": "string",
+            "category": "string",
+            "sort": "string"
+          },
+          "expected_status": [200],
+          "auth_required": false
+        },
+        {
+          "api_id": "cart-create",
+          "method": "POST",
+          "path": "/api/cart",
+          "body_schema": {
+            "productId": "string",
+            "quantity": "number"
+          },
+          "expected_status": [200, 201],
+          "auth_required": false
+        }
+      ]
+    },
+    {
+      "site_id": "site9111",
+      "base_url": "http://localhost:9111",
+      "health_check": "/",
+      "apis": [
+        {
+          "api_id": "products-search",
+          "method": "GET",
+          "path": "/api/products",
+          "query_schema": {
+            "q": "string",
+            "category": "string",
+            "sort": "string"
+          },
+          "expected_status": [200],
+          "auth_required": false
+        },
+        {
+          "api_id": "cart-create",
+          "method": "POST",
+          "path": "/api/cart",
+          "body_schema": {
+            "productId": "string",
+            "quantity": "number"
+          },
+          "expected_status": [200, 201],
+          "auth_required": false
+        }
+      ]
+    },
+    {
+      "site_id": "site9112",
+      "base_url": "http://localhost:9112",
+      "health_check": "/",
+      "apis": [
+        {
+          "api_id": "products-search",
+          "method": "GET",
+          "path": "/api/products",
+          "query_schema": {
+            "q": "string",
+            "category": "string",
+            "sort": "string"
+          },
+          "expected_status": [200],
+          "auth_required": false
+        },
+        {
+          "api_id": "cart-create",
+          "method": "POST",
+          "path": "/api/cart",
+          "body_schema": {
+            "productId": "string",
+            "quantity": "number"
+          },
+          "expected_status": [200, 201],
+          "auth_required": false
+        }
+      ]
+    },
+    {
+      "site_id": "site9113",
+      "base_url": "http://localhost:9113",
+      "health_check": "/",
+      "apis": [
+        {
+          "api_id": "products-search",
+          "method": "GET",
+          "path": "/api/products",
+          "query_schema": {
+            "q": "string",
+            "category": "string",
+            "sort": "string"
+          },
+          "expected_status": [200],
+          "auth_required": false
+        },
+        {
+          "api_id": "cart-create",
+          "method": "POST",
+          "path": "/api/cart",
+          "body_schema": {
+            "productId": "string",
+            "quantity": "number"
+          },
+          "expected_status": [200, 201],
+          "auth_required": false
+        }
+      ]
+    },
+    {
+      "site_id": "site9114",
+      "base_url": "http://localhost:9114",
+      "health_check": "/",
+      "apis": [
+        {
+          "api_id": "products-search",
+          "method": "GET",
+          "path": "/api/products",
+          "query_schema": {
+            "q": "string",
+            "category": "string",
+            "sort": "string"
+          },
+          "expected_status": [200],
+          "auth_required": false
+        },
+        {
+          "api_id": "cart-create",
+          "method": "POST",
+          "path": "/api/cart",
+          "body_schema": {
+            "productId": "string",
+            "quantity": "number"
+          },
+          "expected_status": [200, 201],
+          "auth_required": false
+        }
+      ]
+    },
+    {
+      "site_id": "site9115",
+      "base_url": "http://localhost:9115",
+      "health_check": "/",
+      "apis": [
+        {
+          "api_id": "products-search",
+          "method": "GET",
+          "path": "/api/products",
+          "query_schema": {
+            "q": "string",
+            "category": "string",
+            "sort": "string"
+          },
+          "expected_status": [200],
+          "auth_required": false
+        },
+        {
+          "api_id": "cart-create",
+          "method": "POST",
+          "path": "/api/cart",
+          "body_schema": {
+            "productId": "string",
+            "quantity": "number"
+          },
+          "expected_status": [200, 201],
+          "auth_required": false
+        }
+      ]
+    },
+    {
+      "site_id": "site9116",
+      "base_url": "http://localhost:9116",
+      "health_check": "/",
+      "apis": [
+        {
+          "api_id": "products-search",
+          "method": "GET",
+          "path": "/api/products",
+          "query_schema": {
+            "q": "string",
+            "category": "string",
+            "sort": "string"
+          },
+          "expected_status": [200],
+          "auth_required": false
+        },
+        {
+          "api_id": "cart-create",
+          "method": "POST",
+          "path": "/api/cart",
+          "body_schema": {
+            "productId": "string",
+            "quantity": "number"
+          },
+          "expected_status": [200, 201],
+          "auth_required": false
+        }
+      ]
+    },
+    {
+      "site_id": "site9117",
+      "base_url": "http://localhost:9117",
+      "health_check": "/",
+      "apis": [
+        {
+          "api_id": "products-search",
+          "method": "GET",
+          "path": "/api/products",
+          "query_schema": {
+            "q": "string",
+            "category": "string",
+            "sort": "string"
+          },
+          "expected_status": [200],
+          "auth_required": false
+        },
+        {
+          "api_id": "cart-create",
+          "method": "POST",
+          "path": "/api/cart",
+          "body_schema": {
+            "productId": "string",
+            "quantity": "number"
+          },
+          "expected_status": [200, 201],
+          "auth_required": false
+        }
+      ]
+    },
+    {
+      "site_id": "site9118",
+      "base_url": "http://localhost:9118",
+      "health_check": "/",
+      "apis": [
+        {
+          "api_id": "products-search",
+          "method": "GET",
+          "path": "/api/products",
+          "query_schema": {
+            "q": "string",
+            "category": "string",
+            "sort": "string"
+          },
+          "expected_status": [200],
+          "auth_required": false
+        },
+        {
+          "api_id": "cart-create",
+          "method": "POST",
+          "path": "/api/cart",
+          "body_schema": {
+            "productId": "string",
+            "quantity": "number"
+          },
+          "expected_status": [200, 201],
+          "auth_required": false
+        }
+      ]
+    },
+    {
+      "site_id": "site9119",
+      "base_url": "http://localhost:9119",
+      "health_check": "/",
+      "apis": [
+        {
+          "api_id": "products-search",
+          "method": "GET",
+          "path": "/api/products",
+          "query_schema": {
+            "q": "string",
+            "category": "string",
+            "sort": "string"
+          },
+          "expected_status": [200],
+          "auth_required": false
+        },
+        {
+          "api_id": "cart-create",
+          "method": "POST",
+          "path": "/api/cart",
+          "body_schema": {
+            "productId": "string",
+            "quantity": "number"
+          },
+          "expected_status": [200, 201],
+          "auth_required": false
+        }
+      ]
+    }
+  ]
+}

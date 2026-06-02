@@ -31,6 +31,9 @@ from services.browsergym_training_service import (
     _target_bid,
     _update_history,
 )
+from services.episode_csv_logger import EpisodeCsvLogger, infer_run_id
+from services.infra_anomaly_detection_service import detect_infra_anomalies
+from services.infra_reward_service import calculate_infra_reward
 from services.known_bug_matcher import load_known_bugs, match_anomalies_to_known_bugs
 from services.site_profile_service import build_site_profile, validate_site_identity
 
@@ -61,6 +64,12 @@ def main() -> int:
     parser.add_argument("--min-recall", type=float, default=None)
     parser.add_argument("--strict-metrics", type=_parse_bool, default=False)
     parser.add_argument("--output", default="")
+    parser.add_argument("--enable-csv-logging", type=_parse_bool, default=True)
+    parser.add_argument("--csv-log-dir", default="artifacts/evaluations")
+    parser.add_argument("--log-observation-detail", type=_parse_bool, default=True)
+    parser.add_argument("--log-action-space", type=_parse_bool, default=True)
+    parser.add_argument("--log-raw-json", type=_parse_bool, default=False)
+    parser.add_argument("--run-id", default="")
     args = parser.parse_args()
 
     random.seed(args.seed)
@@ -69,10 +78,25 @@ def main() -> int:
 
     config = _read_json_dict(Path(args.config))
     sites = _validate_sites(config.get("sites", []))
+    run_id = args.run_id or _run_id_from_output(args.output) or infer_run_id(config, args.config, fallback_prefix="evaluation")
+    batch_id = Path(args.config).stem
     encoder = ObservationEncoder()
     action_space = ActionSpace()
     agent = PPOAgent(encoder.get_obs_dim(), action_space.get_action_dim())
     agent.load(args.model_path)
+    csv_logger = (
+        EpisodeCsvLogger(
+            args.csv_log_dir,
+            run_id,
+            batch_id=batch_id,
+            phase="evaluation",
+            log_observation_detail=args.log_observation_detail,
+            log_action_space=args.log_action_space,
+            log_raw_json=args.log_raw_json,
+        )
+        if args.enable_csv_logging
+        else None
+    )
 
     _emit_event(
         event="scan_started",
@@ -82,23 +106,29 @@ def main() -> int:
         site_count=len(sites),
     )
 
-    site_results = {}
-    rewards = []
-    for site in sites:
-        result = _evaluate_site(
-            site,
-            agent,
-            encoder,
-            action_space,
-            args.episodes,
-            args.max_steps,
-            args.headless,
-            args.strict_site_validation,
-        )
-        site_results[site["site_id"]] = result
-        rewards.append(result["average_reward"])
+    try:
+        site_results = {}
+        rewards = []
+        for site in sites:
+            result = _evaluate_site(
+                site,
+                agent,
+                encoder,
+                action_space,
+                args.episodes,
+                args.max_steps,
+                args.headless,
+                args.strict_site_validation,
+                csv_logger=csv_logger,
+            )
+            site_results[site["site_id"]] = result
+            rewards.append(result["average_reward"])
+    finally:
+        if csv_logger is not None:
+            csv_logger.close()
 
     output = {
+        "run_id": run_id,
         "model_path": args.model_path,
         "episodes": args.episodes,
         "max_steps": args.max_steps,
@@ -130,6 +160,7 @@ def _evaluate_site(
     max_steps: int,
     headless: bool,
     strict_site_validation: bool = False,
+    csv_logger: EpisodeCsvLogger | None = None,
 ) -> Dict[str, Any]:
     site_id = str(site["site_id"])
     _emit_event(event="site_started", site_id=site_id, base_url=str(site.get("base_url") or ""))
@@ -178,6 +209,18 @@ def _evaluate_site(
         "expected_bug_id_prefix": f"{site_id}-bug",
         "site_identity_match": True,
         "identity_warnings": [],
+    }
+    history: Dict[str, Any] = {
+        "clicked_bids": set(),
+        "last_action_key": None,
+        "last_action_type": None,
+        "action_type_counts": {},
+        "purchase_click_counts": {},
+        "workout_add_click_counts": {},
+        "seen_anomaly_keys": set(),
+        "mobile_viewport_seen": False,
+        "inspected_cart_before_purchase": False,
+        "matched_bug_ids": set(),
     }
 
     for episode_index in range(1, episodes + 1):
@@ -249,6 +292,18 @@ def _evaluate_site(
                 action["action_id"] = action_id
                 action["site_id"] = site_id
                 _enrich_action(action, observation)
+                if csv_logger is not None:
+                    csv_logger.log_observation(site_id, f"{site_id}-EP{episode_index:03d}", step_index + 1, step_index + 1, observation)
+                    csv_logger.log_action_space(
+                        site_id,
+                        f"{site_id}-EP{episode_index:03d}",
+                        step_index + 1,
+                        step_index + 1,
+                        observation,
+                        action_space,
+                        action_mask,
+                        action_id,
+                    )
                 _emit_event(
                     event="action",
                     site_id=site_id,
@@ -275,11 +330,16 @@ def _evaluate_site(
                     {"action": action, "site_profile": site_profile, **step_info},
                     site_profile=site_profile,
                 )
+                infra_anomalies = detect_infra_anomalies(
+                    next_observation,
+                    {"action": action, "site_profile": site_profile, **step_info},
+                )
+                anomalies.extend(infra_anomalies)
                 matches = match_anomalies_to_known_bugs(anomalies, known_bugs, site_id=site_id)
                 action["matched_bug_ids"] = [
                     str(match.get("matched_bug_id")) for match in matches if match.get("matched_bug_id")
                 ]
-                reward, _ = calculate_autonomous_reward(
+                reward, reward_breakdown = calculate_autonomous_reward(
                     observation,
                     next_observation,
                     action,
@@ -288,8 +348,40 @@ def _evaluate_site(
                     history,
                     site_profile,
                 )
+                infra_reward, infra_breakdown = calculate_infra_reward(
+                    observation,
+                    next_observation,
+                    action,
+                    infra_anomalies,
+                    history,
+                )
+                reward += infra_reward
+                reward_breakdown.update(infra_breakdown)
                 reward_total += reward
                 scaled_reward_total += _clamp_reward(reward * reward_scale)
+                reward_breakdown["raw_final_reward"] = reward
+                reward_breakdown["scaled_final_reward"] = _clamp_reward(reward * reward_scale)
+                reward_breakdown["reward_scale"] = reward_scale
+                if csv_logger is not None:
+                    episode_id = f"{site_id}-EP{episode_index:03d}"
+                    csv_logger.log_step(
+                        site_id=site_id,
+                        base_url=str(site.get("base_url") or ""),
+                        episode_id=episode_id,
+                        step_id=step_index + 1,
+                        tick_id=step_index + 1,
+                        before_observation=observation,
+                        after_observation=next_observation,
+                        action=action,
+                        action_mask=action_mask,
+                        step_info=step_info,
+                        anomalies=anomalies,
+                        known_matches=matches,
+                        reward=_clamp_reward(reward * reward_scale),
+                        reward_breakdown=reward_breakdown,
+                        done=done,
+                    )
+                    csv_logger.log_observation(site_id, episode_id, step_index + 1, f"{step_index + 1}.after", next_observation)
                 action_counts[str(action.get("action_type") or "")] += 1
                 candidates = observation.get("candidate_elements", []) or []
                 if isinstance(candidates, list):
@@ -756,6 +848,9 @@ def _site003_eval_fallback_action_id(
         catalog_action = _catalog_guided_eval_action_id(action_space, observation, history)
         if catalog_action is not None:
             return catalog_action
+    infra_action = _guided_infra_eval_action_id(action_space, observation, history)
+    if infra_action is not None:
+        return infra_action
     candidates = observation.get("candidate_elements", []) or []
     counts = history.get("action_type_counts", {})
     if _is_openended_observation(observation):
@@ -821,6 +916,35 @@ def _site003_eval_fallback_action_id(
             if isinstance(candidate, Mapping) and candidate.get("catalog_bug_id_matches") and candidate.get("clickable"):
                 return action_space.encode("click_element", index)
     return action_id
+
+
+def _guided_infra_eval_action_id(
+    action_space: ActionSpace,
+    observation: Mapping[str, Any],
+    history: Mapping[str, Any],
+) -> int | None:
+    infra = observation.get("infra_signals", {}) if isinstance(observation, Mapping) else {}
+    if not isinstance(infra, Mapping):
+        return None
+    try:
+        port = int(infra.get("port") or 0)
+    except (TypeError, ValueError):
+        return None
+    if not 9000 <= port <= 9100:
+        return None
+    counts = history.get("action_type_counts", {})
+    if not isinstance(counts, Mapping):
+        counts = {}
+    for action_type in (
+        "inspect_port_status",
+        "inspect_server_health",
+        "inspect_latency",
+        "inspect_server_logs",
+        "inspect_runtime_metrics",
+    ):
+        if int(counts.get(action_type, 0) or 0) == 0:
+            return action_space.encode(action_type, 0)
+    return None
 
 
 def _catalog_guided_eval_action_id(
@@ -1452,6 +1576,16 @@ def _read_json_dict(path: Path) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError(f"Expected JSON object config: {path}")
     return data
+
+
+def _run_id_from_output(output: str) -> str:
+    if not output:
+        return ""
+    path = Path(output)
+    parent = path.parent
+    if parent.name and parent.name not in {".", "evaluations", "artifacts"}:
+        return parent.name
+    return ""
 
 
 def _validate_sites(raw_sites: Any) -> List[Dict[str, Any]]:

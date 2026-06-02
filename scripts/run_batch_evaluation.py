@@ -18,6 +18,12 @@ def main() -> int:
     parser.add_argument("--headless", default="true")
     parser.add_argument("--strict-site-validation", default="false")
     parser.add_argument("--artifact-root", default="artifacts/evaluations")
+    parser.add_argument("--enable-csv-logging", default="true")
+    parser.add_argument("--csv-log-dir", default="")
+    parser.add_argument("--log-observation-detail", default="true")
+    parser.add_argument("--log-action-space", default="true")
+    parser.add_argument("--log-raw-json", default="false")
+    parser.add_argument("--run-id", default="")
     args = parser.parse_args()
 
     batch_config = Path(args.batch_config)
@@ -48,6 +54,18 @@ def main() -> int:
         args.strict_site_validation,
         "--output",
         str(result_path),
+        "--enable-csv-logging",
+        args.enable_csv_logging,
+        "--csv-log-dir",
+        args.csv_log_dir or str(output_root.parent if output_root.name.startswith("ports_") else output_root),
+        "--log-observation-detail",
+        args.log_observation_detail,
+        "--log-action-space",
+        args.log_action_space,
+        "--log-raw-json",
+        args.log_raw_json,
+        "--run-id",
+        args.run_id or (output_root.name if output_root.name else batch_id),
     ]
 
     started_at = datetime.now(timezone.utc).isoformat()

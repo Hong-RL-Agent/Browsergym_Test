@@ -153,17 +153,25 @@ class PPOAgent:
 
     def load(self, path: str | Path) -> None:
         checkpoint = torch.load(path, map_location=self.device)
-        if int(checkpoint.get("obs_dim", self.obs_dim)) != self.obs_dim:
-            raise ValueError(f"Checkpoint obs_dim mismatch: {checkpoint.get('obs_dim')} != {self.obs_dim}")
+        checkpoint_obs_dim = int(checkpoint.get("obs_dim", self.obs_dim))
         checkpoint_action_dim = int(checkpoint.get("action_dim", self.action_dim))
-        if checkpoint_action_dim != self.action_dim:
-            self._load_compatible_policy_state(checkpoint["policy_state_dict"], checkpoint_action_dim)
+        if checkpoint_obs_dim != self.obs_dim or checkpoint_action_dim != self.action_dim:
+            self._load_compatible_policy_state(
+                checkpoint["policy_state_dict"],
+                checkpoint_obs_dim,
+                checkpoint_action_dim,
+            )
             return
         self.policy.load_state_dict(checkpoint["policy_state_dict"])
         if "optimizer_state_dict" in checkpoint:
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
-    def _load_compatible_policy_state(self, state_dict: Dict[str, Any], checkpoint_action_dim: int) -> None:
+    def _load_compatible_policy_state(
+        self,
+        state_dict: Dict[str, Any],
+        checkpoint_obs_dim: int,
+        checkpoint_action_dim: int,
+    ) -> None:
         current = self.policy.state_dict()
         merged = dict(current)
         for name, value in state_dict.items():
@@ -172,7 +180,11 @@ class PPOAgent:
             if tuple(value.shape) == tuple(merged[name].shape):
                 merged[name] = value
                 continue
-            if name == "actor.weight" and len(value.shape) == 2:
+            if name == "shared.0.weight" and len(value.shape) == 2:
+                rows = min(value.shape[0], merged[name].shape[0])
+                cols = min(value.shape[1], merged[name].shape[1])
+                merged[name][:rows, :cols] = value[:rows, :cols]
+            elif name == "actor.weight" and len(value.shape) == 2:
                 rows = min(value.shape[0], merged[name].shape[0])
                 merged[name][:rows, :] = value[:rows, :]
             elif name == "actor.bias" and len(value.shape) == 1:
@@ -180,8 +192,8 @@ class PPOAgent:
                 merged[name][:rows] = value[:rows]
         self.policy.load_state_dict(merged)
         print(
-            f"[ppo-agent] loaded compatible checkpoint with action_dim {checkpoint_action_dim}; "
-            f"new actions initialized from current policy head ({self.action_dim})."
+            f"[ppo-agent] loaded compatible checkpoint with obs_dim {checkpoint_obs_dim}, "
+            f"action_dim {checkpoint_action_dim}; current obs_dim {self.obs_dim}, action_dim {self.action_dim}."
         )
 
     def get_policy_state_dict(self) -> Dict[str, Any]:

@@ -8,6 +8,7 @@ from adapters.browsergym_action_adapter import BrowserGymActionAdapter
 from adapters.browsergym_observation_adapter import BrowserGymObservationAdapter
 from models.action_space import ActionSpace
 from models.observation_encoder import ObservationEncoder
+from services.infra_observation_service import collect_infra_observation
 from services.site_profile_service import build_site_profile
 
 
@@ -84,7 +85,7 @@ class BrowserGymJAWSEnv:
         self.no_change_steps = 0
         self.previous_action_type = "noop"
         self._browser_obs = browser_obs
-        self._jaws_obs = self.observation_adapter.adapt(
+        self._jaws_obs = self.observation_adapter.convert(
             browser_obs,
             info,
             previous_obs=None,
@@ -92,6 +93,7 @@ class BrowserGymJAWSEnv:
         )
         self._stamp_site_id(self._jaws_obs)
         self._stamp_login_info(self._jaws_obs, info)
+        self._stamp_infra_info(self._jaws_obs, info)
         return self._jaws_obs, self._info(info, self.previous_action_type)
 
     def step(self, action_id: int) -> tuple[Dict[str, Any], float, bool, Dict[str, Any]]:
@@ -111,6 +113,14 @@ class BrowserGymJAWSEnv:
             info = self._inspect_network()
         elif browser_action.action_type == "inspect_console":
             info = self._inspect_console()
+        elif browser_action.action_type in {
+            "inspect_server_health",
+            "inspect_port_status",
+            "inspect_latency",
+            "inspect_server_logs",
+            "inspect_runtime_metrics",
+        }:
+            info = self._inspect_infra(browser_action.action_type)
         elif browser_action.action_type == "fill_input":
             info = self._fill_input(decoded_action)
         elif browser_action.action_type == "press_enter":
@@ -166,13 +176,14 @@ class BrowserGymJAWSEnv:
             done = True
 
         previous_jaws_obs = self._jaws_obs
-        next_jaws_obs = self.observation_adapter.adapt(
+        next_jaws_obs = self.observation_adapter.convert(
             browser_obs,
             info,
             previous_obs=previous_jaws_obs,
             history=self._next_history(browser_action.action_type, previous_jaws_obs, browser_obs),
         )
         self._stamp_site_id(next_jaws_obs)
+        self._stamp_infra_info(next_jaws_obs, info)
         self._browser_obs = browser_obs
         self._jaws_obs = next_jaws_obs
         self.previous_action_type = browser_action.action_type
@@ -194,6 +205,7 @@ class BrowserGymJAWSEnv:
                     "viewport_width": info.get("viewport_width"),
                     "viewport_height": info.get("viewport_height"),
                 },
+                "infra_signals": next_jaws_obs.get("infra_signals", {}),
             }
         )
         return next_jaws_obs, 0.0, done, step_info
@@ -339,6 +351,15 @@ class BrowserGymJAWSEnv:
             info["console_error"] = str(exc)
         return info
 
+    def _inspect_infra(self, action_type: str) -> Dict[str, Any]:
+        infra = self._collect_infra()
+        return {
+            "internal_action": action_type,
+            "infra_inspected": True,
+            "infra_action": action_type,
+            "infra_signals": infra,
+        }
+
     def _fill_input(self, decoded_action: Dict[str, Any]) -> Dict[str, Any]:
         info: Dict[str, Any] = {"internal_action": "fill_input", "filled": False}
         page = _active_page(self.env)
@@ -432,6 +453,25 @@ class BrowserGymJAWSEnv:
         runtime_signals["post_login_url"] = str(info.get("post_login_url") or "")
         if info.get("login_warning"):
             runtime_signals["login_warning"] = str(info.get("login_warning"))
+
+    def _stamp_infra_info(self, observation: Dict[str, Any], info: Optional[Mapping[str, Any]] = None) -> None:
+        infra = (info or {}).get("infra_signals") if isinstance(info, Mapping) else None
+        if not isinstance(infra, Mapping):
+            infra = self._collect_infra()
+        observation["infra_signals"] = dict(infra)
+        observation.setdefault("runtime_signals", {})["infra_observed"] = True
+
+    def _collect_infra(self) -> Dict[str, Any]:
+        timeout_ms = int(self.site_profile.get("infra_timeout_ms") or self.site_profile.get("timeout_ms") or 750)
+        log_paths = self.site_profile.get("server_log_paths", [])
+        if not isinstance(log_paths, list):
+            log_paths = []
+        return collect_infra_observation(
+            site_id=str(self.site_id or ""),
+            base_url=self.base_url,
+            timeout_ms=timeout_ms,
+            log_paths=[str(item) for item in log_paths],
+        )
 
 
 def _import_browsergym():

@@ -27,6 +27,9 @@ from services.browsergym_training_service import (
     _target_bid,
     _update_history,
 )
+from services.episode_csv_logger import EpisodeCsvLogger, infer_run_id
+from services.infra_anomaly_detection_service import detect_infra_anomalies
+from services.infra_reward_service import calculate_infra_reward
 from services.known_bug_matcher import load_known_bugs, match_anomalies_to_known_bugs
 from services.site_profile_service import build_site_profile, validate_site_identity
 
@@ -45,6 +48,12 @@ class MultiSiteTrainingService:
         save_model_path: str | Path | None = None,
         entropy_coef: float = 0.02,
         strict_site_validation: bool = False,
+        enable_csv_logging: bool = True,
+        csv_log_dir: str | Path = "artifacts/training",
+        log_observation_detail: bool = True,
+        log_action_space: bool = True,
+        log_raw_json: bool = False,
+        run_id: str | None = None,
     ) -> None:
         self.config_path = Path(config_path)
         self.config = _read_json_dict(self.config_path)
@@ -61,6 +70,13 @@ class MultiSiteTrainingService:
         self.headless = bool(headless)
         self.entropy_coef = max(0.02, float(entropy_coef))
         self.strict_site_validation = bool(strict_site_validation)
+        self.enable_csv_logging = bool(enable_csv_logging)
+        self.csv_log_dir = Path(csv_log_dir)
+        self.log_observation_detail = bool(log_observation_detail)
+        self.log_action_space = bool(log_action_space)
+        self.log_raw_json = bool(log_raw_json)
+        self.run_id = run_id or infer_run_id(self.config, self.config_path, fallback_prefix="training")
+        self.batch_id = self.config_path.stem
 
         self.encoder = ObservationEncoder(max_candidates=max_candidates)
         self.action_space = ActionSpace(max_candidates=max_candidates)
@@ -111,71 +127,94 @@ class MultiSiteTrainingService:
         for state in self.site_states.values():
             state["output_dir"].mkdir(parents=True, exist_ok=True)
             state["transition_log_path"].write_text("", encoding="utf-8")
-        self._run_preflight_checks()
+        csv_logger = (
+            EpisodeCsvLogger(
+                self.csv_log_dir,
+                self.run_id,
+                batch_id=self.batch_id,
+                phase="training",
+                log_observation_detail=self.log_observation_detail,
+                log_action_space=self.log_action_space,
+                log_raw_json=self.log_raw_json,
+            )
+            if self.enable_csv_logging
+            else None
+        )
 
-        update_summaries: List[Dict[str, Any]] = []
-        global_episode = 0
-        last_update_metrics: Dict[str, float] = {}
+        try:
+            self._run_preflight_checks()
+            update_summaries: List[Dict[str, Any]] = []
+            global_episode = 0
+            last_update_metrics: Dict[str, float] = {}
 
-        for update_idx in range(1, self.total_updates + 1):
-            shared_buffer = RolloutBuffer()
-            per_site_update: Dict[str, Any] = {}
-            print(f"[multisite-train] update {update_idx}/{self.total_updates}")
+            for update_idx in range(1, self.total_updates + 1):
+                shared_buffer = RolloutBuffer()
+                per_site_update: Dict[str, Any] = {}
+                print(f"[multisite-train] update {update_idx}/{self.total_updates}")
 
-            for site in self.sites:
-                site_id = site["site_id"]
-                state = self.site_states[site_id]
-                site_rewards: List[float] = []
-                site_scaled_rewards: List[float] = []
-                site_anomalies = 0
-                for local_episode in range(1, self.episodes_per_site + 1):
-                    global_episode += 1
-                    episode_id = f"U{update_idx:04d}-{site_id}-EP{local_episode:03d}"
-                    episode = self._collect_episode(site, state, episode_id)
-                    if len(episode["buffer"]) > 0:
-                        shared_buffer.extend(episode["buffer"])
-                    site_rewards.append(float(episode["raw_reward"]))
-                    site_scaled_rewards.append(float(episode["scaled_reward"]))
-                    site_anomalies += int(episode["anomaly_count"])
+                for site in self.sites:
+                    site_id = site["site_id"]
+                    state = self.site_states[site_id]
+                    site_rewards: List[float] = []
+                    site_scaled_rewards: List[float] = []
+                    site_anomalies = 0
+                    for local_episode in range(1, self.episodes_per_site + 1):
+                        global_episode += 1
+                        episode_id = f"U{update_idx:04d}-{site_id}-EP{local_episode:03d}"
+                        episode = self._collect_episode(site, state, episode_id, csv_logger=csv_logger)
+                        if len(episode["buffer"]) > 0:
+                            shared_buffer.extend(episode["buffer"])
+                        site_rewards.append(float(episode["raw_reward"]))
+                        site_scaled_rewards.append(float(episode["scaled_reward"]))
+                        site_anomalies += int(episode["anomaly_count"])
 
-                per_site_update[site_id] = {
-                    "episodes": self.episodes_per_site,
-                    "average_reward": float(np.mean(site_rewards)) if site_rewards else 0.0,
-                    "raw_average_reward": float(np.mean(site_rewards)) if site_rewards else 0.0,
-                    "scaled_average_reward": float(np.mean(site_scaled_rewards)) if site_scaled_rewards else 0.0,
-                    "reward_scale": _reward_scale(site),
-                    "anomaly_count": site_anomalies,
+                    per_site_update[site_id] = {
+                        "episodes": self.episodes_per_site,
+                        "average_reward": float(np.mean(site_rewards)) if site_rewards else 0.0,
+                        "raw_average_reward": float(np.mean(site_rewards)) if site_rewards else 0.0,
+                        "scaled_average_reward": float(np.mean(site_scaled_rewards)) if site_scaled_rewards else 0.0,
+                        "reward_scale": _reward_scale(site),
+                        "anomaly_count": site_anomalies,
+                    }
+                    print(
+                        f"  [site {site_id}] reward={per_site_update[site_id]['average_reward']:.3f}, "
+                        f"anomalies={site_anomalies}"
+                    )
+
+                if len(shared_buffer) > 0:
+                    last_update_metrics = self.agent.update(shared_buffer)
+                else:
+                    last_update_metrics = {"policy_loss": 0.0, "value_loss": 0.0, "entropy": 0.0, "total_loss": 0.0}
+                self.agent.save(self.shared_model_path)
+                self._write_site_outputs(last_update_metrics)
+
+                update_summary = {
+                    "update": update_idx,
+                    "buffer_steps": len(shared_buffer),
+                    "sites": per_site_update,
+                    "loss": last_update_metrics,
+                    "shared_model_path": str(self.shared_model_path),
                 }
-                print(
-                    f"  [site {site_id}] reward={per_site_update[site_id]['average_reward']:.3f}, "
-                    f"anomalies={site_anomalies}"
-                )
+                update_summaries.append(update_summary)
+                print(f"  [ppo] loss={last_update_metrics}")
+                print(f"  [model] {self.shared_model_path}")
 
-            if len(shared_buffer) > 0:
-                last_update_metrics = self.agent.update(shared_buffer)
-            else:
-                last_update_metrics = {"policy_loss": 0.0, "value_loss": 0.0, "entropy": 0.0, "total_loss": 0.0}
-            self.agent.save(self.shared_model_path)
-            self._write_site_outputs(last_update_metrics)
+            summary = self._build_multisite_summary(update_summaries, last_update_metrics)
+            summary_path = self.output_dir / "multisite_training_summary.json"
+            summary_path.write_text(json.dumps(_jsonable(summary), ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"[multisite-train] summary: {summary_path}")
+            return summary
+        finally:
+            if csv_logger is not None:
+                csv_logger.close()
 
-            update_summary = {
-                "update": update_idx,
-                "buffer_steps": len(shared_buffer),
-                "sites": per_site_update,
-                "loss": last_update_metrics,
-                "shared_model_path": str(self.shared_model_path),
-            }
-            update_summaries.append(update_summary)
-            print(f"  [ppo] loss={last_update_metrics}")
-            print(f"  [model] {self.shared_model_path}")
-
-        summary = self._build_multisite_summary(update_summaries, last_update_metrics)
-        summary_path = self.output_dir / "multisite_training_summary.json"
-        summary_path.write_text(json.dumps(_jsonable(summary), ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"[multisite-train] summary: {summary_path}")
-        return summary
-
-    def _collect_episode(self, site: Mapping[str, Any], state: Dict[str, Any], episode_id: str) -> Dict[str, Any]:
+    def _collect_episode(
+        self,
+        site: Mapping[str, Any],
+        state: Dict[str, Any],
+        episode_id: str,
+        csv_logger: EpisodeCsvLogger | None = None,
+    ) -> Dict[str, Any]:
         site_id = str(site["site_id"])
         reward_scale = _reward_scale(site)
         env = BrowserGymJAWSEnv(
@@ -227,6 +266,18 @@ class MultiSiteTrainingService:
                 action["action_id"] = action_id
                 action["site_id"] = site_id
                 _enrich_action(action, observation)
+                if csv_logger is not None:
+                    csv_logger.log_observation(site_id, episode_id, step, step, observation)
+                    csv_logger.log_action_space(
+                        site_id,
+                        episode_id,
+                        step,
+                        step,
+                        observation,
+                        self.action_space,
+                        action_mask,
+                        action_id,
+                    )
 
                 next_observation, _, done, step_info = env.step(action_id)
                 action["failed"] = bool(step_info.get("last_action_error"))
@@ -236,6 +287,11 @@ class MultiSiteTrainingService:
                     {"action": action, "site_profile": state["site_profile"], **step_info},
                     site_profile=state["site_profile"],
                 )
+                infra_anomalies = detect_infra_anomalies(
+                    next_observation,
+                    {"action": action, "site_profile": state["site_profile"], **step_info},
+                )
+                anomalies.extend(infra_anomalies)
                 known_matches = match_anomalies_to_known_bugs(anomalies, state["known_bugs"], site_id=site_id)
                 action["matched_bug_ids"] = [
                     str(match.get("matched_bug_id")) for match in known_matches if match.get("matched_bug_id")
@@ -249,11 +305,39 @@ class MultiSiteTrainingService:
                     history,
                     state["site_profile"],
                 )
+                infra_reward, infra_breakdown = calculate_infra_reward(
+                    observation,
+                    next_observation,
+                    action,
+                    infra_anomalies,
+                    history,
+                )
+                reward += infra_reward
+                reward_breakdown.update(infra_breakdown)
                 raw_reward = reward
                 scaled_reward = _clamp_reward(raw_reward * reward_scale)
                 reward_breakdown["raw_final_reward"] = raw_reward
                 reward_breakdown["scaled_final_reward"] = scaled_reward
                 reward_breakdown["reward_scale"] = reward_scale
+                if csv_logger is not None:
+                    csv_logger.log_step(
+                        site_id=site_id,
+                        base_url=str(site.get("base_url") or ""),
+                        episode_id=episode_id,
+                        step_id=step,
+                        tick_id=step,
+                        before_observation=observation,
+                        after_observation=next_observation,
+                        action=action,
+                        action_mask=action_mask,
+                        step_info=step_info,
+                        anomalies=anomalies,
+                        known_matches=known_matches,
+                        reward=scaled_reward,
+                        reward_breakdown=reward_breakdown,
+                        done=done,
+                    )
+                    csv_logger.log_observation(site_id, episode_id, step, f"{step}.after", next_observation)
 
                 buffer.add(
                     obs_vector,
@@ -582,6 +666,16 @@ def _guided_multisite_action_id(
     if site_id == "site001":
         return _guided_action_id(action_space, observation, history, selected_action_id)
 
+    infra_action = _guided_action_id(action_space, observation, history, selected_action_id)
+    if _action_type_for_id(action_space, infra_action) in {
+        "inspect_port_status",
+        "inspect_server_health",
+        "inspect_latency",
+        "inspect_server_logs",
+        "inspect_runtime_metrics",
+    }:
+        return infra_action
+
     selected = action_space.decode(selected_action_id)
     if site_id not in {"site001", "site9800"} and selected.get("action_type") == "inspect_cart":
         selected_action_id = action_space.encode("noop", 0)
@@ -647,6 +741,13 @@ def _guided_multisite_action_id(
             return action_space.encode("inspect_layout", 0)
 
     return selected_action_id
+
+
+def _action_type_for_id(action_space: ActionSpace, action_id: int) -> str:
+    try:
+        return str(action_space.decode(action_id).get("action_type") or "")
+    except ValueError:
+        return ""
 
 
 def _first_candidate_index(observation: Mapping[str, Any], flag: str) -> Optional[int]:

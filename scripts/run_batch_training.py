@@ -21,6 +21,12 @@ def main() -> int:
     parser.add_argument("--entropy-coef", type=float, default=0.02)
     parser.add_argument("--strict-site-validation", default="false")
     parser.add_argument("--artifact-root", default="artifacts/training")
+    parser.add_argument("--enable-csv-logging", default="true")
+    parser.add_argument("--csv-log-dir", default="")
+    parser.add_argument("--log-observation-detail", default="true")
+    parser.add_argument("--log-action-space", default="true")
+    parser.add_argument("--log-raw-json", default="false")
+    parser.add_argument("--run-id", default="")
     args = parser.parse_args()
 
     batch_config = Path(args.batch_config)
@@ -47,6 +53,18 @@ def main() -> int:
         str(args.entropy_coef),
         "--strict-site-validation",
         args.strict_site_validation,
+        "--enable-csv-logging",
+        args.enable_csv_logging,
+        "--csv-log-dir",
+        args.csv_log_dir or args.artifact_root,
+        "--log-observation-detail",
+        args.log_observation_detail,
+        "--log-action-space",
+        args.log_action_space,
+        "--log-raw-json",
+        args.log_raw_json,
+        "--run-id",
+        args.run_id or batch_id,
     ]
     if args.load_model:
         command.extend(["--load-model", args.load_model])

@@ -401,6 +401,9 @@ def _guided_action_id(
     if not site_id:
         url = str(observation.get("page_state", {}).get("url") or "")
         site_id = "site003" if ":9222" in url else "site001" if ":9220" in url else ""
+    infra_action = _guided_infra_action_id(action_space, observation, history)
+    if infra_action is not None:
+        return infra_action
     if site_id != "site001" and _has_catalog_candidate(observation):
         matched_bug_ids = set(history.get("matched_bug_ids", set()) or set())
         catalog_action = _catalog_guided_action_id(action_space, observation, history)
@@ -449,6 +452,35 @@ def _guided_action_id(
         if purchase_index is not None:
             return action_space.encode("click_element", purchase_index)
     return selected_action_id
+
+
+def _guided_infra_action_id(
+    action_space: ActionSpace,
+    observation: Mapping[str, Any],
+    history: Mapping[str, Any],
+) -> Optional[int]:
+    infra = observation.get("infra_signals", {}) if isinstance(observation, Mapping) else {}
+    if not isinstance(infra, Mapping):
+        return None
+    try:
+        port = int(infra.get("port") or 0)
+    except (TypeError, ValueError):
+        return None
+    if not 9000 <= port <= 9100:
+        return None
+    counts = history.get("action_type_counts", {})
+    if not isinstance(counts, Mapping):
+        counts = {}
+    for action_type in (
+        "inspect_port_status",
+        "inspect_server_health",
+        "inspect_latency",
+        "inspect_server_logs",
+        "inspect_runtime_metrics",
+    ):
+        if int(counts.get(action_type, 0) or 0) == 0:
+            return action_space.encode(action_type, 0)
+    return None
 
 
 def _catalog_guided_action_id(

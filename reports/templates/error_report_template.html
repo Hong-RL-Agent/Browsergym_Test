@@ -160,6 +160,40 @@
   </div>
   {% endif %}
 
+  {% if report.api_anomalies %}
+  <h2>API Anomaly Summary</h2>
+  <div class="grid">
+    <div class="card metric"><div class="label">API Anomalies</div><div class="value">{{ report.api_summary.api_anomaly_count|default(report.api_anomalies|length) }}</div></div>
+    <div class="card metric"><div class="label">API 5xx</div><div class="value">{{ report.api_summary.api_5xx_count|default(0) }}</div></div>
+    <div class="card metric"><div class="label">Unexpected 4xx</div><div class="value">{{ report.api_summary.api_4xx_unexpected_count|default(0) }}</div></div>
+    <div class="card metric"><div class="label">Schema Mismatch</div><div class="value">{{ report.api_summary.schema_mismatch_count|default(0) }}</div></div>
+    <div class="card metric"><div class="label">Timeout</div><div class="value">{{ report.api_summary.timeout_count|default(0) }}</div></div>
+    <div class="card metric"><div class="label">Source</div><div class="value">API</div></div>
+  </div>
+  <table>
+    <tr>
+      <th>API</th>
+      <th>Method</th>
+      <th>Mutation</th>
+      <th>Status</th>
+      <th>Latency</th>
+      <th>Anomaly</th>
+      <th>Severity</th>
+    </tr>
+    {% for anomaly in report.api_anomalies %}
+    <tr>
+      <td>{{ anomaly.api_id }}</td>
+      <td>{{ anomaly.method }}</td>
+      <td>{{ anomaly.mutation }}</td>
+      <td>{{ anomaly.status }}</td>
+      <td>{{ anomaly.latency_ms }}ms</td>
+      <td>{{ anomaly.anomaly_type }}</td>
+      <td>{{ anomaly.severity }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
   <h2 class="page-break">오류 상세 / Error Details</h2>
   {% for bug in report.bugs %}
   <section class="card bug {{ 'detected' if bug.detected else 'missed' }}">

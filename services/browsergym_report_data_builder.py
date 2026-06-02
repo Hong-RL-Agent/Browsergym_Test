@@ -17,6 +17,7 @@ def build_browsergym_report_data(
     transition_log_path: str | Path,
     bug_catalog_path: str | Path,
     model_path: str | Path | None = None,
+    api_results_path: str | Path | None = None,
 ) -> dict:
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -28,6 +29,8 @@ def build_browsergym_report_data(
     transitions = _read_jsonl(transition_log_path)
     known_bugs = _load_bug_catalog(site_id, bug_catalog_path)
     transition_summary = _summarize_transitions(transitions)
+    api_results = _read_json_dict(api_results_path) if api_results_path else {}
+    api_anomalies = _api_anomalies_for_site(api_results, site_id)
 
     matched_bug_ids = sorted(
         {
@@ -109,6 +112,8 @@ def build_browsergym_report_data(
         "confirmed_bugs": confirmed_detected,
         "catalog_related_anomalies": catalog_related,
         "exploratory_anomalies": exploratory,
+        "api_anomalies": api_anomalies,
+        "api_summary": _api_summary_for_site(api_results, site_id, api_anomalies),
         "analysis": _analysis_text(site_id, summary),
     }
     return report_data
@@ -353,6 +358,39 @@ def _read_jsonl(path: str | Path) -> List[Dict[str, Any]]:
         if isinstance(item, dict):
             rows.append(item)
     return rows
+
+
+def _api_anomalies_for_site(api_results: Mapping[str, Any], site_id: str) -> List[Dict[str, Any]]:
+    anomalies = api_results.get("anomalies", []) if isinstance(api_results, Mapping) else []
+    if not isinstance(anomalies, list):
+        return []
+    return [
+        dict(item)
+        for item in anomalies
+        if isinstance(item, Mapping) and str(item.get("site_id") or "") == site_id
+    ]
+
+
+def _api_summary_for_site(
+    api_results: Mapping[str, Any],
+    site_id: str,
+    api_anomalies: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    sites = api_results.get("sites", {}) if isinstance(api_results, Mapping) else {}
+    site_result = sites.get(site_id, {}) if isinstance(sites, Mapping) else {}
+    summary = site_result.get("summary", {}) if isinstance(site_result, Mapping) else {}
+    if isinstance(summary, Mapping) and summary:
+        result = dict(summary)
+    else:
+        counts = Counter(str(item.get("anomaly_type") or item.get("type") or "") for item in api_anomalies)
+        result = {
+            "api_5xx_count": counts.get("api-5xx-error", 0),
+            "api_4xx_unexpected_count": counts.get("api-4xx-unexpected", 0),
+            "schema_mismatch_count": counts.get("api-schema-mismatch", 0),
+            "timeout_count": counts.get("api-timeout", 0),
+        }
+    result["api_anomaly_count"] = len(api_anomalies)
+    return result
 
 
 def _bug_id(bug: Mapping[str, Any]) -> str:

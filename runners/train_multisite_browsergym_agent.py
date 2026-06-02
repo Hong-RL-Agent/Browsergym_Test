@@ -24,6 +24,12 @@ def main() -> int:
     parser.add_argument("--save-model", default="")
     parser.add_argument("--entropy-coef", type=float, default=0.02)
     parser.add_argument("--strict-site-validation", type=_parse_bool, default=False)
+    parser.add_argument("--enable-csv-logging", type=_parse_bool, default=True)
+    parser.add_argument("--csv-log-dir", default="artifacts/training")
+    parser.add_argument("--log-observation-detail", type=_parse_bool, default=True)
+    parser.add_argument("--log-action-space", type=_parse_bool, default=True)
+    parser.add_argument("--log-raw-json", type=_parse_bool, default=False)
+    parser.add_argument("--run-id", default="")
     args = parser.parse_args()
 
     service = MultiSiteTrainingService(
@@ -37,6 +43,12 @@ def main() -> int:
         save_model_path=args.save_model or None,
         entropy_coef=args.entropy_coef,
         strict_site_validation=args.strict_site_validation,
+        enable_csv_logging=args.enable_csv_logging,
+        csv_log_dir=args.csv_log_dir,
+        log_observation_detail=args.log_observation_detail,
+        log_action_space=args.log_action_space,
+        log_raw_json=args.log_raw_json,
+        run_id=args.run_id or None,
     )
     summary = service.train()
     print("shared_model_path:", summary["shared_model_path"])

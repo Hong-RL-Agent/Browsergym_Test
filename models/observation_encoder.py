@@ -12,6 +12,7 @@ ROLE_ORDER = ["button", "link", "textbox", "combobox", "checkbox", "radio", "men
 
 class ObservationEncoder:
     page_feature_dim = 9
+    raw_summary_feature_dim = 9
     candidate_feature_dim = len(ROLE_ORDER) + 12
     runtime_feature_dim = 3
     layout_feature_dim = 1
@@ -22,10 +23,12 @@ class ObservationEncoder:
         self.max_candidates = max_candidates
 
     def encode_observation(self, raw_observation: Mapping[str, Any]) -> np.ndarray:
+        observation = self._structured_observation(raw_observation)
         features = []
-        features.extend(self._page_features(raw_observation.get("page_state", {})))
+        features.extend(self._page_features(observation.get("page_state", {})))
+        features.extend(self._raw_summary_features(observation))
 
-        candidates = raw_observation.get("candidate_elements", [])
+        candidates = observation.get("candidate_elements", [])
         if not isinstance(candidates, list):
             candidates = []
         for idx in range(self.max_candidates):
@@ -34,10 +37,10 @@ class ObservationEncoder:
             else:
                 features.extend([0.0] * self.candidate_feature_dim)
 
-        features.extend(self._runtime_features(raw_observation.get("runtime_signals", {})))
-        features.extend(self._layout_features(raw_observation.get("layout_signals", {})))
-        features.extend(self._infra_features(raw_observation.get("infra_signals", {})))
-        features.extend(self._history_features(raw_observation.get("history", {})))
+        features.extend(self._runtime_features(observation.get("runtime_signals", {})))
+        features.extend(self._layout_features(observation.get("layout_signals", {})))
+        features.extend(self._infra_features(observation.get("infra_signals", {})))
+        features.extend(self._history_features(observation.get("history", {})))
 
         vector = np.asarray(features, dtype=np.float32)
         return np.nan_to_num(vector, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
@@ -45,12 +48,38 @@ class ObservationEncoder:
     def get_obs_dim(self) -> int:
         return (
             self.page_feature_dim
+            + self.raw_summary_feature_dim
             + self.max_candidates * self.candidate_feature_dim
             + self.runtime_feature_dim
             + self.layout_feature_dim
             + self.infra_feature_dim
             + self.history_feature_dim
         )
+
+
+    def _structured_observation(self, observation: Mapping[str, Any]) -> Mapping[str, Any]:
+        if isinstance(observation, Mapping) and isinstance(observation.get("structured_observation"), Mapping):
+            return observation["structured_observation"]
+        return observation if isinstance(observation, Mapping) else {}
+
+    def _raw_summary_features(self, observation: Mapping[str, Any]) -> list[float]:
+        summary = observation.get("raw_observation_summary") or observation.get("browsergym_raw_observation") or {}
+        if not isinstance(summary, Mapping):
+            summary = {}
+        derived = observation.get("derived_features", {})
+        if not isinstance(derived, Mapping):
+            derived = {}
+        return [
+            _scale(len(summary.get("keys", []) or observation.get("raw_observation_keys", []) or []), 64.0),
+            _scale(summary.get("text_length"), 20000.0),
+            _scale(derived.get("candidate_count"), float(max(1, self.max_candidates))),
+            _scale(derived.get("visible_candidate_count"), float(max(1, self.max_candidates))),
+            _bool(derived.get("has_error_text")),
+            _bool(derived.get("has_forbidden_text")),
+            _bool(derived.get("has_timeout_text")),
+            _bool(derived.get("has_network_error_text")),
+            _bool(summary.get("has_screenshot") or derived.get("screenshot_available")),
+        ]
 
     def _page_features(self, page_state: Mapping[str, Any]) -> list[float]:
         return [

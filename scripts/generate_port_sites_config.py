@@ -12,7 +12,7 @@ def main() -> int:
     parser.add_argument("--end-port", type=int, required=True)
     parser.add_argument("--site-map", default="", help="Optional JSON map of port string to site_id.")
     parser.add_argument("--output", required=True)
-    parser.add_argument("--shared-model-path", default="artifacts/models/jaws_browsergym_shared_ppo.pt")
+    parser.add_argument("--shared-model-path", default="artifacts/models/jaws_browsergym_shared_ppo_v2_browsergym_raw_obs.pt")
     parser.add_argument("--output-dir", default="artifacts/multisite")
     args = parser.parse_args()
 

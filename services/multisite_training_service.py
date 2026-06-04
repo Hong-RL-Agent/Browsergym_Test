@@ -59,7 +59,7 @@ class MultiSiteTrainingService:
         self.config = _read_json_dict(self.config_path)
         self.sites = _validate_sites(self.config.get("sites", []))
         self.output_dir = Path(str(self.config.get("output_dir") or "artifacts/multisite"))
-        configured_model_path = self.config.get("shared_model_path") or "artifacts/models/jaws_browsergym_shared_ppo.pt"
+        configured_model_path = self.config.get("shared_model_path") or "artifacts/models/jaws_browsergym_shared_ppo_v2_browsergym_raw_obs.pt"
         self.shared_model_path = Path(save_model_path or configured_model_path)
         self.load_model_path = Path(load_model_path) if load_model_path else None
         self.total_updates = int(total_updates)

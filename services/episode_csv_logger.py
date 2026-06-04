@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import mean
@@ -17,6 +18,9 @@ EPISODE_STEP_FIELDS = [
     "run_id", "batch_id", "site_id", "base_url", "episode_id", "step_id", "tick_id", "timestamp",
     "phase", "mode", "is_training", "is_evaluation",
     "before_raw_observation_keys", "after_raw_observation_keys", "before_raw_observation_key_count", "after_raw_observation_key_count",
+    "raw_observation_type", "raw_observation_keys", "raw_observation_key_count", "raw_observation_summary_json",
+    "browsergym_text_length", "browsergym_dom_available", "browsergym_axtree_available", "browsergym_screenshot_available",
+    "derived_candidate_count", "derived_visible_candidate_count",
     "before_url", "after_url", "url_changed",
     "before_title", "after_title", "title_changed",
     "before_text_hash", "after_text_hash", "text_changed", "before_text_length", "after_text_length", "text_delta_length",
@@ -53,8 +57,11 @@ OBSERVATION_FIELDS = [
     "layout_signal_count", "layout_overlap_count", "layout_overflow_count",
     "runtime_signal_count", "console_error_count", "network_error_count",
     "cart_state", "form_state", "loading_state", "error_message_visible", "success_message_visible", "validation_message_visible",
-    "raw_observation_keys", "browsergym_raw_observation_keys", "browsergym_raw_observation_key_count", "browsergym_text_source",
+    "raw_observation_keys", "raw_observation_type", "raw_observation_key", "raw_observation_value_type", "raw_observation_value_summary", "source",
+    "raw_observation_summary_json", "browsergym_raw_observation_keys", "browsergym_raw_observation_key_count", "browsergym_text_source",
+    "browsergym_text_length", "browsergym_dom_available", "browsergym_axtree_available", "browsergym_screenshot_available",
     "browsergym_has_axtree", "browsergym_has_dom", "browsergym_has_screenshot",
+    "derived_candidate_count", "derived_visible_candidate_count",
     "infra_feature_name", "infra_feature_value", "health_endpoint", "health_response_status", "health_response_time_ms",
     "raw_observation_json",
 ]
@@ -112,11 +119,16 @@ class EpisodeCsvLogger:
         self.log_raw_json = log_raw_json
         self._handles: Dict[str, Any] = {}
         self._writers: Dict[str, csv.DictWriter] = {}
-        self._open("episode_step", "episode_step_logs.csv", EPISODE_STEP_FIELDS)
-        self._open("observation", "observation_logs.csv", OBSERVATION_FIELDS)
-        self._open("action_space", "action_space_logs.csv", ACTION_SPACE_FIELDS)
-        self._open("anomaly", "anomaly_logs.csv", ANOMALY_FIELDS)
-        self._open("reward", "reward_logs.csv", REWARD_FIELDS)
+        self._csv_specs = [
+            ("episode_step", "episode_step_logs.csv", EPISODE_STEP_FIELDS),
+            ("observation", "observation_logs.csv", OBSERVATION_FIELDS),
+            ("action_space", "action_space_logs.csv", ACTION_SPACE_FIELDS),
+            ("anomaly", "anomaly_logs.csv", ANOMALY_FIELDS),
+            ("reward", "reward_logs.csv", REWARD_FIELDS),
+        ]
+        self._ensure_csv_targets_available()
+        for key, filename, fields in self._csv_specs:
+            self._open(key, filename, fields)
 
     def log_observation(
         self,
@@ -165,9 +177,21 @@ class EpisodeCsvLogger:
             "success_message_visible": _message_visible(observation, ("success", "complete", "added")),
             "validation_message_visible": _message_visible(observation, ("required", "invalid", "validation")),
             "raw_observation_keys": ";".join(raw_keys),
+            "raw_observation_type": observation.get("raw_observation_type", ""),
+            "raw_observation_key": "",
+            "raw_observation_value_type": "",
+            "raw_observation_value_summary": "",
+            "source": "derived_from_raw_obs",
+            "raw_observation_summary_json": _json(observation.get("raw_observation_summary") or observation.get("browsergym_raw_observation"), limit=2000),
             "browsergym_raw_observation_keys": ";".join(raw_keys),
             "browsergym_raw_observation_key_count": len(raw_keys),
             "browsergym_text_source": page_state.get("browsergym_text_source", ""),
+            "browsergym_text_length": page_state.get("page_text_length", ""),
+            "browsergym_dom_available": observation.get("browsergym_dom_available", page_state.get("browsergym_has_dom", "")),
+            "browsergym_axtree_available": observation.get("browsergym_axtree_available", page_state.get("browsergym_has_axtree", "")),
+            "browsergym_screenshot_available": observation.get("browsergym_screenshot_available", page_state.get("browsergym_has_screenshot", "")),
+            "derived_candidate_count": _mapping(observation.get("derived_features")).get("candidate_count", candidate_count),
+            "derived_visible_candidate_count": _mapping(observation.get("derived_features")).get("visible_candidate_count", sum(1 for item in candidates if _visible(item))),
             "browsergym_has_axtree": page_state.get("browsergym_has_axtree", ""),
             "browsergym_has_dom": page_state.get("browsergym_has_dom", ""),
             "browsergym_has_screenshot": page_state.get("browsergym_has_screenshot", ""),
@@ -185,6 +209,22 @@ class EpisodeCsvLogger:
         for index, candidate in enumerate(candidates):
             row = dict(base)
             row.update(_candidate_row(index, candidate))
+            self._write("observation", row)
+        for raw_key, raw_value in _raw_observation_items(observation):
+            row = dict(base)
+            row.update(_candidate_row("", {}))
+            row["source"] = "browsergym_raw_obs"
+            row["raw_observation_key"] = raw_key
+            row["raw_observation_value_type"] = type(raw_value).__name__
+            row["raw_observation_value_summary"] = _value_summary(raw_value)
+            self._write("observation", row)
+        for name, value in _mapping(observation.get("derived_features")).items():
+            row = dict(base)
+            row.update(_candidate_row("", {}))
+            row["source"] = "derived_from_raw_obs"
+            row["raw_observation_key"] = name
+            row["raw_observation_value_type"] = type(value).__name__
+            row["raw_observation_value_summary"] = _value_summary(value)
             self._write("observation", row)
         for name, value in infra.items():
             row = dict(base)
@@ -307,6 +347,16 @@ class EpisodeCsvLogger:
             "after_raw_observation_keys": ";".join(_raw_observation_keys(after_observation)),
             "before_raw_observation_key_count": len(_raw_observation_keys(before_observation)),
             "after_raw_observation_key_count": len(_raw_observation_keys(after_observation)),
+            "raw_observation_type": after_observation.get("raw_observation_type", ""),
+            "raw_observation_keys": ";".join(_raw_observation_keys(after_observation)),
+            "raw_observation_key_count": len(_raw_observation_keys(after_observation)),
+            "raw_observation_summary_json": _json(after_observation.get("raw_observation_summary") or after_observation.get("browsergym_raw_observation"), limit=2000),
+            "browsergym_text_length": after_state.get("page_text_length", ""),
+            "browsergym_dom_available": after_observation.get("browsergym_dom_available", after_state.get("browsergym_has_dom", "")),
+            "browsergym_axtree_available": after_observation.get("browsergym_axtree_available", after_state.get("browsergym_has_axtree", "")),
+            "browsergym_screenshot_available": after_observation.get("browsergym_screenshot_available", after_state.get("browsergym_has_screenshot", "")),
+            "derived_candidate_count": _mapping(after_observation.get("derived_features")).get("candidate_count", len(_candidate_list(after_observation))),
+            "derived_visible_candidate_count": _mapping(after_observation.get("derived_features")).get("visible_candidate_count", sum(1 for item in _candidate_list(after_observation) if _visible(item))),
             "before_url": before_state.get("url", ""),
             "after_url": after_state.get("url", ""),
             "url_changed": diff["url_changed"],
@@ -535,6 +585,19 @@ class EpisodeCsvLogger:
         self._handles[key] = handle
         self._writers[key] = writer
 
+    def _ensure_csv_targets_available(self) -> None:
+        try:
+            for _, filename, _ in self._csv_specs:
+                path = self.output_dir / filename
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with path.open("a", encoding="utf-8-sig", newline=""):
+                    pass
+        except PermissionError:
+            fallback_run_id = f"{self.run_id}_{_timestamp_slug()}_pid{os.getpid()}"
+            self.output_dir = self.output_dir.parent / fallback_run_id
+            self.output_dir.mkdir(parents=True, exist_ok=True)
+            self.run_id = fallback_run_id
+
     def _write(self, key: str, row: Mapping[str, Any]) -> None:
         self._writers[key].writerow({field: _cell(row.get(field, "")) for field in self._writers[key].fieldnames or []})
         self._handles[key].flush()
@@ -612,13 +675,42 @@ def _candidate_list(observation: Mapping[str, Any]) -> list[Mapping[str, Any]]:
 
 
 def _raw_observation_keys(observation: Mapping[str, Any]) -> list[str]:
-    keys = observation.get("browsergym_raw_observation_keys", []) if isinstance(observation, Mapping) else []
+    if not isinstance(observation, Mapping):
+        return []
+    keys = observation.get("raw_observation_keys") or observation.get("browsergym_raw_observation_keys", [])
     if isinstance(keys, list):
         return [str(item) for item in keys]
     if isinstance(keys, str):
         return [item for item in keys.split(";") if item]
     return []
 
+
+
+
+def _raw_observation_items(observation: Mapping[str, Any]) -> list[tuple[str, Any]]:
+    if not isinstance(observation, Mapping):
+        return []
+    raw = observation.get("raw_observation")
+    if isinstance(raw, Mapping):
+        return [(str(key), value) for key, value in raw.items()]
+    summary = observation.get("raw_observation_summary") or observation.get("browsergym_raw_observation")
+    if isinstance(summary, Mapping):
+        compact = summary.get("compact_values") if isinstance(summary.get("compact_values"), Mapping) else summary
+        return [(str(key), value) for key, value in compact.items()]
+    return []
+
+
+def _value_summary(value: Any, limit: int = 1000) -> str:
+    if isinstance(value, Mapping):
+        return _json({"type": type(value).__name__, "keys": list(value.keys())[:40]}, limit=limit)
+    if isinstance(value, (list, tuple)):
+        return _json({"type": type(value).__name__, "length": len(value), "sample": list(value)[:3]}, limit=limit)
+    if isinstance(value, str):
+        return value[:limit]
+    try:
+        return _json(value, limit=limit)
+    except Exception:
+        return repr(value)[:limit]
 
 def _candidate_at(observation: Mapping[str, Any], index: int) -> Mapping[str, Any]:
     candidates = _candidate_list(observation)

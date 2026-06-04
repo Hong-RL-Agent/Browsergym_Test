@@ -17,7 +17,7 @@ def main() -> int:
     parser.add_argument("--episodes-per-site", type=int, default=1)
     parser.add_argument("--max-steps", type=int, default=25)
     parser.add_argument("--eval-episodes", type=int, default=3)
-    parser.add_argument("--model-path", default="artifacts/models/jaws_browsergym_shared_ppo.pt")
+    parser.add_argument("--model-path", default="artifacts/models/jaws_browsergym_shared_ppo_v2_browsergym_raw_obs.pt")
     parser.add_argument("--site-map", default="")
     parser.add_argument("--headless", default="true")
     parser.add_argument("--seed", type=int, default=42)
@@ -29,11 +29,13 @@ def main() -> int:
     parser.add_argument("--log-raw-json", default="false")
     args = parser.parse_args()
 
-    run_id = f"ports_{args.start_port}_{args.end_port}"
+    port_run_id = f"ports_{args.start_port}_{args.end_port}"
+    run_id = f"{port_run_id}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
     generated_config = Path("configs/generated") / f"port_sites_{args.start_port}_{args.end_port}.json"
     preflight_dir = Path(args.base_artifact_dir) / "preflight" / run_id
     batches_dir = Path("configs/generated/batches")
     evaluations_dir = Path(args.base_artifact_dir) / "evaluations" / run_id
+    training_dir = Path(args.base_artifact_dir) / "training" / run_id
     final_summary = Path(args.base_artifact_dir) / "final" / f"{run_id}_summary.json"
     failed_batches_path = Path(args.base_artifact_dir) / "final" / "failed_batches.json"
     reports_dir = Path(args.base_artifact_dir) / "reports" / run_id
@@ -106,7 +108,7 @@ def main() -> int:
             "--headless",
             args.headless,
             "--artifact-root",
-            str(Path(args.base_artifact_dir) / "training"),
+            str(training_dir),
             "--save-model",
             args.model_path,
             "--enable-csv-logging",
@@ -195,6 +197,7 @@ def main() -> int:
     final = json.loads(final_summary.read_text(encoding="utf-8"))
     automation_summary = {
         "run_id": run_id,
+        "port_run_id": port_run_id,
         "generated_config": str(generated_config),
         "active_sites": str(preflight_dir / "active_sites.json"),
         "failed_sites": str(preflight_dir / "failed_sites.json"),

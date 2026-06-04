@@ -11,7 +11,7 @@ from pathlib import Path
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run PPO evaluation for one BrowserGym batch config.")
     parser.add_argument("--batch-config", required=True)
-    parser.add_argument("--model-path", default="artifacts/models/jaws_browsergym_shared_ppo.pt")
+    parser.add_argument("--model-path", default="artifacts/models/jaws_browsergym_shared_ppo_v2_browsergym_raw_obs.pt")
     parser.add_argument("--episodes", type=int, default=3)
     parser.add_argument("--max-steps", type=int, default=25)
     parser.add_argument("--seed", type=int, default=42)

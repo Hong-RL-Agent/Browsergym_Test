@@ -64,3 +64,5 @@ artifacts/tmp_*.json
 
 artifacts/logs/
 artifacts/tmp_*/
+
+artifacts/csv_smoke/

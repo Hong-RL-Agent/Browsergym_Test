@@ -30,7 +30,7 @@ def main() -> int:
         batch_config["sites"] = sites[start : start + args.batch_size]
         batch_config["batch_id"] = batch_name
         batch_config["source_active_sites"] = str(input_path)
-        batch_config.setdefault("shared_model_path", "artifacts/models/jaws_browsergym_shared_ppo.pt")
+        batch_config.setdefault("shared_model_path", "artifacts/models/jaws_browsergym_shared_ppo_v2_browsergym_raw_obs.pt")
         batch_config["output_dir"] = str(Path(args.training_output_root) / batch_name / "multisite")
         batch_path = output_dir / f"{batch_name}.json"
         batch_path.write_text(json.dumps(batch_config, ensure_ascii=False, indent=2), encoding="utf-8")

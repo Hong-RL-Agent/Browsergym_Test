@@ -55,7 +55,7 @@ def main() -> int:
         sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="configs/training_sites.json")
-    parser.add_argument("--model-path", default="artifacts/models/jaws_browsergym_shared_ppo.pt")
+    parser.add_argument("--model-path", default="artifacts/models/jaws_browsergym_shared_ppo_v2_browsergym_raw_obs.pt")
     parser.add_argument("--episodes", type=int, default=3)
     parser.add_argument("--max-steps", type=int, default=25)
     parser.add_argument("--headless", type=_parse_bool, default=True)
@@ -70,20 +70,32 @@ def main() -> int:
     parser.add_argument("--log-action-space", type=_parse_bool, default=True)
     parser.add_argument("--log-raw-json", type=_parse_bool, default=False)
     parser.add_argument("--run-id", default="")
-    args = parser.parse_args()
+    try:
+        args = parser.parse_args()
+    except SystemExit as exc:
+        _emit_event(event="scan_failed", error_type="argparse_error", message=f"argparse exited with code {exc.code}")
+        raise
 
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    config = _read_json_dict(Path(args.config))
-    sites = _validate_sites(config.get("sites", []))
+    try:
+        config = _read_json_dict(Path(args.config))
+        sites = _validate_sites(config.get("sites", []))
+    except Exception as exc:
+        _emit_event(event="scan_failed", error_type=exc.__class__.__name__, message=str(exc), config=args.config)
+        raise
     run_id = args.run_id or _run_id_from_output(args.output) or infer_run_id(config, args.config, fallback_prefix="evaluation")
     batch_id = Path(args.config).stem
     encoder = ObservationEncoder()
     action_space = ActionSpace()
     agent = PPOAgent(encoder.get_obs_dim(), action_space.get_action_dim())
-    agent.load(args.model_path)
+    try:
+        agent.load(args.model_path)
+    except Exception as exc:
+        _emit_event(event="scan_failed", error_type=exc.__class__.__name__, message=str(exc), model_path=args.model_path)
+        raise
     csv_logger = (
         EpisodeCsvLogger(
             args.csv_log_dir,
@@ -110,17 +122,27 @@ def main() -> int:
         site_results = {}
         rewards = []
         for site in sites:
-            result = _evaluate_site(
-                site,
-                agent,
-                encoder,
-                action_space,
-                args.episodes,
-                args.max_steps,
-                args.headless,
-                args.strict_site_validation,
-                csv_logger=csv_logger,
-            )
+            try:
+                result = _evaluate_site(
+                    site,
+                    agent,
+                    encoder,
+                    action_space,
+                    args.episodes,
+                    args.max_steps,
+                    args.headless,
+                    args.strict_site_validation,
+                    csv_logger=csv_logger,
+                )
+            except Exception as exc:
+                _emit_event(
+                    event="site_failed",
+                    site_id=str(site.get("site_id") or ""),
+                    base_url=str(site.get("base_url") or ""),
+                    error_type=exc.__class__.__name__,
+                    message=str(exc),
+                )
+                raise
             site_results[site["site_id"]] = result
             rewards.append(result["average_reward"])
     finally:

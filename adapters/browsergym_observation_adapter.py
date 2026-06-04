@@ -151,13 +151,36 @@ class BrowserGymObservationAdapter:
         last_action_error = bool(obs.get("last_action_error")) or bool(info.get("action_error"))
         viewport_type = _viewport_type(viewport_width)
         raw_keys = _raw_observation_keys(obs)
-        raw_summary = _compact_raw_observation(obs)
+        raw_summary = _raw_observation_summary(obs, page_text=page_text)
+        derived_features = {
+            "candidate_count": len(candidate_elements),
+            "visible_candidate_count": sum(1 for candidate in candidate_elements if bool(candidate.get("visible"))),
+            "text_length": len(page_text),
+            "has_error_text": _contains_keyword(page_text, ("error", "failed", "exception")),
+            "has_forbidden_text": _contains_keyword(page_text, ("forbidden", "403")),
+            "has_timeout_text": _contains_keyword(page_text, ("timeout", "timed out")),
+            "has_network_error_text": _contains_keyword(page_text, ("network error", "connection refused", "err_connection_refused")),
+            "dom_available": "dom_object" in obs,
+            "axtree_available": "axtree_object" in obs,
+            "screenshot_available": "screenshot" in obs,
+        }
 
         return {
+            "observation_version": "browsergym-raw-observation-v2",
+            "raw_observation": raw_obs,
+            "raw_observation_keys": raw_keys,
+            "raw_observation_type": type(raw_obs).__name__,
+            "raw_observation_summary": raw_summary,
             "browsergym_raw_observation": raw_summary,
             "browsergym_raw_observation_keys": raw_keys,
             "browsergym_raw_observation_key_count": len(raw_keys),
-            "browsergym_raw_observation_source": "env.reset/env.step",
+            "browsergym_raw_observation_source": "browsergym_raw_obs",
+            "browsergym_text": page_text[:4000],
+            "browsergym_dom_available": "dom_object" in obs,
+            "browsergym_axtree_available": "axtree_object" in obs,
+            "browsergym_screenshot_available": "screenshot" in obs,
+            "derived_features": derived_features,
+            "source": {"raw": "browsergym_raw_obs", "derived": "derived_from_raw_obs"},
             "page_state": {
                 "site_id": site_id,
                 "url": url,
@@ -192,6 +215,8 @@ class BrowserGymObservationAdapter:
                 "browsergym_has_axtree": "axtree_object" in obs,
                 "browsergym_has_dom": "dom_object" in obs,
                 "browsergym_has_screenshot": "screenshot" in obs,
+                "derived_candidate_count": derived_features["candidate_count"],
+                "derived_visible_candidate_count": derived_features["visible_candidate_count"],
             },
             "candidate_elements": candidate_elements,
             "candidate_debug": candidate_debug,
@@ -221,6 +246,7 @@ class BrowserGymObservationAdapter:
                 "has_modal_or_dialog": has_modal_or_dialog,
                 "viewport_width": viewport_width,
                 "viewport_height": viewport_height,
+                "derived_features": derived_features,
             },
             "layout_signals": layout_signals,
             "history": {
@@ -822,6 +848,22 @@ def _compact_raw_observation(obs: Mapping[str, Any]) -> Dict[str, Any]:
     if not isinstance(obs, Mapping):
         return {}
     return {str(key): _compact_raw_value(value, depth=0) for key, value in obs.items()}
+
+
+def _raw_observation_summary(obs: Mapping[str, Any], page_text: str = "") -> Dict[str, Any]:
+    if not isinstance(obs, Mapping):
+        return {"keys": [], "value_types": {}, "text_length": 0, "has_screenshot": False, "has_dom": False, "has_axtree": False}
+    keys = _raw_observation_keys(obs)
+    value_types = {str(key): type(value).__name__ for key, value in obs.items()}
+    return {
+        "keys": keys,
+        "value_types": value_types,
+        "text_length": len(page_text or _page_text(obs)),
+        "has_screenshot": "screenshot" in obs,
+        "has_dom": "dom_object" in obs,
+        "has_axtree": "axtree_object" in obs,
+        "compact_values": _compact_raw_observation(obs),
+    }
 
 
 def _compact_raw_value(value: Any, depth: int = 0) -> Any:

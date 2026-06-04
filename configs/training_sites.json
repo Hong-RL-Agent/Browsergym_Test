@@ -1,5 +1,5 @@
 {
-  "shared_model_path": "artifacts/models/jaws_browsergym_shared_ppo.pt",
+  "shared_model_path": "artifacts/models/jaws_browsergym_shared_ppo_v2_browsergym_raw_obs.pt",
   "output_dir": "artifacts/multisite",
   "sites": [
     {

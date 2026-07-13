@@ -17,6 +17,8 @@ artifacts/evaluations/
 artifacts/training/
 artifacts/preflight/
 artifacts/reports/
+artifacts/jobs/
+artifacts/*.log
 artifacts/final/
 
 # Generated configs

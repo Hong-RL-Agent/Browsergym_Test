@@ -1,5 +1,21 @@
 # J.A.W.S BrowserGym PPO Web Error Detection
 
+## JAWS integrated job server
+
+The asynchronous API uses the shared PPO checkpoint read-only and emits stable
+state/action/transition IDs, reference-graph coverage, and `risk-v2` findings.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m playwright install chromium
+.\run-ai-server.bat
+```
+
+Use `GET /health`, `POST /explorations`, `GET /explorations/{jobId}`, and
+`GET /explorations/{jobId}/result`. Destructive actions are disabled by default.
+Run equal-budget comparison with `scripts\run_policy_ab.py --target-url URL`.
+
 > **BrowserGym + Playwright + PPO 기반 웹 GUI 오류 자동 탐지 및 학습/평가 자동화 프로젝트**
 
 ---

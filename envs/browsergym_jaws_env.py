@@ -227,6 +227,17 @@ class BrowserGymJAWSEnv:
             info["viewport_error"] = str(exc)
         return info
 
+    def capture_screenshot(self, path: str) -> bool:
+        """Capture the currently active BrowserGym page for live monitoring."""
+        page = _active_page(self.env)
+        if page is None:
+            return False
+        try:
+            page.screenshot(path=path, full_page=False)
+            return True
+        except Exception:
+            return False
+
     def _perform_login(self, browser_obs: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         info: Dict[str, Any] = {
             "login_required": True,

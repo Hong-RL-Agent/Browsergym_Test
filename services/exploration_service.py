@@ -49,6 +49,10 @@ class ExplorationService:
         rows: list[dict[str, Any]] = []
         anomaly_occurrences: dict[str, list[dict[str, Any]]] = defaultdict(list)
         episode_rewards, action_counts = [], Counter()
+        # Keep repetition bounded across the whole job. A second execution is
+        # useful for reproducing a finding, but a third identical action in the
+        # same state only inflates the log without adding coverage.
+        session_action_counts: Counter[str] = Counter()
         started = time.monotonic()
         total_budget = self.episodes * self.max_steps
         completed_steps = 0
@@ -56,14 +60,28 @@ class ExplorationService:
         for episode in range(1, self.episodes + 1):
             env = BrowserGymJAWSEnv(site_id=site_id, base_url=self.target_url, max_steps=self.max_steps, headless=self.headless, site_profile=site_profile)
             history: dict[str, Any] = {"step_index": 0, "action_type_counts": {}, "visited_candidates": set(), "fault_inputs": set()}
+            episode_action_ids: set[str] = set()
             reward_total = 0.0
             try:
                 observation, _ = env.reset()
                 for step in range(1, self.max_steps + 1):
                     before_id = state_id(observation)
                     mask = action_space.build_action_mask(observation)
+                    mask = _mask_repeated_actions(
+                        action_space,
+                        observation,
+                        before_id,
+                        mask,
+                        episode_action_ids,
+                        session_action_counts,
+                    )
                     selected = agent.select_greedy_action(encoder.encode_observation(observation), mask)
                     selected_id = select_policy_action(action_space, observation, history, selected["action_id"], self.mode, self.allow_destructive_actions)
+                    # The general policy is an overlay and may propose an action
+                    # that the repetition mask rejected. Fall back to the PPO
+                    # choice, which was selected from the filtered mask.
+                    if mask[int(selected_id)] <= 0:
+                        selected_id = int(selected["action_id"])
                     action = action_space.decode(selected_id)
                     action.update({"action_id": selected_id, "site_id": site_id, "policy": "general-v1" if selected_id != selected["action_id"] else "ppo"})
                     _enrich_action(action, observation)
@@ -71,6 +89,8 @@ class ExplorationService:
                     index = int(action.get("candidate_index", 0) or 0)
                     candidate = candidates[index] if isinstance(candidates, list) and 0 <= index < len(candidates) else {}
                     stable_action_id = action_id(before_id, action, candidate)
+                    episode_action_ids.add(stable_action_id)
+                    session_action_counts[stable_action_id] += 1
                     next_observation, _, done, info = env.step(selected_id)
                     after_id = state_id(next_observation)
                     stable_transition_id = transition_id(before_id, stable_action_id, after_id)
@@ -119,6 +139,32 @@ class ExplorationService:
 
 def _compact_candidate(candidate: Mapping[str, Any]) -> dict[str, Any]:
     return {key: candidate.get(key) for key in ("role", "name", "text", "bid", "selector", "type") if candidate.get(key) not in (None, "")}
+
+
+def _mask_repeated_actions(
+    action_space: ActionSpace,
+    observation: Mapping[str, Any],
+    before_state_id: str,
+    mask: np.ndarray,
+    episode_action_ids: set[str],
+    session_action_counts: Mapping[str, int],
+) -> np.ndarray:
+    """Reject exact action/state repeats while allowing one reproduction."""
+    filtered = mask.copy()
+    candidates = observation.get("candidate_elements", []) or []
+    for encoded_id in np.flatnonzero(filtered):
+        decoded = action_space.decode(int(encoded_id))
+        if decoded["action_type"] == "finish_episode":
+            continue
+        index = int(decoded.get("candidate_index", 0) or 0)
+        candidate = candidates[index] if isinstance(candidates, list) and 0 <= index < len(candidates) else {}
+        stable_id = action_id(before_state_id, decoded, candidate if isinstance(candidate, Mapping) else {})
+        if stable_id in episode_action_ids or int(session_action_counts.get(stable_id, 0)) >= 2:
+            filtered[int(encoded_id)] = 0.0
+
+    if not filtered.any():
+        filtered[action_space.encode("finish_episode", 0)] = 1.0
+    return filtered
 
 def _anomaly_key(anomaly: Mapping[str, Any]) -> str:
     evidence = anomaly.get("evidence", {}) if isinstance(anomaly.get("evidence"), Mapping) else {}

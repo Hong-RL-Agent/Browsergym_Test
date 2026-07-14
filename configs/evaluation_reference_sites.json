@@ -1,0 +1,5 @@
+{
+  "description": "Offline evaluation metadata only. This file must never be loaded by training reward/action/observation path.",
+  "used_for_training": false,
+  "sites": []
+}

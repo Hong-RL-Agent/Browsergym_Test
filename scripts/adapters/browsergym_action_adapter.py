@@ -26,10 +26,31 @@ class BrowserGymActionAdapter:
         action_type = str(decoded_action.get("action_type", "noop"))
         candidate_index = int(decoded_action.get("candidate_index", 0) or 0)
 
-        if action_type in {"inspect_dom", "inspect_layout", "finish_episode"}:
+        if action_type in {
+            "inspect_dom",
+            "inspect_layout",
+            "inspect_network",
+            "inspect_console",
+            "inspect_cart",
+            "inspect_server_health",
+            "inspect_port_status",
+            "inspect_latency",
+            "inspect_server_logs",
+            "inspect_runtime_metrics",
+            "inspect_network_status",
+            "inspect_api_response",
+            "inspect_console_errors",
+            "inspect_resource_loading",
+            "inspect_alert_card",
+            "inspect_metric_card",
+            "inspect_timeline",
+            "change_viewport_mobile",
+            "change_viewport_desktop",
+            "finish_episode",
+        }:
             return BrowserGymAction(action=None, executable=False, action_type=action_type)
 
-        if action_type == "click_element":
+        if action_type in {"click_element", "click_trigger_button", "click_retry_button", "click_recovery_button", "open_detail_panel"}:
             candidate = self._candidate_at(raw_observation, candidate_index)
             if not candidate:
                 return BrowserGymAction(
@@ -45,6 +66,17 @@ class BrowserGymActionAdapter:
                 fallback_action=self.noop_action,
             )
 
+        if action_type in {"fill_input", "press_enter"}:
+            candidate = self._candidate_at(raw_observation, candidate_index)
+            if not candidate:
+                return BrowserGymAction(self.noop_action, True, "noop", self.noop_action)
+            return BrowserGymAction(
+                action=self.to_browsergym_action(action_type, candidate, decoded_action),
+                executable=True,
+                action_type=action_type,
+                fallback_action=self.noop_action,
+            )
+
         if action_type == "scroll_down":
             return BrowserGymAction("scroll(0, 500)", True, action_type, self.noop_action)
 
@@ -53,12 +85,28 @@ class BrowserGymActionAdapter:
 
         return BrowserGymAction(self.noop_action, True, "noop", self.noop_action)
 
-    def to_browsergym_action(self, action_type: str, candidate: Mapping[str, Any]) -> Any:
+    def to_browsergym_action(
+        self,
+        action_type: str,
+        candidate: Mapping[str, Any],
+        decoded_action: Optional[Mapping[str, Any]] = None,
+    ) -> Any:
         if action_type == "click_element":
             bid = _escape_action_string(str(candidate.get("bid", "")))
             if not bid:
                 return self.noop_action
             return f"click('{bid}')"
+        if action_type == "fill_input":
+            bid = _escape_action_string(str(candidate.get("bid", "")))
+            value = _escape_action_string(str((decoded_action or {}).get("input_text") or "test"))
+            if not bid:
+                return self.noop_action
+            return f"fill('{bid}', '{value}')"
+        if action_type == "press_enter":
+            bid = _escape_action_string(str(candidate.get("bid", "")))
+            if not bid:
+                return self.noop_action
+            return f"press('{bid}', 'Enter')"
         return self.noop_action
 
     @staticmethod

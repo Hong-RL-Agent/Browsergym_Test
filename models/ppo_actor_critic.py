@@ -10,10 +10,11 @@ from torch.distributions import Categorical
 
 
 class PPOActorCritic(nn.Module):
-    def __init__(self, obs_dim: int, action_dim: int) -> None:
+    def __init__(self, obs_dim: int, action_dim: int, memory_dim: int = 0) -> None:
         super().__init__()
+        input_dim = int(obs_dim) + int(memory_dim)
         self.shared = nn.Sequential(
-            nn.Linear(obs_dim, 256),
+            nn.Linear(input_dim, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),

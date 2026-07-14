@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from typing import Any, Dict, List, Mapping
 
@@ -35,6 +36,17 @@ PURCHASE_KEYWORDS = (
     "?λ컮援щ땲",
 )
 CLICKABLE_ROLES = {"button", "link", "menuitem"}
+HIGH_VALUE_SEMANTIC_ACTION_TYPES = {
+    "workout_add",
+    "cart",
+    "add",
+    "submit",
+    "save",
+    "login",
+    "purchase",
+    "enroll",
+}
+NON_EXECUTING_SEMANTIC_ACTION_TYPES = {"filter", "category", "tab", "search_input"}
 FEEDBACK_TOKENS = (
     "toast",
     "modal",
@@ -93,14 +105,29 @@ def detect_anomalies(
             and before_url == after_url
             and not last_action_error
         ):
+            semantic_type = str(clicked_candidate.get("semantic_action_type") or "")
             anomalies.append(
                 {
                     "type": "button-no-response",
                     "confidence": 0.95,
+                    "classification": "exploratory_anomaly",
                     "evidence": {
                         "clicked_bid": clicked_candidate.get("bid"),
                         "clicked_text": target_text,
                         "clicked_name": clicked_candidate.get("name"),
+                        "semantic_action_type": semantic_type,
+                        "functional_priority_candidate": bool(
+                            clicked_candidate.get("functional_priority_candidate")
+                            or clicked_candidate.get("functional_priority")
+                        ),
+                        "high_value_functional_candidate": bool(clicked_candidate.get("is_high_value_functional_candidate")),
+                        "semantic_no_effect_click": bool(semantic_type),
+                        "functional_no_effect_anomaly": bool(semantic_type),
+                        "workout_add_no_effect": semantic_type == "workout_add",
+                        "cart_no_effect": semantic_type == "cart",
+                        "add_no_effect": semantic_type == "add",
+                        "enroll_no_effect": semantic_type == "enroll",
+                        "high_value_enroll_no_response": semantic_type == "enroll",
                         "cart_count_before": cart_before,
                         "cart_count_after": cart_after,
                         "cart_text_before": before_cart_text,
@@ -122,13 +149,78 @@ def detect_anomalies(
             no_candidate_change = candidate_delta <= 1
             meaningful_page_text_change = page_text_delta > 40
             meaningful_candidate_change = candidate_delta > 2
-            no_feedback = not _has_feedback_message(after_observation)
+            feedback_visible_before = _has_feedback_message(before_observation)
+            feedback_visible_after = _has_feedback_message(after_observation)
+            no_feedback = not (feedback_visible_after and not feedback_visible_before)
             no_network_change = not _has_meaningful_network_change(after_observation, action_info)
+            no_runtime_signal_delta = not _has_runtime_signal_delta(after_observation, action_info)
             modal_opened = _has_modal_or_dialog(after_observation) and not _has_modal_or_dialog(before_observation)
             form_opened = _has_form_signal(after_observation) and not _has_form_signal(before_observation)
+            semantic_no_effect_emitted = False
+
+            if _is_high_value_semantic_action(clicked_candidate) and _is_semantic_no_effect_click(
+                before_observation=before_observation,
+                after_observation=after_observation,
+                before_url=before_url,
+                after_url=after_url,
+                candidate_delta=candidate_delta,
+                page_text_delta=page_text_delta,
+                no_text_change=no_text_change,
+                no_candidate_change=no_candidate_change,
+                no_feedback=no_feedback,
+                no_network_change=no_network_change,
+                no_runtime_signal_delta=no_runtime_signal_delta,
+                modal_opened=modal_opened,
+                form_opened=form_opened,
+                cart_state_changed=cart_state_changed,
+                last_action_error=last_action_error,
+            ):
+                semantic_type = str(clicked_candidate.get("semantic_action_type") or "")
+                anomalies.append(
+                    {
+                        "type": "button-no-response",
+                        "confidence": 0.82 if semantic_type == "workout_add" else 0.76,
+                        "classification": "exploratory_anomaly",
+                        **_human_review_metadata("button-no-response", clicked_candidate, before_url, after_url, route_changed=False),
+                        "evidence": {
+                            "clicked_text": target_text,
+                            "clicked_name": clicked_candidate.get("name"),
+                            "clicked_bid": clicked_candidate.get("bid"),
+                            "clicked_role": clicked_candidate.get("role"),
+                            "clicked_tag": clicked_candidate.get("tag"),
+                            "semantic_action_type": semantic_type,
+                            "functional_priority_candidate": bool(
+                                clicked_candidate.get("functional_priority_candidate")
+                                or clicked_candidate.get("functional_priority")
+                            ),
+                            "high_value_functional_candidate": bool(clicked_candidate.get("is_high_value_functional_candidate")),
+                            "semantic_no_effect_click": True,
+                            "functional_no_effect_anomaly": True,
+                            "workout_add_no_effect": semantic_type == "workout_add",
+                            "cart_no_effect": semantic_type == "cart",
+                            "add_no_effect": semantic_type == "add",
+                            "enroll_no_effect": semantic_type == "enroll",
+                            "high_value_enroll_no_response": semantic_type == "enroll",
+                            "before_url": before_url,
+                            "after_url": after_url,
+                            "page_text_delta": page_text_delta,
+                            "candidate_delta": candidate_delta,
+                            "modal_opened": modal_opened,
+                            "form_opened": form_opened,
+                            "route_changed": False,
+                            "cart_state_changed": cart_state_changed,
+                            "toast_visible": not no_feedback,
+                            "network_request_delta": not no_network_change,
+                            "runtime_signal_delta": not no_runtime_signal_delta,
+                            "target": _target_evidence(clicked_candidate),
+                        },
+                    }
+                )
+                semantic_no_effect_emitted = True
 
             if (
-                is_purchase_action
+                not semantic_no_effect_emitted
+                and is_purchase_action
                 and no_url_change
                 and no_text_change
                 and no_candidate_change
@@ -139,6 +231,7 @@ def detect_anomalies(
                 and not form_opened
                 and not cart_state_changed
             ):
+                semantic_type = str(clicked_candidate.get("semantic_action_type") or "")
                 anomalies.append(
                     {
                         "type": "button-no-response",
@@ -157,16 +250,32 @@ def detect_anomalies(
                             "clicked_text": target_text,
                             "clicked_name": clicked_candidate.get("name"),
                             "clicked_bid": clicked_candidate.get("bid"),
+                            "semantic_action_type": semantic_type,
+                            "functional_priority_candidate": bool(
+                                clicked_candidate.get("functional_priority_candidate")
+                                or clicked_candidate.get("functional_priority")
+                            ),
+                            "high_value_functional_candidate": bool(clicked_candidate.get("is_high_value_functional_candidate")),
+                            "semantic_no_effect_click": bool(semantic_type),
+                            "functional_no_effect_anomaly": bool(semantic_type),
+                            "workout_add_no_effect": semantic_type == "workout_add",
+                            "cart_no_effect": semantic_type == "cart",
+                            "add_no_effect": semantic_type == "add",
+                            "enroll_no_effect": semantic_type == "enroll",
+                            "high_value_enroll_no_response": semantic_type == "enroll",
                             "target": _target_evidence(clicked_candidate),
                             "is_purchase_action": True,
                         },
                     }
                 )
             elif (
-                not is_purchase_action
+                not semantic_no_effect_emitted
+                and not is_purchase_action
                 and not _is_openended_target(clicked_candidate)
                 and no_url_change
                 and no_state_change
+                and page_text_delta == 0
+                and candidate_delta == 0
                 and not last_action_error
             ):
                 confidence = 0.3 if _has_action_keyword(target_text) else 0.2
@@ -186,10 +295,11 @@ def detect_anomalies(
                     }
                 )
             elif (
-                _is_openended_target(clicked_candidate)
+                not semantic_no_effect_emitted
+                and _is_openended_target(clicked_candidate)
                 and no_url_change
-                and no_text_change
-                and no_candidate_change
+                and page_text_delta == 0
+                and candidate_delta == 0
                 and not meaningful_page_text_change
                 and not meaningful_candidate_change
                 and no_feedback
@@ -246,6 +356,57 @@ def detect_anomalies(
                             },
                         }
                     )
+    elif action_type in {"fill_input", "press_enter", "submit_form"} and clicked_candidate:
+        page_text_delta = abs(_page_text_length(after_observation) - _page_text_length(before_observation))
+        candidate_delta = abs(len(after_candidates) - len(before_candidates))
+        no_feedback = not (
+            _has_feedback_message(after_observation) and not _has_feedback_message(before_observation)
+        )
+        no_network_change = not _has_meaningful_network_change(after_observation, action_info)
+        no_runtime_signal_delta = not _has_runtime_signal_delta(after_observation, action_info)
+        modal_opened = _has_modal_or_dialog(after_observation) and not _has_modal_or_dialog(before_observation)
+        form_opened = _has_form_signal(after_observation) and not _has_form_signal(before_observation)
+        if (
+            _is_search_input_candidate(clicked_candidate)
+            and before_url == after_url
+            and page_text_delta == 0
+            and candidate_delta == 0
+            and no_feedback
+            and no_network_change
+            and no_runtime_signal_delta
+            and not modal_opened
+            and not form_opened
+            and not last_action_error
+        ):
+            anomalies.append(
+                {
+                    "type": "form-no-feedback",
+                    "confidence": 0.58,
+                    "classification": "exploratory_anomaly",
+                    **_human_review_metadata("form-no-feedback", clicked_candidate, before_url, after_url, route_changed=False),
+                    "evidence": {
+                        "action_type": action_type,
+                        "clicked_text": _candidate_text(clicked_candidate),
+                        "clicked_name": clicked_candidate.get("name"),
+                        "clicked_bid": clicked_candidate.get("bid"),
+                        "clicked_role": clicked_candidate.get("role"),
+                        "clicked_tag": clicked_candidate.get("tag"),
+                        "semantic_action_type": "search_input",
+                        "search_input_no_effect": True,
+                        "functional_no_effect_anomaly": True,
+                        "before_url": before_url,
+                        "after_url": after_url,
+                        "page_text_delta": page_text_delta,
+                        "candidate_delta": candidate_delta,
+                        "modal_opened": modal_opened,
+                        "form_opened": form_opened,
+                        "toast_visible": not no_feedback,
+                        "network_request_delta": not no_network_change,
+                        "runtime_signal_delta": not no_runtime_signal_delta,
+                        "target": _target_evidence(clicked_candidate),
+                    },
+                }
+            )
         elif visibility < 0.3 and (last_action_error or no_state_change):
             anomalies.append(_low_visibility_anomaly(clicked_candidate, visibility, last_action_error))
 
@@ -457,6 +618,19 @@ def _page_text_length(observation: Mapping[str, Any]) -> int:
     return int(observation.get("page_state", {}).get("page_text_length", 0) or 0)
 
 
+def _dom_node_count(observation: Mapping[str, Any]) -> int:
+    page_state = observation.get("page_state", {})
+    runtime = observation.get("runtime_signals", {})
+    for source in (page_state, runtime):
+        if not isinstance(source, Mapping):
+            continue
+        try:
+            return int(source.get("dom_node_count") or 0)
+        except (TypeError, ValueError):
+            return 0
+    return 0
+
+
 def _candidate_at(candidates: Any, index: int) -> Mapping[str, Any] | None:
     if isinstance(candidates, list) and 0 <= index < len(candidates) and isinstance(candidates[index], Mapping):
         return candidates[index]
@@ -464,12 +638,17 @@ def _candidate_at(candidates: Any, index: int) -> Mapping[str, Any] | None:
 
 
 def _visibility(candidate: Mapping[str, Any]) -> float:
-    if not bool(candidate.get("visible", True)):
+    if "visible" in candidate and not bool(candidate.get("visible", True)):
         return 0.0
+    if "visibility" not in candidate or candidate.get("visibility") is None:
+        return 1.0
     try:
-        return float(candidate.get("visibility", 1.0) or 0.0)
+        value = float(candidate.get("visibility") or 0.0)
     except (TypeError, ValueError):
-        return 0.0
+        return 1.0
+    if value != value:
+        return 1.0
+    return max(0.0, min(1.0, value))
 
 
 def _is_clickable_target(candidate: Mapping[str, Any]) -> bool:
@@ -494,6 +673,9 @@ def _target_evidence(candidate: Mapping[str, Any]) -> Dict[str, Any]:
         "visibility": candidate.get("visibility"),
         "is_purchase_action": candidate.get("is_purchase_action"),
         "is_workout_add_action": candidate.get("is_workout_add_action"),
+        "semantic_action_type": candidate.get("semantic_action_type"),
+        "functional_priority_candidate": candidate.get("functional_priority_candidate") or candidate.get("functional_priority"),
+        "is_high_value_functional_candidate": candidate.get("is_high_value_functional_candidate"),
         "is_chart_related": candidate.get("is_chart_related"),
         "catalog_keyword_matches": candidate.get("catalog_keyword_matches", []),
         "catalog_selector_match": candidate.get("catalog_selector_match"),
@@ -527,6 +709,64 @@ def _is_openended_target(candidate: Mapping[str, Any]) -> bool:
     )
 
 
+def _is_high_value_semantic_action(candidate: Mapping[str, Any]) -> bool:
+    semantic_type = str(candidate.get("semantic_action_type") or "")
+    return bool(
+        semantic_type in HIGH_VALUE_SEMANTIC_ACTION_TYPES
+        and (candidate.get("functional_priority_candidate") or candidate.get("functional_priority") or candidate.get("is_high_value_functional_candidate"))
+    )
+
+
+def _is_search_input_candidate(candidate: Mapping[str, Any]) -> bool:
+    semantic_type = str(candidate.get("semantic_action_type") or "")
+    role = str(candidate.get("role") or "").lower()
+    tag = str(candidate.get("tag") or "").lower()
+    input_type = str(candidate.get("input_type") or "").lower()
+    return bool(
+        semantic_type == "search_input"
+        or candidate.get("is_search_related")
+        or role in {"searchbox", "textbox"}
+        or input_type == "search"
+        or (tag in {"input", "textarea"} and "search" in _candidate_text(candidate).lower())
+    )
+
+
+def _is_semantic_no_effect_click(
+    *,
+    before_observation: Mapping[str, Any],
+    after_observation: Mapping[str, Any],
+    before_url: str,
+    after_url: str,
+    candidate_delta: int,
+    page_text_delta: int,
+    no_text_change: bool,
+    no_candidate_change: bool,
+    no_feedback: bool,
+    no_network_change: bool,
+    no_runtime_signal_delta: bool,
+    modal_opened: bool,
+    form_opened: bool,
+    cart_state_changed: bool,
+    last_action_error: bool,
+) -> bool:
+    dom_delta = abs(_dom_node_count(after_observation) - _dom_node_count(before_observation))
+    return bool(
+        before_url == after_url
+        and dom_delta <= 1
+        and page_text_delta == 0
+        and candidate_delta == 0
+        and no_text_change
+        and no_candidate_change
+        and no_feedback
+        and no_network_change
+        and no_runtime_signal_delta
+        and not modal_opened
+        and not form_opened
+        and not cart_state_changed
+        and not last_action_error
+    )
+
+
 def _looks_like_form_submission(candidate: Mapping[str, Any], observation: Mapping[str, Any]) -> bool:
     if candidate.get("is_submit_related") or candidate.get("is_login_related") or candidate.get("is_search_related"):
         return _has_form_signal(observation)
@@ -540,6 +780,8 @@ def _openended_interaction_type_and_confidence(
     candidate: Mapping[str, Any],
     observation: Mapping[str, Any],
 ) -> tuple[str, float]:
+    if _is_low_value_generic_candidate(candidate):
+        return "button-no-response", 0.2
     if _has_explicit_async_or_hang_keyword(candidate):
         return "async-hang", 0.78
     if _is_same_page_cart_reclick(candidate, observation):
@@ -560,6 +802,10 @@ def _should_emit_openended_interaction_anomaly(
     after_observation: Mapping[str, Any],
     context_evidence: Mapping[str, Any],
 ) -> bool:
+    if anomaly_type == "button-no-response" and _is_low_value_generic_candidate(candidate):
+        return False
+    if anomaly_type == "button-no-response" and str(candidate.get("semantic_action_type") or "") in NON_EXECUTING_SEMANTIC_ACTION_TYPES:
+        return False
     if anomaly_type != "form-no-feedback":
         return True
     if _has_explicit_async_or_hang_keyword(candidate):
@@ -584,6 +830,23 @@ def _should_emit_openended_interaction_anomaly(
             return False
 
     return True
+
+
+def _is_low_value_generic_candidate(candidate: Mapping[str, Any]) -> bool:
+    if bool(candidate.get("is_low_value_generic_candidate")):
+        return True
+    role = str(candidate.get("role") or "").lower()
+    semantic_type = str(candidate.get("semantic_action_type") or "")
+    functional = bool(candidate.get("functional_priority_candidate") or candidate.get("functional_priority"))
+    high_value = bool(candidate.get("is_high_value_functional_candidate"))
+    text = _candidate_text(candidate).strip().lower()
+    return bool(
+        role == "generic"
+        and not semantic_type
+        and not functional
+        and not high_value
+        and re.fullmatch(r"element-\d+", text or "")
+    )
 
 
 def _context_review_adjustments(
@@ -1245,6 +1508,34 @@ def _has_meaningful_network_change(observation: Mapping[str, Any], action_info: 
                 return True
             if isinstance(value, bool) and value:
                 return True
+    return False
+
+
+def _has_runtime_signal_delta(observation: Mapping[str, Any], action_info: Mapping[str, Any]) -> bool:
+    signals = observation.get("runtime_signals", {}) if isinstance(observation, Mapping) else {}
+    for source in (action_info, signals):
+        if not isinstance(source, Mapping):
+            continue
+        for key in (
+            "delta_console_error_count",
+            "delta_console_warning_count",
+            "delta_page_error_count",
+            "delta_runtime_exception_count",
+            "delta_unhandled_rejection_count",
+            "delta_network_request_failed_count",
+            "delta_api_4xx_count",
+            "delta_api_5xx_count",
+            "delta_api_timeout_count",
+            "delta_static_asset_failure_count",
+            "delta_auth_permission_anomaly_count",
+            "delta_sensitive_data_exposure_signal_count",
+            "delta_token_exposure_signal_count",
+        ):
+            try:
+                if int(source.get(key, 0) or 0) > 0:
+                    return True
+            except (TypeError, ValueError):
+                continue
     return False
 
 

@@ -8,12 +8,27 @@ import numpy as np
 
 
 ROLE_ORDER = ["button", "link", "textbox", "combobox", "checkbox", "radio", "menuitem", "tab"]
+CANDIDATE_FEATURE_NAMES = [
+    *(f"role:{role}" for role in ROLE_ORDER),
+    "visible",
+    "enabled",
+    "clickable",
+    "visibility",
+    "bbox_x",
+    "bbox_y",
+    "bbox_width",
+    "bbox_height",
+    "has_text",
+    "text_length",
+    "is_form_field",
+    "has_href",
+]
 
 
 class ObservationEncoder:
     page_feature_dim = 9
     raw_summary_feature_dim = 9
-    candidate_feature_dim = len(ROLE_ORDER) + 12
+    candidate_feature_dim = len(CANDIDATE_FEATURE_NAMES)
     runtime_feature_dim = 3
     layout_feature_dim = 1
     infra_feature_dim = 11
@@ -44,6 +59,36 @@ class ObservationEncoder:
 
         vector = np.asarray(features, dtype=np.float32)
         return np.nan_to_num(vector, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
+
+    def validate_policy_input_schema(self, raw_observation: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        """Return whether candidate metadata stays outside the encoded feature vector."""
+        encoded_feature_count = len(CANDIDATE_FEATURE_NAMES)
+        observed_candidate_keys: list[str] = []
+        if raw_observation is not None:
+            observation = self._structured_observation(raw_observation)
+            candidates = observation.get("candidate_elements", [])
+            if isinstance(candidates, list):
+                seen: set[str] = set()
+                for candidate in candidates:
+                    if not isinstance(candidate, Mapping):
+                        continue
+                    for key in candidate:
+                        if key in seen:
+                            continue
+                        observed_candidate_keys.append(str(key))
+                        seen.add(str(key))
+        extra_metadata_keys = sorted(set(observed_candidate_keys) - set(CANDIDATE_FEATURE_NAMES))
+        passed = encoded_feature_count == self.candidate_feature_dim
+        return {
+            "passed": passed,
+            "message": "policy input has no bug id feature; candidate schema uses only allowlisted visual, text, DOM, and action-state features"
+            if passed
+            else "policy input candidate schema dimension mismatch",
+            "candidate_feature_names": list(CANDIDATE_FEATURE_NAMES),
+            "candidate_feature_dim": self.candidate_feature_dim,
+            "encoded_feature_count": encoded_feature_count,
+            "metadata_only_candidate_keys": extra_metadata_keys,
+        }
 
     def get_obs_dim(self) -> int:
         return (
@@ -114,8 +159,8 @@ class ObservationEncoder:
                 _scale(bbox[3], 4096.0),
                 _bool(candidate.get("has_text")),
                 _scale(candidate.get("text_length"), 512.0),
-                _bool(candidate.get("has_data_bug_id")),
-                _bool(candidate.get("has_data_testid")),
+                _bool(candidate.get("is_form_field")),
+                _bool(candidate.get("href") or candidate.get("has_href")),
             ]
         )
         return features

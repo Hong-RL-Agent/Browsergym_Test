@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections import Counter
 from typing import Any, Dict, Iterable, List, Mapping, Optional
@@ -21,7 +22,7 @@ INTERACTIVE_ROLES = {
 }
 RELAXED_AX_ROLES = INTERACTIVE_ROLES | {"generic", "group", "region"}
 DOM_INTERACTIVE_TAGS = {"button", "a", "input", "select", "textarea", "summary", "option", "label"}
-DOM_INTERACTIVE_ATTRS = {"onclick", "href", "role", "tabindex", "data-testid", "data-bug-id", "aria-label", "title"}
+DOM_INTERACTIVE_ATTRS = {"onclick", "href", "role", "tabindex", "data-testid", "aria-label", "title"}
 ACTION_TEXT_KEYWORDS = (
     "시작",
     "실행",
@@ -61,6 +62,10 @@ PURCHASE_KEYWORDS = (
 )
 CART_KEYWORDS = ("장바구니", "카트", "cart", "basket", "?λ컮援щ땲", "移댄듃")
 SOURCE_PRIORITY = {
+    "infra_extra_props": 10,
+    "infra_axtree": 9,
+    "infra_dom": 8,
+    "infra_virtual": 5,
     "axtree": 7,
     "dom": 6,
     "extra_props_clickable": 5,
@@ -88,6 +93,78 @@ CHART_LIKE_KEYWORDS = (
     "svg",
     "canvas",
 )
+INFRA_ALERT_KEYWORDS = ("alert", "incident", "error", "failed", "failure", "critical", "warning", "down", "unhealthy")
+INFRA_METRIC_KEYWORDS = ("metric", "latency", "cpu", "memory", "throughput", "uptime", "status", "health", "requests")
+INFRA_API_TRIGGER_KEYWORDS = ("api", "request", "trigger", "probe", "check", "test", "fetch", "ping", "simulate")
+INFRA_RETRY_KEYWORDS = ("retry", "rerun", "again", "reload", "refresh")
+INFRA_RECOVERY_KEYWORDS = ("recover", "restart", "restore", "rollback", "heal", "reconnect", "fallback")
+INFRA_DETAIL_KEYWORDS = ("detail", "details", "more", "expand", "open", "view", "inspect", "logs", "trace", "timeline")
+INFRA_TIMELINE_KEYWORDS = ("timeline", "history", "event", "events", "log", "logs", "trace")
+FUNCTIONAL_SEMANTIC_KEYWORDS = {
+    "workout_add": ("운동 추가", "운동추가", "add workout", "workout add"),
+    "add": ("추가", "담기", "add", "append"),
+    "cart": ("장바구니", "카트", "담기", "cart", "basket", "add to cart"),
+    "purchase": ("구매", "결제", "buy", "purchase", "checkout", "payment"),
+    "save": ("저장", "save"),
+    "submit": ("제출", "확인", "submit", "continue", "next"),
+    "login": ("로그인", "sign in", "signin", "login"),
+    "search": ("검색", "search"),
+    "filter": ("필터", "filter", "sort"),
+    "settings": ("설정", "settings", "preferences"),
+}
+HIGH_VALUE_SEMANTIC_ACTION_TYPES = {
+    "workout_add",
+    "add",
+    "cart",
+    "purchase",
+    "save",
+    "submit",
+    "login",
+    "search",
+    "filter",
+    "settings",
+}
+FUNCTIONAL_SEMANTIC_KEYWORDS.update(
+    {
+        "search_input": ("search input", "searchbox", "검색창", "검색 입력", "검색어"),
+        "category": (
+            "전체",
+            "치킨",
+            "피자",
+            "한식",
+            "중식",
+            "디저트",
+            "프로그래밍",
+            "디자인",
+            "비즈니스",
+            "가슴",
+            "등",
+            "하체",
+            "코어",
+            "유산소",
+            "category",
+        ),
+        "tab": ("tab", "탭"),
+    }
+)
+HIGH_VALUE_SEMANTIC_ACTION_TYPES.difference_update({"search", "filter"})
+NON_EXECUTING_SEMANTIC_ACTION_TYPES = {"filter", "category", "tab", "search_input"}
+
+FUNCTIONAL_SEMANTIC_KEYWORDS.update(
+    {
+        "category": FUNCTIONAL_SEMANTIC_KEYWORDS.get("category", ())
+        + ("programming", "design", "business", "chicken", "pizza", "dessert"),
+        "filter": FUNCTIONAL_SEMANTIC_KEYWORDS.get("filter", ())
+        + ("all", "category", "filter", "programming", "design", "business"),
+    }
+)
+FUNCTIONAL_SEMANTIC_KEYWORDS.update(
+    {
+        "enroll": FUNCTIONAL_SEMANTIC_KEYWORDS.get("enroll", ())
+        + ("수강신청", "신청", "등록", "강의 신청", "수업 신청", "enroll", "register", "apply", "course apply"),
+    }
+)
+HIGH_VALUE_SEMANTIC_ACTION_TYPES.update({"enroll"})
 
 
 class BrowserGymObservationAdapter:
@@ -122,7 +199,7 @@ class BrowserGymObservationAdapter:
         screenshot = obs.get("screenshot")
         viewport_width, viewport_height = _viewport_size(screenshot, info)
         page_text = _page_text(obs)
-        candidate_elements, candidate_debug = self._extract_candidates(
+        candidate_elements, candidate_debug, candidate_metadata = self._extract_candidates(
             obs,
             page_text,
             title,
@@ -135,7 +212,7 @@ class BrowserGymObservationAdapter:
         elapsed_time = _as_float(obs.get("elapsed_time"), default=0.0)
         section_texts = _section_texts(page_text)
         visible_texts = _visible_texts(obs, candidate_elements, page_text)
-        data_bug_ids_found = _data_bug_ids_found(obs, candidate_elements)
+        data_bug_ids_found = _data_bug_ids_found(obs, candidate_metadata)
         has_empty_state_text = bool(
             profile_keyword_matches(page_text, site_profile, "negative_keywords")
             or _contains_keyword(page_text, GLOBAL_EMPTY_KEYWORDS)
@@ -219,6 +296,7 @@ class BrowserGymObservationAdapter:
                 "derived_visible_candidate_count": derived_features["visible_candidate_count"],
             },
             "candidate_elements": candidate_elements,
+            "candidate_metadata": candidate_metadata,
             "candidate_debug": candidate_debug,
             "runtime_signals": {
                 "site_id": site_id,
@@ -264,7 +342,7 @@ class BrowserGymObservationAdapter:
         viewport_width: int,
         viewport_height: int,
         site_profile: Optional[Mapping[str, Any]] = None,
-    ) -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    ) -> tuple[List[Dict[str, Any]], Dict[str, Any], Dict[str, Dict[str, Any]]]:
         properties = _index_extra_properties(obs.get("extra_element_properties"))
         source_counts: Counter[str] = Counter()
         rejected_counts: Counter[str] = Counter()
@@ -310,6 +388,18 @@ class BrowserGymObservationAdapter:
             source_counts[dom_candidate["source"]] += 1
 
         candidates = list(candidates_by_key.values())
+        if _is_infra_observation(obs, page_text):
+            for candidate in _infra_candidates(obs, page_text, site_profile):
+                _add_candidate(candidates_by_key, candidate)
+                source_counts[candidate["source"]] += 1
+            if len(candidates_by_key) < 10:
+                for candidate in _infra_virtual_candidates(obs, page_text, site_profile):
+                    _add_candidate(candidates_by_key, candidate)
+                    source_counts[candidate["source"]] += 1
+                    if len(candidates_by_key) >= 10:
+                        break
+            candidates = list(candidates_by_key.values())
+
         if not candidates:
             for key, prop in properties.items():
                 candidate = self._candidate_from_extra_prop(
@@ -335,7 +425,7 @@ class BrowserGymObservationAdapter:
             added_large = 0
             for key, prop in properties.items():
                 bbox = _normalize_bbox(prop.get("bbox") or prop.get("bounding_box"))
-                visibility = _as_float(prop.get("visibility"), default=0.0)
+                visibility = _safe_visibility(prop, bbox=bbox, default=0.0)
                 if not _has_bbox(bbox) or visibility <= 0.0:
                     continue
                 is_large = _is_fullscreen_container(bbox, viewport_width, viewport_height)
@@ -358,7 +448,7 @@ class BrowserGymObservationAdapter:
                     clickable_score=0.1,
                     action_priority=0.1,
                     data_bug_id=_attr_value(prop, "data-bug-id", "data_bug_id"),
-                    has_data_testid=_has_attr(prop, "data-testid", "data_testid"),
+                    data_testid=_attr_value(prop, "data-testid", "data_testid", "testid"),
                     aria_label=_as_str(prop.get("aria-label") or prop.get("aria_label")),
                     title=_as_str(prop.get("title")),
                     element_id=_as_str(prop.get("id")),
@@ -372,22 +462,24 @@ class BrowserGymObservationAdapter:
             candidates = list(candidates_by_key.values())
 
         candidates.sort(key=_candidate_sort_key, reverse=True)
-        candidates = candidates[: self.max_candidates]
+        selected_candidates = candidates[: self.max_candidates]
+        candidate_metadata = _extract_policy_candidate_metadata(selected_candidates)
+        candidates = [_strip_policy_candidate_metadata(candidate) for candidate in selected_candidates]
         debug = {
             **raw_debug,
             "candidate_source_counts": dict(source_counts),
             "rejected_counts": dict(rejected_counts),
-            "catalog_candidate_count": sum(1 for candidate in candidates if candidate.get("catalog_bug_id_matches")),
+            "catalog_candidate_count": sum(1 for item in candidate_metadata.values() if item.get("catalog_bug_id_matches")),
             "catalog_keyword_match_count": sum(
-                len(candidate.get("catalog_keyword_matches", []) or []) for candidate in candidates
+                len(item.get("catalog_keyword_matches", []) or []) for item in candidate_metadata.values()
             ),
-            "catalog_selector_match_count": sum(1 for candidate in candidates if candidate.get("catalog_selector_match")),
+            "catalog_selector_match_count": sum(1 for item in candidate_metadata.values() if item.get("catalog_selector_match")),
             "openended_interactive_candidate_count": sum(1 for candidate in candidates if candidate.get("is_interactive")),
             "openended_keyword_match_count": sum(
                 len(candidate.get("openended_keyword_matches", []) or []) for candidate in candidates
             ),
         }
-        return candidates, debug
+        return candidates, debug, candidate_metadata
 
     def _candidate_from_axtree(
         self,
@@ -428,7 +520,7 @@ class BrowserGymObservationAdapter:
             return None
 
         bbox = _normalize_bbox(prop.get("bbox") or prop.get("bounding_box") or node.get("bbox"))
-        visibility = max(0.0, min(1.0, _as_float(prop.get("visibility"), default=1.0 if _has_bbox(bbox) else 0.0)))
+        visibility = _safe_visibility(prop, bbox=bbox, default=1.0 if _has_bbox(bbox) else 0.0)
         clickable = _as_bool(prop.get("clickable"), role in INTERACTIVE_ROLES or focusable)
         set_of_marks = _as_bool(prop.get("set_of_marks"), False)
         meaningful_text = _meaningful_name(text or name, page_title)
@@ -468,7 +560,7 @@ class BrowserGymObservationAdapter:
             set_of_marks=set_of_marks,
             clickable_score=max(0.0, min(1.0, clickable_score)),
             data_bug_id=_attr_value(prop, "data-bug-id", "data_bug_id"),
-            has_data_testid=_has_attr(prop, "data-testid", "data_testid"),
+            data_testid=_attr_value(prop, "data-testid", "data_testid", "testid"),
             aria_label=_as_str(prop.get("aria-label") or prop.get("aria_label")),
             title=_as_str(prop.get("title")),
             element_id=_as_str(prop.get("id")),
@@ -490,7 +582,7 @@ class BrowserGymObservationAdapter:
         site_profile: Optional[Mapping[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         bbox = _normalize_bbox(prop.get("bbox") or prop.get("bounding_box"))
-        visibility = max(0.0, min(1.0, _as_float(prop.get("visibility"), default=0.0)))
+        visibility = _safe_visibility(prop, bbox=bbox, default=0.0)
         clickable = _as_bool(prop.get("clickable"), False)
         set_of_marks = _as_bool(prop.get("set_of_marks"), False)
         if not (clickable or set_of_marks or visibility >= 0.5):
@@ -540,7 +632,7 @@ class BrowserGymObservationAdapter:
             clickable_score=score,
             action_priority=max(0.1, score),
             data_bug_id=_attr_value(prop, "data-bug-id", "data_bug_id"),
-            has_data_testid=_has_attr(prop, "data-testid", "data_testid"),
+            data_testid=_attr_value(prop, "data-testid", "data_testid", "testid"),
             aria_label=_as_str(prop.get("aria-label") or prop.get("aria_label")),
             title=_as_str(prop.get("title")),
             element_id=_as_str(prop.get("id")),
@@ -565,15 +657,16 @@ def _make_candidate(
     clickable_score: float = 0.0,
     action_priority: Optional[float] = None,
     data_bug_id: str = "",
-    has_data_testid: bool = False,
+    data_testid: str = "",
     aria_label: str = "",
     title: str = "",
     element_id: str = "",
     class_name: str = "",
     site_profile: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
-    selector_hint = f'[data-bug-id="{data_bug_id}"]' if data_bug_id else ""
-    keyword_text = " ".join([text, name, aria_label, title, element_id, class_name, data_bug_id])
+    selector_hint = f'[data-testid="{data_testid}"]' if data_testid else ""
+    metadata_selector_hint = f'[data-bug-id="{data_bug_id}"]' if data_bug_id else selector_hint
+    keyword_text = " ".join([text, name, aria_label, title, element_id, class_name, data_testid])
     initial_candidate = {
         "text": text,
         "name": name,
@@ -582,7 +675,7 @@ def _make_candidate(
         "id": element_id,
         "class_name": class_name,
         "data_bug_id": data_bug_id,
-        "selector_hint": selector_hint,
+        "selector_hint": metadata_selector_hint,
         "tag": tag,
         "role": role,
     }
@@ -590,6 +683,14 @@ def _make_candidate(
     catalog_keyword_matches = catalog_matches["keyword_matches"]
     catalog_bug_id_matches = catalog_matches["bug_id_matches"]
     catalog_selector_match = bool(catalog_matches["selector_match"])
+    policy_metadata = {
+        "bid": str(bid),
+        "data_bug_id": data_bug_id,
+        "catalog_keyword_matches": catalog_keyword_matches,
+        "catalog_bug_id_matches": catalog_bug_id_matches,
+        "catalog_selector_match": catalog_selector_match,
+        "selector_hint": metadata_selector_hint,
+    }
     role_norm = role.lower() if role else "generic"
     tag_norm = tag.lower() if tag else ""
     is_interactive = bool(
@@ -606,55 +707,64 @@ def _make_candidate(
         )
     )
     openended_text = keyword_text.lower()
+    semantic_action_type = _semantic_action_type(keyword_text)
+    if semantic_action_type == "search" and (role_norm in {"textbox", "searchbox"} or tag_norm in {"input", "textarea"}):
+        semantic_action_type = "search_input"
+    if role_norm == "tab":
+        semantic_action_type = "tab"
+    is_low_value_generic_candidate = _is_low_value_generic_candidate(
+        role=role_norm,
+        text=text,
+        name=name,
+        semantic_action_type=semantic_action_type,
+    )
+    is_functional_priority_candidate = bool(clickable and enabled and visibility > 0.0 and semantic_action_type)
+    is_high_value_functional_candidate = semantic_action_type in HIGH_VALUE_SEMANTIC_ACTION_TYPES
     is_login_related = _contains_keyword(openended_text, ("sign in", "login", "로그인"))
     is_cart_related_openended = _contains_keyword(openended_text, ("cart", "basket", "장바구니"))
     is_checkout_related = _contains_keyword(openended_text, ("checkout", "payment", "결제"))
     is_search_related = _contains_keyword(openended_text, ("search", "검색"))
-    is_filter_related = _contains_keyword(openended_text, ("filter", "sort"))
+    is_filter_related = semantic_action_type in {"filter", "category", "tab"} or _contains_keyword(openended_text, ("filter", "sort"))
     is_submit_related = _contains_keyword(openended_text, ("submit", "save", "continue", "next", "add", "buy", "purchase"))
     is_purchase_action = _contains_keyword(keyword_text, PURCHASE_KEYWORDS)
-    action_hints = set(_profile_values(site_profile, "action_hints"))
-    candidate_action_hints = _candidate_action_hints(site_profile, catalog_bug_id_matches)
-    bug_types = set(str(item.get("type") or "") for item in (site_profile or {}).get("bugs", []) if isinstance(item, Mapping))
-    lower_catalog_text = " ".join([keyword_text, " ".join(catalog_keyword_matches), " ".join(catalog_bug_id_matches)]).lower()
-    is_sparse_related = _contains_keyword(lower_catalog_text, ("sparse", "sparse data"))
-    is_forbidden_related = _contains_keyword(lower_catalog_text, ("forbidden", "403", "restricted", "access denied"))
-    is_async_related = _contains_keyword(lower_catalog_text, ("async", "loading", "pending"))
-    is_hang_related = _contains_keyword(lower_catalog_text, ("hang", "timeout", "stuck"))
-    is_quantity_control = _contains_keyword(lower_catalog_text, ("quantity", "qty", "+", "-", "plus", "minus"))
-    is_cart_quantity_related = _contains_keyword(lower_catalog_text, ("cart", "quantity", "qty", "subtotal", "total"))
-    is_network_related = _contains_keyword(lower_catalog_text, ("api", "network", "forbidden", "403"))
-    is_workout_add_action = bool(catalog_bug_id_matches and ("click" in action_hints or "button-no-response" in bug_types))
-    is_weekly_stats_related = bool(catalog_keyword_matches and profile_keyword_matches(keyword_text, site_profile, "section_keywords"))
+    policy_text = keyword_text.lower()
+    is_sparse_related = _contains_keyword(policy_text, ("sparse", "sparse data"))
+    is_forbidden_related = _contains_keyword(policy_text, ("forbidden", "403", "restricted", "access denied"))
+    is_async_related = _contains_keyword(policy_text, ("async", "loading", "pending"))
+    is_hang_related = _contains_keyword(policy_text, ("hang", "timeout", "stuck"))
+    is_quantity_control = _contains_keyword(policy_text, ("quantity", "qty", "+", "-", "plus", "minus"))
+    is_cart_quantity_related = _contains_keyword(policy_text, ("cart", "quantity", "qty", "subtotal", "total"))
+    is_network_related = _contains_keyword(policy_text, ("api", "network", "forbidden", "403"))
+    is_alert_card = _contains_keyword(keyword_text, INFRA_ALERT_KEYWORDS)
+    is_metric_card = _contains_keyword(keyword_text, INFRA_METRIC_KEYWORDS)
+    is_api_trigger = _contains_keyword(keyword_text, INFRA_API_TRIGGER_KEYWORDS)
+    is_retry_button = _contains_keyword(keyword_text, INFRA_RETRY_KEYWORDS)
+    is_recovery_button = _contains_keyword(keyword_text, INFRA_RECOVERY_KEYWORDS)
+    is_detail_trigger = _contains_keyword(keyword_text, INFRA_DETAIL_KEYWORDS)
+    is_timeline_related = _contains_keyword(keyword_text, INFRA_TIMELINE_KEYWORDS)
+    is_workout_add_action = semantic_action_type == "workout_add"
+    is_weekly_stats_related = bool(profile_keyword_matches(keyword_text, site_profile, "section_keywords"))
     is_empty_state_related = bool(
         profile_keyword_matches(" ".join([keyword_text, page_text]), site_profile, "negative_keywords")
         or _contains_keyword(" ".join([keyword_text, page_text]), GLOBAL_EMPTY_KEYWORDS)
     )
-    layout_bug_ids = _layout_bug_ids(site_profile)
-    layout_check_type = _layout_check_type(site_profile, catalog_bug_id_matches)
+    layout_check_type = ""
     layout_target_values = _layout_values(site_profile, "target_keywords") + _layout_values(site_profile, "expected_elements")
     layout_section_values = _layout_values(site_profile, "section_keywords")
-    is_chart_related = _contains_keyword(" ".join([keyword_text, source, data_bug_id, class_name]), CHART_LIKE_KEYWORDS)
-    is_chart_related = is_chart_related or any(
-        _contains_keyword(keyword, CHART_LIKE_KEYWORDS) for keyword in catalog_keyword_matches
-    )
+    is_chart_related = _contains_keyword(" ".join([keyword_text, source, class_name]), CHART_LIKE_KEYWORDS)
     is_chart_related = is_chart_related or bool(
         _contains_keyword(keyword_text, layout_target_values)
     )
     is_layout_target = bool(
-        layout_check_type
-        or set(catalog_bug_id_matches).intersection(layout_bug_ids)
-        or (catalog_selector_match and set(catalog_bug_id_matches).intersection(layout_bug_ids))
-        or is_chart_related
+        is_chart_related
         or _contains_keyword(keyword_text, layout_section_values)
     )
     is_cart_related = _contains_keyword(" ".join([keyword_text, page_text]), CART_KEYWORDS) or is_cart_related_openended
     priority = action_priority if action_priority is not None else clickable_score
+    priority += 2.0 if is_functional_priority_candidate else 0.0
+    priority += 1.0 if is_high_value_functional_candidate else 0.0
+    priority += 1.2 if is_workout_add_action else 0.0
     priority += 1.0 if is_purchase_action else 0.0
-    priority += 2.0 if catalog_selector_match else 0.0
-    priority += 1.5 if catalog_bug_id_matches else 0.0
-    priority += min(1.0, 0.25 * len(catalog_keyword_matches))
-    priority += 0.4 if candidate_action_hints else 0.0
     priority += 0.35 if any((is_sparse_related, is_forbidden_related, is_async_related, is_hang_related, is_cart_quantity_related, is_network_related)) else 0.0
     priority += 0.3 if clickable else 0.0
     openended_priority = 0.0
@@ -662,13 +772,35 @@ def _make_candidate(
     openended_priority += 0.35 if clickable else 0.0
     openended_priority += min(1.0, 0.2 * len(openended_keyword_matches))
     openended_priority += 0.25 if is_form_field else 0.0
+    openended_priority += 1.2 if is_functional_priority_candidate else 0.0
+    openended_priority += 0.8 if is_workout_add_action else 0.0
     openended_priority += 0.25 if any((is_login_related, is_cart_related_openended, is_checkout_related, is_search_related, is_filter_related, is_submit_related)) else 0.0
     priority += openended_priority
-    priority += 0.25 if data_bug_id else 0.0
+    priority += 0.25 if data_testid else 0.0
+    priority += 0.45 if any((is_alert_card, is_metric_card, is_api_trigger, is_retry_button, is_recovery_button, is_detail_trigger, is_timeline_related)) else 0.0
     priority += 0.2 if visibility > 0.2 else 0.0
     priority += 0.1 if _has_bbox(bbox) else 0.0
+    if is_low_value_generic_candidate:
+        priority -= 1.0
+        openended_priority = max(0.0, openended_priority - 0.5)
     if visibility <= 0.0:
         priority -= 0.2
+    element_text_norm = _normalize_element_text(text or name or aria_label or title)
+    element_context_key = _element_context_key(
+        data_testid=data_testid,
+        element_id=element_id,
+        class_name=class_name,
+        title=title,
+        source=source,
+    )
+    element_position_key = _element_position_key(bbox)
+    element_key = _stable_element_key(
+        role=role_norm,
+        semantic_action_type=semantic_action_type,
+        text_norm=element_text_norm,
+        context_key=element_context_key,
+        position_key=element_position_key,
+    )
     return {
         "bid": str(bid),
         "text": text,
@@ -700,10 +832,28 @@ def _make_candidate(
         "is_hang_related": is_hang_related,
         "is_cart_quantity_related": is_cart_quantity_related,
         "is_network_related": is_network_related,
+        "is_alert_card": is_alert_card,
+        "is_metric_card": is_metric_card,
+        "is_api_trigger": is_api_trigger,
+        "is_retry_button": is_retry_button,
+        "is_recovery_button": is_recovery_button,
+        "is_detail_trigger": is_detail_trigger,
+        "is_timeline_related": is_timeline_related,
         "is_checkout_related": is_checkout_related,
         "is_search_related": is_search_related,
         "is_filter_related": is_filter_related,
         "is_submit_related": is_submit_related,
+        "semantic_action_type": semantic_action_type,
+        "is_low_value_generic_candidate": is_low_value_generic_candidate,
+        "element_key": element_key,
+        "element_key_source": "role|semantic|text|context|position",
+        "element_role": role_norm,
+        "element_text_norm": element_text_norm,
+        "element_context_key": element_context_key,
+        "element_position_key": element_position_key,
+        "functional_priority": is_functional_priority_candidate,
+        "functional_priority_candidate": is_functional_priority_candidate,
+        "is_high_value_functional_candidate": is_high_value_functional_candidate,
         "openended_keyword_matches": openended_keyword_matches,
         "openended_action_priority": round(max(0.0, openended_priority), 4),
         "is_workout_add_action": is_workout_add_action,
@@ -713,23 +863,17 @@ def _make_candidate(
         "is_chart_like": is_chart_related,
         "is_layout_target": is_layout_target,
         "layout_check_type": layout_check_type,
-        "catalog_keyword_matches": catalog_keyword_matches,
-        "catalog_selector_match": catalog_selector_match,
-        "catalog_bug_id_matches": catalog_bug_id_matches,
-        "action_hints": candidate_action_hints,
-        "catalog_action_priority": round(0.5 * len(candidate_action_hints) + 0.25 * len(catalog_bug_id_matches), 4),
-        "catalog_priority": round(float(bool(catalog_bug_id_matches)) + 0.25 * len(catalog_keyword_matches), 4),
         "action_priority": round(max(0.0, priority), 4),
         "has_text": bool(text or name),
         "text_length": len(text or name),
-        "data_bug_id": data_bug_id,
-        "has_data_bug_id": bool(data_bug_id),
-        "has_data_testid": has_data_testid,
+        "data_testid": data_testid,
+        "has_data_testid": bool(data_testid),
+        "_policy_metadata": policy_metadata,
     }
 
 
 def _add_candidate(candidates: Dict[str, Dict[str, Any]], candidate: Dict[str, Any]) -> None:
-    key = str(candidate.get("bid") or "")
+    key = _dedupe_candidate_key(candidate)
     if not key:
         return
     previous = candidates.get(key)
@@ -737,28 +881,246 @@ def _add_candidate(candidates: Dict[str, Dict[str, Any]], candidate: Dict[str, A
         candidates[key] = candidate
 
 
+def _dedupe_candidate_key(candidate: Mapping[str, Any]) -> str:
+    data_testid = _as_str(candidate.get("data_testid"))
+    if data_testid:
+        return f"testid:{data_testid}"
+    selector = _as_str(candidate.get("selector") or candidate.get("selector_hint"))
+    if selector:
+        return f"selector:{selector}"
+    bid = _as_str(candidate.get("bid"))
+    return f"bid:{bid}" if bid else ""
+
+
 def _candidate_sort_key(item: Mapping[str, Any]) -> tuple[Any, ...]:
+    bbox = item.get("bbox", [])
+    area = _bbox_area(bbox)
     return (
-        bool(item.get("catalog_bug_id_matches")),
-        bool(item.get("has_data_bug_id")),
-        bool(item.get("catalog_selector_match")),
-        float(item.get("catalog_action_priority", 0.0) or 0.0),
-        len(item.get("catalog_keyword_matches", []) or []),
         float(item.get("visibility", 0.0) or 0.0) > 0.0,
+        bool(item.get("in_viewport", _has_bbox(bbox))),
         bool(item.get("clickable")),
-        bool(item.get("is_interactive")),
-        len(item.get("openended_keyword_matches", []) or []),
-        bool(item.get("is_form_field")),
-        _has_bbox(item.get("bbox", [])),
-        bool(item.get("is_layout_target")),
-        bool(item.get("is_purchase_action")),
-        str(item.get("role") or "") in INTERACTIVE_ROLES,
+        bool(item.get("enabled", True)),
+        bool(item.get("functional_priority_candidate") or item.get("functional_priority")),
+        bool(item.get("is_high_value_functional_candidate")),
+        str(item.get("semantic_action_type") or "") == "workout_add",
         float(item.get("openended_action_priority", 0.0) or 0.0),
-        float(item.get("clickable_score", 0.0) or 0.0),
-        bool(item.get("set_of_marks")),
-        SOURCE_PRIORITY.get(str(item.get("source") or ""), 0),
-        float(item.get("action_priority", 0.0) or 0.0),
+        str(item.get("role") or "") in INTERACTIVE_ROLES,
+        str(item.get("tag") or "").lower() in DOM_INTERACTIVE_TAGS,
+        area,
+        -int(item.get("dom_depth", 999) or 999),
+        -int(item.get("child_count", 0) or 0),
+        min(int(item.get("text_length", 0) or 0), 512),
     )
+
+
+def _extract_policy_candidate_metadata(candidates: List[Mapping[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    metadata: Dict[str, Dict[str, Any]] = {}
+    for index, candidate in enumerate(candidates):
+        if not isinstance(candidate, Mapping):
+            continue
+        bid = _as_str(candidate.get("bid")) or str(index)
+        item = candidate.get("_policy_metadata", {})
+        if isinstance(item, Mapping):
+            metadata[bid] = dict(item)
+    return metadata
+
+
+def _strip_policy_candidate_metadata(candidate: Mapping[str, Any]) -> Dict[str, Any]:
+    return {
+        str(key): value
+        for key, value in candidate.items()
+        if key
+        not in {
+            "_policy_metadata",
+            "data_bug_id",
+            "has_data_bug_id",
+            "catalog_bug_id_matches",
+            "catalog_keyword_matches",
+            "catalog_action_priority",
+            "catalog_priority",
+            "catalog_selector_match",
+            "action_hints",
+        }
+    }
+
+
+def _is_infra_observation(obs: Mapping[str, Any], page_text: str) -> bool:
+    url = _as_str(obs.get("url") or _active_page_value(obs, "open_pages_urls"))
+    match = re.search(r":(\d{4,5})(?:/|$)", url)
+    if match:
+        try:
+            port = int(match.group(1))
+            if 9000 <= port <= 9100:
+                return True
+        except ValueError:
+            pass
+    return _contains_keyword(page_text, INFRA_ALERT_KEYWORDS + INFRA_METRIC_KEYWORDS + INFRA_API_TRIGGER_KEYWORDS)
+
+
+def _infra_candidates(
+    obs: Mapping[str, Any],
+    page_text: str,
+    site_profile: Optional[Mapping[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    properties = _index_extra_properties(obs.get("extra_element_properties"))
+    candidates: List[Dict[str, Any]] = []
+
+    for key, prop in properties.items():
+        if not isinstance(prop, Mapping):
+            continue
+        candidate = _infra_candidate_from_mapping(
+            bid=str(key),
+            mapping=prop,
+            page_text=page_text,
+            source="infra_extra_props",
+            site_profile=site_profile,
+        )
+        if candidate:
+            candidates.append(candidate)
+
+    for node in _axtree_nodes(obs.get("axtree_object")):
+        if not isinstance(node, Mapping):
+            continue
+        bid = _node_bid(node) or _as_str(node.get("backendDOMNodeId"))
+        prop = properties.get(str(bid), {})
+        merged = {
+            "text": _as_str(_ax_value(node.get("text"))),
+            "name": _as_str(_ax_value(node.get("name"))),
+            "role": _normalize_role(node.get("role")),
+            "bbox": prop.get("bbox") or prop.get("bounding_box") or node.get("bbox"),
+            "visibility": prop.get("visibility", 1.0),
+            "clickable": prop.get("clickable") or _ax_property_bool(node, "focusable"),
+            "data-testid": _attr_value(prop, "data-testid", "data_testid", "testid"),
+            "data-bug-id": _attr_value(prop, "data-bug-id", "data_bug_id"),
+            "aria-label": _as_str(prop.get("aria-label") or prop.get("aria_label")),
+            "title": _as_str(prop.get("title")),
+            "id": _as_str(prop.get("id")),
+            "class": _as_str(prop.get("class") or prop.get("className")),
+        }
+        candidate = _infra_candidate_from_mapping(
+            bid=str(bid or f"infra-ax-{len(candidates)}"),
+            mapping=merged,
+            page_text=page_text,
+            source="infra_axtree",
+            site_profile=site_profile,
+        )
+        if candidate:
+            candidates.append(candidate)
+
+    for candidate in _dom_candidates(obs.get("dom_object"), page_text, site_profile):
+        text = " ".join(_as_str(candidate.get(key)) for key in ("text", "name", "role", "tag", "id", "class_name", "data_testid"))
+        if _contains_keyword(text, INFRA_ALERT_KEYWORDS + INFRA_METRIC_KEYWORDS + INFRA_API_TRIGGER_KEYWORDS + INFRA_DETAIL_KEYWORDS):
+            candidate = dict(candidate)
+            candidate["source"] = "infra_dom"
+            candidates.append(candidate)
+
+    return candidates
+
+
+def _infra_candidate_from_mapping(
+    bid: str,
+    mapping: Mapping[str, Any],
+    page_text: str,
+    source: str,
+    site_profile: Optional[Mapping[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    text = _as_str(
+        mapping.get("text")
+        or mapping.get("name")
+        or mapping.get("aria-label")
+        or mapping.get("aria_label")
+        or mapping.get("title")
+        or mapping.get("value")
+        or mapping.get("data-testid")
+        or mapping.get("data_testid")
+        or mapping.get("id")
+        or ""
+    ).strip()
+    role = _as_str(mapping.get("role") or "")
+    tag = _as_str(mapping.get("tag") or mapping.get("tagName") or "")
+    data_testid = _attr_value(mapping, "data-testid", "data_testid", "testid")
+    data_bug_id = _attr_value(mapping, "data-bug-id", "data_bug_id")
+    class_name = _as_str(mapping.get("class") or mapping.get("className"))
+    keyword_text = " ".join([text, role, tag, data_testid, class_name, _as_str(mapping.get("id"))])
+    if not _contains_keyword(
+        keyword_text,
+        INFRA_ALERT_KEYWORDS
+        + INFRA_METRIC_KEYWORDS
+        + INFRA_API_TRIGGER_KEYWORDS
+        + INFRA_RETRY_KEYWORDS
+        + INFRA_RECOVERY_KEYWORDS
+        + INFRA_DETAIL_KEYWORDS
+        + INFRA_TIMELINE_KEYWORDS,
+    ):
+        return None
+    bbox = _normalize_bbox(mapping.get("bbox") or mapping.get("bounding_box"))
+    visibility = max(0.2, _safe_visibility(mapping, bbox=bbox, default=1.0 if _has_bbox(bbox) else 0.2))
+    clickable = _as_bool(mapping.get("clickable"), role.lower() == "button" or tag.lower() in DOM_INTERACTIVE_TAGS or bool(data_testid))
+    return _make_candidate(
+        bid=bid,
+        text=text or data_testid or role or f"infra-{bid}",
+        name=text or data_testid or role or f"infra-{bid}",
+        role=role or ("button" if clickable else "region"),
+        tag=tag,
+        bbox=bbox,
+        visibility=visibility,
+        clickable=clickable,
+        enabled=not _as_bool(mapping.get("disabled"), False),
+        source=source,
+        page_text=page_text,
+        clickable_score=0.7 if clickable else 0.35,
+        action_priority=0.9,
+        data_bug_id=data_bug_id,
+        data_testid=data_testid,
+        aria_label=_as_str(mapping.get("aria-label") or mapping.get("aria_label")),
+        title=_as_str(mapping.get("title")),
+        element_id=_as_str(mapping.get("id")),
+        class_name=class_name,
+        site_profile=site_profile,
+    )
+
+
+def _infra_virtual_candidates(
+    obs: Mapping[str, Any],
+    page_text: str,
+    site_profile: Optional[Mapping[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    url = _as_str(obs.get("url") or _active_page_value(obs, "open_pages_urls"))
+    targets = [
+        ("infra-network-status", "Network Status", "status network requests errors", "is_metric_card"),
+        ("infra-api-response", "API Response", "api response status payload", "is_api_trigger"),
+        ("infra-console-errors", "Console Errors", "console errors exceptions warnings", "is_alert_card"),
+        ("infra-resource-loading", "Resource Loading", "resource loading failed timeout", "is_metric_card"),
+        ("infra-alert-card", "Alert Card", "alert critical warning incident", "is_alert_card"),
+        ("infra-metric-card", "Metric Card", "metric latency cpu memory", "is_metric_card"),
+        ("infra-timeline", "Timeline", "timeline history events logs trace", "is_timeline_related"),
+        ("infra-server-health", "Server Health", "server health uptime process", "is_metric_card"),
+        ("infra-server-logs", "Server Logs", "server logs exceptions trace", "is_detail_trigger"),
+        ("infra-detail-panel", "Detail Panel", "details inspect expand", "is_detail_trigger"),
+    ]
+    candidates: List[Dict[str, Any]] = []
+    for bid, label, keywords, flag in targets:
+        if not page_text or _contains_keyword(page_text, keywords.split()) or url:
+            candidate = _make_candidate(
+                bid=bid,
+                text=label,
+                name=label,
+                role="region",
+                tag="",
+                bbox=[0.0, 0.0, 0.0, 0.0],
+                visibility=0.2,
+                clickable=False,
+                enabled=True,
+                source="infra_virtual",
+                page_text=page_text,
+                clickable_score=0.0,
+                action_priority=0.55,
+                site_profile=site_profile,
+            )
+            candidate[flag] = True
+            candidate["is_infra_virtual"] = True
+            candidates.append(candidate)
+    return candidates
 
 
 def _dom_candidates(
@@ -791,13 +1153,12 @@ def _dom_candidates(
             text = " ".join(
                 value
                 for key, value in attr_map.items()
-                if key in {"aria-label", "title", "value", "alt", "data-testid", "data-bug-id"}
+                if key in {"aria-label", "title", "value", "alt", "data-testid"}
             ).strip()
             if not text and isinstance(node_values, list) and index < len(node_values):
                 text = _string_at(strings, node_values[index]).strip()
             has_interactive_attr = any(key in attr_map for key in DOM_INTERACTIVE_ATTRS)
-            has_catalog_attr = bool(attr_map.get("data-bug-id"))
-            if tag not in DOM_INTERACTIVE_TAGS and not has_interactive_attr and not has_catalog_attr:
+            if tag not in DOM_INTERACTIVE_TAGS and not has_interactive_attr:
                 continue
             bid = str(backend_ids[index]) if isinstance(backend_ids, list) and index < len(backend_ids) else f"dom-{index}"
             role = attr_map.get("role") or ("link" if tag == "a" else "button" if tag == "button" else tag or "generic")
@@ -819,7 +1180,7 @@ def _dom_candidates(
                     page_text=page_text,
                     clickable_score=min(1.0, score),
                     data_bug_id=attr_map.get("data-bug-id", ""),
-                    has_data_testid=bool(attr_map.get("data-testid")),
+                    data_testid=attr_map.get("data-testid", ""),
                     aria_label=attr_map.get("aria-label", ""),
                     title=attr_map.get("title", ""),
                     element_id=attr_map.get("id", ""),
@@ -1011,8 +1372,12 @@ def _visible_texts(obs: Mapping[str, Any], candidates: List[Mapping[str, Any]], 
     return _unique_strings(texts)[:120]
 
 
-def _data_bug_ids_found(obs: Mapping[str, Any], candidates: List[Mapping[str, Any]]) -> List[str]:
-    values = [str(candidate.get("data_bug_id") or "") for candidate in candidates if candidate.get("data_bug_id")]
+def _data_bug_ids_found(obs: Mapping[str, Any], candidate_metadata: Mapping[str, Mapping[str, Any]]) -> List[str]:
+    values = [
+        str(metadata.get("data_bug_id") or "")
+        for metadata in candidate_metadata.values()
+        if isinstance(metadata, Mapping) and metadata.get("data_bug_id")
+    ]
     summary = _dom_attributes_summary(obs.get("dom_object"))
     for value in summary.get("data_bug_ids", []):
         values.append(str(value))
@@ -1310,7 +1675,7 @@ def _layout_signals(candidates: List[Mapping[str, Any]], viewport_width: int, vi
         child_bottom = float(child_bbox[1]) + float(child_bbox[3])
         child_text = " ".join(
             _as_str(child.get(key))
-            for key in ("text", "name", "tag", "role", "class_name", "id", "data_bug_id", "selector_hint", "source")
+            for key in ("text", "name", "tag", "role", "class_name", "id", "selector_hint", "source")
         )
         is_chart_like = bool(child.get("is_chart_like")) or _contains_keyword(child_text, CHART_LIKE_KEYWORDS)
         is_catalog_layout_target = bool(child.get("is_layout_target") or is_chart_like)
@@ -1339,10 +1704,8 @@ def _layout_signals(candidates: List[Mapping[str, Any]], viewport_width: int, vi
         detail = {
             "selector": _candidate_selector(child),
             "selector_hint": child.get("selector_hint") or _candidate_selector(child),
-            "data_bug_id": child.get("data_bug_id"),
-            "catalog_bug_id_matches": child.get("catalog_bug_id_matches", []),
-            "catalog_keyword_matches": child.get("catalog_keyword_matches", []),
-            "catalog_selector_match": bool(child.get("catalog_selector_match")),
+            "catalog_keyword_matches": [],
+            "catalog_selector_match": False,
             "layout_check_type": child.get("layout_check_type") or "",
             "is_chart_like": is_chart_like,
             "is_layout_target": is_catalog_layout_target,
@@ -1394,9 +1757,9 @@ def _best_parent_bbox(child: Mapping[str, Any], candidates: List[Mapping[str, An
 
 
 def _candidate_selector(candidate: Mapping[str, Any]) -> str:
-    data_bug_id = _as_str(candidate.get("data_bug_id"))
-    if data_bug_id:
-        return f'[data-bug-id="{data_bug_id}"]'
+    data_testid = _as_str(candidate.get("data_testid"))
+    if data_testid:
+        return f'[data-testid="{data_testid}"]'
     tag = _as_str(candidate.get("tag") or "*")
     bid = _as_str(candidate.get("bid"))
     return f"{tag}[bid='{bid}']" if bid else tag
@@ -1456,8 +1819,93 @@ def _contains_keyword(text: str, keywords: Iterable[str]) -> bool:
     return any(keyword.lower() in haystack for keyword in keywords if keyword)
 
 
+def _semantic_action_type(text: str) -> str:
+    haystack = _normalize_semantic_text(text)
+    if not haystack:
+        return ""
+    for semantic_type, keywords in FUNCTIONAL_SEMANTIC_KEYWORDS.items():
+        for keyword in keywords:
+            normalized_keyword = _normalize_semantic_text(keyword)
+            if normalized_keyword and normalized_keyword in haystack:
+                return semantic_type
+    return ""
+
+
+def _normalize_semantic_text(text: str) -> str:
+    return re.sub(r"\s+", " ", _as_str(text).lower()).strip()
+
+
+def _normalize_element_text(value: str) -> str:
+    return re.sub(r"\s+", " ", _as_str(value).strip().lower())[:80]
+
+
+def _is_low_value_generic_candidate(
+    *,
+    role: str,
+    text: str,
+    name: str,
+    semantic_action_type: str,
+) -> bool:
+    if str(role or "").lower() != "generic":
+        return False
+    if semantic_action_type:
+        return False
+    label = _normalize_element_text(text or name)
+    return bool(re.fullmatch(r"element-\d+", label or ""))
+
+
+def _element_context_key(
+    *,
+    data_testid: str = "",
+    element_id: str = "",
+    class_name: str = "",
+    title: str = "",
+    source: str = "",
+) -> str:
+    raw = " ".join(_as_str(value) for value in (data_testid, element_id, class_name, title, source))
+    normalized = re.sub(r"\s+", " ", raw.strip().lower())
+    normalized = re.sub(r"[^0-9a-z가-힣_-]+", "-", normalized).strip("-")
+    return normalized[:80] or "context-unknown"
+
+
+def _element_position_key(bbox: Any) -> str:
+    if not _has_bbox(bbox):
+        return "pos-unknown"
+    x, y, width, height = [float(value or 0.0) for value in bbox[:4]]
+    center_x = int((x + width / 2.0) // 80)
+    center_y = int((y + height / 2.0) // 80)
+    area_bucket = int((width * height) // 2000)
+    return f"pos-{center_x}-{center_y}-{area_bucket}"
+
+
+def _stable_element_key(
+    *,
+    role: str,
+    semantic_action_type: str,
+    text_norm: str,
+    context_key: str,
+    position_key: str,
+) -> str:
+    parts = [
+        _as_str(role or "generic").lower(),
+        _as_str(semantic_action_type or "none").lower(),
+        _as_str(text_norm or "text-empty").lower(),
+        _as_str(context_key or "context-unknown").lower(),
+        _as_str(position_key or "pos-unknown").lower(),
+    ]
+    raw = "|".join(parts)
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:10]
+    return f"{raw}|{digest}"
+
+
 def _has_bbox(bbox: Any) -> bool:
     return isinstance(bbox, list) and len(bbox) >= 4 and float(bbox[2] or 0.0) > 0.0 and float(bbox[3] or 0.0) > 0.0
+
+
+def _bbox_area(bbox: Any) -> float:
+    if not _has_bbox(bbox):
+        return 0.0
+    return float(bbox[2] or 0.0) * float(bbox[3] or 0.0)
 
 
 def _is_fullscreen_container(bbox: List[float], viewport_width: int, viewport_height: int) -> bool:
@@ -1534,6 +1982,21 @@ def _as_float(value: Any, default: float = 0.0) -> float:
     if number != number or number in (float("inf"), float("-inf")):
         return default
     return number
+
+
+def _safe_visibility(mapping: Mapping[str, Any] | None, *, bbox: Any = None, default: float = 1.0) -> float:
+    mapping = mapping or {}
+    if "visibility" in mapping and mapping.get("visibility") is not None:
+        value = _as_float(mapping.get("visibility"), default=default)
+    elif "visible" in mapping:
+        value = 1.0 if _as_bool(mapping.get("visible"), True) else 0.0
+    elif "is_visible" in mapping:
+        value = 1.0 if _as_bool(mapping.get("is_visible"), True) else 0.0
+    elif bbox is not None and _has_bbox(bbox):
+        value = default
+    else:
+        value = default
+    return max(0.0, min(1.0, value))
 
 
 def _as_str(value: Any) -> str:

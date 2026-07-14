@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import random
+from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
@@ -35,6 +37,9 @@ class BrowserGymTrainingService:
         load_model_path: Optional[str] = None,
         seed: int = 42,
         entropy_coef: float = 0.02,
+        use_memory_encoder: bool = False,
+        memory_encoder_type: str = "gru",
+        memory_hidden_size: int = 128,
     ) -> None:
         self.site_id = site_id
         self.base_url = base_url
@@ -42,11 +47,14 @@ class BrowserGymTrainingService:
         self.max_steps = max_steps
         self.max_candidates = max_candidates
         self.headless = headless
-        self.output_dir = Path(output_dir or f"artifacts/browsergym/{site_id}")
-        self.model_output_path = Path(model_output_path or f"artifacts/models/{site_id}_browsergym_ppo.pt")
+        self.output_dir = Path(output_dir or f"artifacts/browsergym/v3_policy_safe/{site_id}")
+        self.model_output_path = Path(model_output_path or f"artifacts/models/{site_id}_browsergym_ppo_v3_policy_safe.pt")
         self.load_model_path = Path(load_model_path) if load_model_path else None
         self.seed = seed
         self.entropy_coef = max(0.02, float(entropy_coef))
+        self.use_memory_encoder = bool(use_memory_encoder)
+        self.memory_encoder_type = str(memory_encoder_type or "gru")
+        self.memory_hidden_size = int(memory_hidden_size)
 
         self.encoder = ObservationEncoder(max_candidates=max_candidates)
         self.action_space = ActionSpace(max_candidates=max_candidates)
@@ -54,6 +62,9 @@ class BrowserGymTrainingService:
             self.encoder.get_obs_dim(),
             self.action_space.get_action_dim(),
             entropy_coef=self.entropy_coef,
+            use_memory_encoder=self.use_memory_encoder,
+            memory_encoder_type=self.memory_encoder_type,
+            memory_hidden_size=self.memory_hidden_size,
         )
         if self.load_model_path and self.load_model_path.exists():
             self.agent.load(self.load_model_path)
@@ -63,6 +74,16 @@ class BrowserGymTrainingService:
             site_id,
             self.known_bugs,
             exploration_profile=self.site_config.get("exploration_profile"),
+        )
+        self.site_profile.update(
+            {
+                "reward_mode": "signal_based",
+                "use_known_bug_reward": False,
+                "use_known_bug_for_training": False,
+                "use_known_bug_for_evaluation": False,
+                "training_uses_site_specific_bug_catalog": False,
+                "policy_uses_bug_labels": False,
+            }
         )
         self.transition_log_path = self.output_dir / "rl_transition_log.jsonl"
         self.summary_path = self.output_dir / "training_summary.json"
@@ -85,6 +106,7 @@ class BrowserGymTrainingService:
         cart_count_detected_count = 0
         button_no_response_candidates = 0
         last_update: Dict[str, float] = {}
+        reward_signal_totals: Counter[str] = Counter()
 
         for episode_index in range(1, self.episodes + 1):
             episode_id = f"EP-{episode_index:04d}"
@@ -114,6 +136,7 @@ class BrowserGymTrainingService:
                 "inspected_cart_before_purchase": False,
                 "matched_bug_ids": set(),
             }
+            memory_state = self.agent.reset_memory_state()
 
             try:
                 observation, _ = env.reset()
@@ -124,10 +147,9 @@ class BrowserGymTrainingService:
                 for step in range(1, self.max_steps + 1):
                     obs_vector = self.encoder.encode_observation(observation)
                     action_mask = self.action_space.build_action_mask(observation)
-                    selected = self.agent.select_action(obs_vector, action_mask)
-                    action_id = _guided_action_id(self.action_space, observation, history, selected["action_id"])
-                    if action_id != selected["action_id"]:
-                        selected = self.agent.score_action(obs_vector, action_mask, action_id)
+                    selected = self.agent.select_action(obs_vector, action_mask, memory_state=memory_state)
+                    selected_memory_state = selected.get("memory_state", memory_state)
+                    action_id = int(selected["action_id"])
                     action = self.action_space.decode(action_id)
                     action["action_id"] = action_id
                     action["site_id"] = self.site_id
@@ -141,7 +163,11 @@ class BrowserGymTrainingService:
                         {"action": action, "site_profile": self.site_profile, **step_info},
                         site_profile=self.site_profile,
                     )
-                    known_matches = match_anomalies_to_known_bugs(anomalies, self.known_bugs, site_id=self.site_id)
+                    known_matches = (
+                        match_anomalies_to_known_bugs(anomalies, self.known_bugs, site_id=self.site_id)
+                        if bool(self.site_profile.get("use_known_bug_for_training", False))
+                        else []
+                    )
                     action["matched_bug_ids"] = [
                         str(match.get("matched_bug_id")) for match in known_matches if match.get("matched_bug_id")
                     ]
@@ -154,6 +180,44 @@ class BrowserGymTrainingService:
                         history,
                         self.site_profile,
                     )
+                    for key in (
+                        "known_bug_reward_total",
+                        "signal_reward_total",
+                        "exploration_reward_total",
+                        "ui_dom_signal_reward_total",
+                        "console_runtime_signal_reward_total",
+                        "network_api_signal_reward_total",
+                        "cross_layer_signal_reward_total",
+                        "security_signal_reward_total",
+                        "repeated_penalty_total",
+                        "signal_delta_reward_total",
+                        "inspect_action_reward_total",
+                        "functional_action_signal_reward_total",
+                        "reward_functional_action_total",
+                        "penalty_debug_meta_total",
+                        "multi_signal_anomaly_count",
+                        "console_error_count",
+                        "runtime_exception_count",
+                        "network_request_failed_count",
+                        "api_4xx_count",
+                        "api_5xx_count",
+                        "api_timeout_count",
+                        "api_ui_mismatch_count",
+                        "security_signal_count",
+                        "playwright_console_listener_enabled",
+                        "playwright_pageerror_listener_enabled",
+                        "playwright_network_listener_enabled",
+                        "playwright_request_listener_enabled",
+                        "playwright_response_listener_enabled",
+                        "playwright_requestfailed_listener_enabled",
+                        "functional_action_count",
+                        "debug_meta_action_count",
+                        "debug_meta_repeat_count",
+                        "no_functional_action_episode_count",
+                        "functional_action_signal_delta_count",
+                        "functional_action_network_delta_count",
+                    ):
+                        reward_signal_totals[key] += float(reward_breakdown.get(key, 0.0) or 0.0)
 
                     buffer.add(
                         obs_vector,
@@ -163,8 +227,10 @@ class BrowserGymTrainingService:
                         done,
                         selected["value"],
                         action_mask,
+                        selected_memory_state,
                         step_info,
                     )
+                    memory_state = selected_memory_state
                     episode_reward += reward
                     total_steps += 1
                     episode_anomaly_count += len(anomalies)
@@ -180,7 +246,8 @@ class BrowserGymTrainingService:
                         1 for anomaly in anomalies if anomaly.get("type") == "button-no-response"
                     )
 
-                    self._record_detected_bugs(episode_id, step, anomalies, known_matches)
+                    if bool(self.site_profile.get("use_known_bug_for_evaluation", False)):
+                        self._record_detected_bugs(episode_id, step, anomalies, known_matches)
                     self._append_transition(
                         {
                             "site_id": self.site_id,
@@ -197,9 +264,8 @@ class BrowserGymTrainingService:
                             "action_type": action_type,
                             "reward": reward,
                             "reward_breakdown": reward_breakdown,
-                            "catalog_matches": {
-                                "candidate_catalog_matches": action.get("catalog_bug_id_matches", []),
-                                "candidate_keyword_matches": action.get("catalog_keyword_matches", []),
+                            "post_action_matches": {
+                                "matched_bug_ids": action.get("matched_bug_ids", []),
                                 "anomaly_catalog_bug_id_matches": [
                                     anomaly.get("evidence", {}).get("catalog_bug_id_matches", [])
                                     for anomaly in anomalies
@@ -233,7 +299,10 @@ class BrowserGymTrainingService:
                 env.close()
 
             if len(buffer) > 0:
-                last_value = 0.0 if done else self.agent.estimate_value(self.encoder.encode_observation(observation))
+                last_value = 0.0 if done else self.agent.estimate_value(
+                    self.encoder.encode_observation(observation),
+                    memory_state=memory_state,
+                )
                 buffer.compute_returns_and_advantages(last_value, self.agent.gamma, self.agent.gae_lambda)
                 last_update = self.agent.update(buffer)
 
@@ -254,6 +323,27 @@ class BrowserGymTrainingService:
         known_bug_match_count = len(matched_bug_ids)
         summary = {
             "site_id": self.site_id,
+            "reward_mode": "signal_based",
+            "use_known_bug_reward": False,
+            "use_known_bug_for_training": False,
+            "use_known_bug_for_evaluation": False,
+            "training_uses_site_specific_bug_catalog": False,
+            "policy_uses_bug_labels": False,
+            "memory_encoder_enabled": self.use_memory_encoder,
+            "memory_encoder_type": self.memory_encoder_type if self.use_memory_encoder else "",
+            "memory_hidden_size": self.memory_hidden_size if self.use_memory_encoder else 0,
+            "episode_memory_reset_count": self.episodes,
+            "target_signal_types": list(self.site_profile.get("target_signal_types", []) or []),
+            "observed_signal_types": _observed_signal_types_from_totals(reward_signal_totals),
+            "missing_signal_types": sorted(
+                set(str(item) for item in self.site_profile.get("target_signal_types", []) or [])
+                - set(_observed_signal_types_from_totals(reward_signal_totals))
+            ),
+            "signal_type_coverage": _signal_type_coverage(
+                self.site_profile.get("target_signal_types", []) or [],
+                _observed_signal_types_from_totals(reward_signal_totals),
+            ),
+            "signal_collector_enabled": True,
             "episodes": self.episodes,
             "max_steps": self.max_steps,
             "total_steps": total_steps,
@@ -266,6 +356,48 @@ class BrowserGymTrainingService:
             "inspect_cart_count": inspect_cart_count,
             "cart_count_detected_count": cart_count_detected_count,
             "button_no_response_candidates": button_no_response_candidates,
+            "known_bug_reward_total": float(reward_signal_totals.get("known_bug_reward_total", 0.0)),
+            "signal_reward_total": float(reward_signal_totals.get("signal_reward_total", 0.0)),
+            "signal_delta_reward_total": float(reward_signal_totals.get("signal_delta_reward_total", 0.0)),
+            "inspect_action_reward_total": float(reward_signal_totals.get("inspect_action_reward_total", 0.0)),
+            "functional_action_signal_reward_total": float(reward_signal_totals.get("functional_action_signal_reward_total", 0.0)),
+            "functional_action_count": int(reward_signal_totals.get("functional_action_count", 0.0)),
+            "first_functional_action_step": None,
+            "unique_functional_action_type_count": int(
+                sum(1 for key in ("click_element", "fill_input", "press_enter") if int(action_counts.get(key, 0) or 0) > 0)
+            ),
+            "unique_functional_target_count": int(reward_signal_totals.get("functional_action_count", 0.0)),
+            "debug_meta_action_count": int(reward_signal_totals.get("debug_meta_action_count", 0.0)),
+            "open_detail_panel_count": int(action_counts.get("open_detail_panel", 0) or 0),
+            "click_retry_button_count": int(action_counts.get("click_retry_button", 0) or 0),
+            "debug_meta_repeat_count": int(reward_signal_totals.get("debug_meta_repeat_count", 0.0)),
+            "no_functional_action_episode_count": int(reward_signal_totals.get("no_functional_action_episode_count", 0.0)),
+            "functional_action_signal_delta_count": int(reward_signal_totals.get("functional_action_signal_delta_count", 0.0)),
+            "functional_action_network_delta_count": int(reward_signal_totals.get("functional_action_network_delta_count", 0.0)),
+            "reward_functional_action_total": float(reward_signal_totals.get("reward_functional_action_total", 0.0)),
+            "penalty_debug_meta_total": float(reward_signal_totals.get("penalty_debug_meta_total", 0.0)),
+            "exploration_reward_total": float(reward_signal_totals.get("exploration_reward_total", 0.0)),
+            "ui_dom_signal_reward_total": float(reward_signal_totals.get("ui_dom_signal_reward_total", 0.0)),
+            "console_runtime_signal_reward_total": float(reward_signal_totals.get("console_runtime_signal_reward_total", 0.0)),
+            "network_api_signal_reward_total": float(reward_signal_totals.get("network_api_signal_reward_total", 0.0)),
+            "cross_layer_signal_reward_total": float(reward_signal_totals.get("cross_layer_signal_reward_total", 0.0)),
+            "security_signal_reward_total": float(reward_signal_totals.get("security_signal_reward_total", 0.0)),
+            "repeated_penalty_total": float(reward_signal_totals.get("repeated_penalty_total", 0.0)),
+            "multi_signal_anomaly_count": int(reward_signal_totals.get("multi_signal_anomaly_count", 0.0)),
+            "console_error_count": int(reward_signal_totals.get("console_error_count", 0.0)),
+            "runtime_exception_count": int(reward_signal_totals.get("runtime_exception_count", 0.0)),
+            "network_error_count": int(reward_signal_totals.get("network_request_failed_count", 0.0)),
+            "api_4xx_count": int(reward_signal_totals.get("api_4xx_count", 0.0)),
+            "api_5xx_count": int(reward_signal_totals.get("api_5xx_count", 0.0)),
+            "api_timeout_count": int(reward_signal_totals.get("api_timeout_count", 0.0)),
+            "api_ui_mismatch_count": int(reward_signal_totals.get("api_ui_mismatch_count", 0.0)),
+            "security_signal_count": int(reward_signal_totals.get("security_signal_count", 0.0)),
+            "playwright_console_listener_enabled": bool(reward_signal_totals.get("playwright_console_listener_enabled", 0.0)),
+            "playwright_pageerror_listener_enabled": bool(reward_signal_totals.get("playwright_pageerror_listener_enabled", 0.0)),
+            "playwright_network_listener_enabled": bool(reward_signal_totals.get("playwright_network_listener_enabled", 0.0)),
+            "playwright_request_listener_enabled": bool(reward_signal_totals.get("playwright_request_listener_enabled", 0.0)),
+            "playwright_response_listener_enabled": bool(reward_signal_totals.get("playwright_response_listener_enabled", 0.0)),
+            "playwright_requestfailed_listener_enabled": bool(reward_signal_totals.get("playwright_requestfailed_listener_enabled", 0.0)),
             "matched_bug_ids": matched_bug_ids,
             "missed_bug_ids": missed_bug_ids,
             "precision": known_bug_match_count / unique_detected_candidates if unique_detected_candidates else 0.0,
@@ -338,6 +470,16 @@ def _update_history(
         if isinstance(candidates, list) and 0 <= index < len(candidates):
             candidate = candidates[index]
             bid = candidate.get("bid")
+            key = _candidate_key(candidate)
+            if key:
+                target_counts = history.setdefault("click_target_counts", {})
+                if action.get("action_type") == "click_element" and isinstance(target_counts, dict):
+                    target_counts[key] = int(target_counts.get(key, 0) or 0) + 1
+                    history.setdefault("visited_targets", set()).add(key)
+                    history.setdefault("visited_element_keys", set()).add(key)
+                    element_counts = history.setdefault("element_key_click_counts", {})
+                    if isinstance(element_counts, dict):
+                        element_counts[key] = int(element_counts.get(key, 0) or 0) + 1
             if bid:
                 if action.get("action_type") == "fill_input":
                     history.setdefault("filled_bids", set()).add(str(bid))
@@ -347,30 +489,61 @@ def _update_history(
                     history.setdefault("clicked_bids", set()).add(str(bid))
             if candidate.get("is_purchase_action"):
                 purchase_counts = history.setdefault("purchase_click_counts", {})
-                key = str(bid or candidate.get("name") or candidate.get("text") or "")
                 purchase_counts[key] = int(purchase_counts.get(key, 0) or 0) + 1
             if candidate.get("is_workout_add_action"):
                 workout_counts = history.setdefault("workout_add_click_counts", {})
-                key = str(bid or candidate.get("name") or candidate.get("text") or "")
                 workout_counts[key] = int(workout_counts.get(key, 0) or 0) + 1
                 history["workout_add_clicked"] = True
-            if candidate.get("catalog_bug_id_matches"):
-                catalog_counts = history.setdefault("catalog_click_counts", {})
-                key = str(bid or candidate.get("name") or candidate.get("text") or "")
-                catalog_counts[key] = int(catalog_counts.get(key, 0) or 0) + 1
-                history["catalog_target_clicked"] = True
-            elif candidate.get("is_interactive") or candidate.get("openended_keyword_matches"):
-                catalog_counts = history.setdefault("catalog_click_counts", {})
-                key = str(bid or candidate.get("name") or candidate.get("text") or "")
-                catalog_counts[key] = int(catalog_counts.get(key, 0) or 0) + 1
-    if _has_catalog_candidate(observation):
-        history["catalog_candidate_seen"] = True
+            if candidate.get("functional_priority_candidate") or candidate.get("functional_priority"):
+                priority_counts = history.setdefault("functional_priority_click_counts", {})
+                priority_counts[key] = int(priority_counts.get(key, 0) or 0) + 1
+                semantic_type = str(candidate.get("semantic_action_type") or "")
+                if semantic_type:
+                    semantic_counts = history.setdefault("semantic_action_type_counts", {})
+                    semantic_counts[semantic_type] = int(semantic_counts.get(semantic_type, 0) or 0) + 1
+                    history.setdefault("clicked_semantic_action_types", set()).add(semantic_type)
+            if action.get("action_type") == "click_element" and candidate.get("is_high_value_functional_candidate"):
+                history["verification_pending_after_high_value_click"] = True
+                history["high_value_click_pending_verification_count"] = int(
+                    history.get("high_value_click_pending_verification_count", 0) or 0
+                ) + 1
+                history["high_value_click_without_verification_count"] = int(
+                    history.get("high_value_click_without_verification_count", 0) or 0
+                ) + 1
     if _has_workout_add_candidate(observation):
         history["workout_add_candidate_seen"] = True
     if action.get("action_type") == "inspect_cart":
         history["inspected_cart_before_purchase"] = True
+    if action.get("action_type") in {"inspect_dom", "inspect_network", "inspect_console"} and history.get(
+        "verification_pending_after_high_value_click"
+    ):
+        history["verification_action_after_high_value_click_count"] = int(
+            history.get("verification_action_after_high_value_click_count", 0) or 0
+        ) + 1
+        history["high_value_click_verified_count"] = int(
+            history.get("high_value_click_verified_count", 0) or 0
+        ) + 1
+        history["high_value_click_pending_verification_count"] = max(
+            0,
+            int(history.get("high_value_click_pending_verification_count", 0) or 0) - 1,
+        )
+        history["high_value_click_without_verification_count"] = max(
+            0,
+            int(history.get("high_value_click_without_verification_count", 0) or 0) - 1,
+        )
+        history["verification_pending_after_high_value_click"] = False
     history["last_action_key"] = f"{action.get('action_type')}:{action.get('candidate_index', 0)}"
     action_type = str(action.get("action_type") or "")
+    if _is_functional_action_type(action_type):
+        history["functional_action_count"] = int(history.get("functional_action_count", 0) or 0) + 1
+        functional_counts = history.setdefault("functional_action_type_counts", {})
+        if isinstance(functional_counts, dict):
+            functional_counts[action_type] = int(functional_counts.get(action_type, 0) or 0) + 1
+        target_signature = _policy_safe_target_signature(observation, action)
+        if target_signature:
+            history.setdefault("functional_target_signatures", set()).add(target_signature)
+    if _is_debug_meta_action_type(action_type):
+        history["debug_meta_action_count"] = int(history.get("debug_meta_action_count", 0) or 0) + 1
     previous_action_type = history.get("last_action_type")
     consecutive = history.setdefault("consecutive_action_type_counts", {})
     if previous_action_type == action_type:
@@ -380,6 +553,14 @@ def _update_history(
     history["last_action_type"] = action.get("action_type")
     counts = history.setdefault("action_type_counts", {})
     counts[action_type] = int(counts.get(action_type, 0) or 0) + 1
+    target_signature = _policy_safe_target_signature(observation, action)
+    if target_signature:
+        history.setdefault("target_signatures", set()).add(target_signature)
+        history.setdefault("visited_targets", set()).add(target_signature)
+    action_signature = f"{action_type}:{int(action.get('candidate_index', 0) or 0)}:{target_signature}"
+    action_signature = str(action.get("action_signature") or action_signature)
+    signature_counts = history.setdefault("action_signature_counts", {})
+    signature_counts[action_signature] = int(signature_counts.get(action_signature, 0) or 0) + 1
     if observation.get("page_state", {}).get("viewport_type") == "mobile" or action_type == "change_viewport_mobile":
         history["mobile_viewport_seen"] = True
     for bug_id in action.get("matched_bug_ids", []) or []:
@@ -397,25 +578,10 @@ def _guided_action_id(
     selected_action_id: int,
 ) -> int:
     counts = history.get("action_type_counts", {})
-    site_id = str(observation.get("page_state", {}).get("site_id") or "")
-    if not site_id:
-        url = str(observation.get("page_state", {}).get("url") or "")
-        site_id = "site003" if ":9222" in url else "site001" if ":9220" in url else ""
     infra_action = _guided_infra_action_id(action_space, observation, history)
     if infra_action is not None:
         return infra_action
-    if site_id != "site001" and _has_catalog_candidate(observation):
-        matched_bug_ids = set(history.get("matched_bug_ids", set()) or set())
-        catalog_action = _catalog_guided_action_id(action_space, observation, history)
-        if catalog_action is not None:
-            return catalog_action
-        catalog_index = _first_catalog_candidate_index(observation, history)
-        if catalog_index is not None:
-            return action_space.encode("click_element", catalog_index)
-        if int(counts.get("inspect_dom", 0) or 0) == 0:
-            return action_space.encode("inspect_dom", 0)
-        return selected_action_id
-    if site_id != "site001" and _has_openended_interactive_candidate(observation):
+    if _has_openended_interactive_candidate(observation):
         consecutive_counts = history.get("consecutive_action_type_counts", {})
         inspect_dom_count = int(counts.get("inspect_dom", 0) or 0) if isinstance(counts, dict) else 0
         click_count = int(counts.get("click_element", 0) or 0) if isinstance(counts, dict) else 0
@@ -444,13 +610,9 @@ def _guided_action_id(
         and int(counts.get("inspect_layout", 0) or 0) == 0
     ):
         return action_space.encode("inspect_layout", 0)
-    matched_bug_ids = set(history.get("matched_bug_ids", set()) or set())
-    if "site001-bug01" not in matched_bug_ids:
-        if int(counts.get("inspect_cart", 0) or 0) == 0:
-            return action_space.encode("inspect_cart", 0)
-        purchase_index = _first_purchase_candidate_index(observation, history)
-        if purchase_index is not None:
-            return action_space.encode("click_element", purchase_index)
+    purchase_index = _first_purchase_candidate_index(observation, history)
+    if purchase_index is not None:
+        return action_space.encode("click_element", purchase_index)
     return selected_action_id
 
 
@@ -483,85 +645,6 @@ def _guided_infra_action_id(
     return None
 
 
-def _catalog_guided_action_id(
-    action_space: ActionSpace,
-    observation: Mapping[str, Any],
-    history: Mapping[str, Any],
-) -> Optional[int]:
-    counts = history.get("action_type_counts", {})
-    consecutive = history.get("consecutive_action_type_counts", {})
-    if isinstance(consecutive, Mapping) and int(consecutive.get("inspect_layout", 0) or 0) >= 2:
-        selected = action_space.encode("inspect_dom", 0)
-    else:
-        selected = None
-    if isinstance(counts, Mapping) and int(counts.get("inspect_layout", 0) or 0) >= 8:
-        selected = action_space.encode("inspect_dom", 0)
-
-    bug_types = _site_profile_bug_types(observation)
-    if {"api-forbidden", "api-ui-mismatch"}.intersection(bug_types):
-        if int(counts.get("inspect_network", 0) or 0) == 0:
-            return action_space.encode("inspect_network", 0)
-        if int(counts.get("inspect_console", 0) or 0) == 0:
-            return action_space.encode("inspect_console", 0)
-    if "cart-quantity-mismatch" in bug_types and int(counts.get("inspect_cart", 0) or 0) == 0:
-        return action_space.encode("inspect_cart", 0)
-
-    fill_index = _first_catalog_input_index(observation, history)
-    if fill_index is not None:
-        return action_space.encode("fill_input", fill_index)
-    generic_input = _first_visible_input_index(observation, history)
-    if generic_input is not None:
-        return action_space.encode("fill_input", generic_input)
-    if int(counts.get("press_enter", 0) or 0) == 0:
-        enter_index = _first_filled_or_catalog_input_index(observation)
-        if enter_index is not None:
-            return action_space.encode("press_enter", enter_index)
-    click_index = _first_catalog_candidate_index(observation, history)
-    if click_index is not None:
-        return action_space.encode("click_element", click_index)
-    openended_index = _first_openended_candidate_index(observation, history)
-    if openended_index is not None and int(counts.get("click_element", 0) or 0) < 6:
-        return action_space.encode("click_element", openended_index)
-    return selected
-
-
-def _site_profile_bug_types(observation: Mapping[str, Any]) -> set[str]:
-    profile = observation.get("runtime_signals", {}).get("site_profile") or observation.get("site_profile") or {}
-    if not isinstance(profile, Mapping):
-        return set()
-    return {str(item.get("type") or "") for item in profile.get("bugs", []) or [] if isinstance(item, Mapping)}
-
-
-def _first_catalog_input_index(observation: Mapping[str, Any], history: Mapping[str, Any]) -> Optional[int]:
-    filled = set(history.get("filled_bids", set()) or set())
-    candidates = observation.get("candidate_elements", []) or []
-    if not isinstance(candidates, list):
-        return None
-    for index, candidate in enumerate(candidates[:32]):
-        if not isinstance(candidate, Mapping):
-            continue
-        if not candidate.get("is_form_field"):
-            continue
-        if not (candidate.get("catalog_bug_id_matches") or candidate.get("is_async_related") or candidate.get("is_hang_related") or candidate.get("is_sparse_related") or candidate.get("is_search_related")):
-            continue
-        bid = str(candidate.get("bid") or "")
-        if bid and bid in filled:
-            continue
-        return index
-    return None
-
-
-def _first_filled_or_catalog_input_index(observation: Mapping[str, Any]) -> Optional[int]:
-    candidates = observation.get("candidate_elements", []) or []
-    if not isinstance(candidates, list):
-        return None
-    last_index: Optional[int] = None
-    for index, candidate in enumerate(candidates[:32]):
-        if isinstance(candidate, Mapping) and candidate.get("is_form_field"):
-            last_index = index
-    return last_index
-
-
 def _first_visible_input_index(observation: Mapping[str, Any], history: Mapping[str, Any]) -> Optional[int]:
     filled = set(history.get("filled_bids", set()) or set())
     candidates = observation.get("candidate_elements", []) or []
@@ -570,7 +653,7 @@ def _first_visible_input_index(observation: Mapping[str, Any], history: Mapping[
     for index, candidate in enumerate(candidates[:32]):
         if not isinstance(candidate, Mapping) or not candidate.get("is_form_field"):
             continue
-        if float(candidate.get("visibility", 0.0) or 0.0) <= 0.0:
+        if _safe_visibility(candidate) <= 0.0:
             continue
         bid = str(candidate.get("bid") or "")
         if bid and bid in filled:
@@ -587,7 +670,7 @@ def _first_purchase_candidate_index(observation: Dict[str, Any], history: Dict[s
     for index, candidate in enumerate(candidates[:32]):
         if not isinstance(candidate, dict) or not candidate.get("is_purchase_action"):
             continue
-        key = str(candidate.get("bid") or candidate.get("name") or candidate.get("text") or "")
+        key = _candidate_key(candidate)
         if isinstance(purchase_counts, dict) and int(purchase_counts.get(key, 0) or 0) >= 2:
             continue
         return index
@@ -602,7 +685,7 @@ def _first_workout_add_candidate_index(observation: Dict[str, Any], history: Dic
     for index, candidate in enumerate(candidates[:32]):
         if not isinstance(candidate, dict) or not candidate.get("is_workout_add_action"):
             continue
-        if not candidate.get("clickable") or float(candidate.get("visibility", 0.0) or 0.0) <= 0.0:
+        if not candidate.get("clickable") or _safe_visibility(candidate) <= 0.0:
             continue
         key = str(candidate.get("bid") or candidate.get("name") or candidate.get("text") or "")
         if isinstance(workout_counts, dict) and int(workout_counts.get(key, 0) or 0) >= 2:
@@ -611,25 +694,8 @@ def _first_workout_add_candidate_index(observation: Dict[str, Any], history: Dic
     return None
 
 
-def _first_catalog_candidate_index(observation: Dict[str, Any], history: Dict[str, Any]) -> Optional[int]:
-    catalog_counts = history.get("catalog_click_counts", {})
-    candidates = observation.get("candidate_elements", []) or []
-    if not isinstance(candidates, list):
-        return None
-    for index, candidate in enumerate(candidates[:32]):
-        if not isinstance(candidate, dict) or not candidate.get("catalog_bug_id_matches"):
-            continue
-        if not candidate.get("clickable") or float(candidate.get("visibility", 0.0) or 0.0) <= 0.0:
-            continue
-        key = str(candidate.get("bid") or candidate.get("name") or candidate.get("text") or "")
-        if isinstance(catalog_counts, dict) and int(catalog_counts.get(key, 0) or 0) >= 2:
-            continue
-        return index
-    return None
-
-
 def _first_openended_candidate_index(observation: Dict[str, Any], history: Dict[str, Any]) -> Optional[int]:
-    click_counts = history.get("catalog_click_counts", {})
+    click_counts = history.get("element_key_click_counts", history.get("click_target_counts", {}))
     candidates = observation.get("candidate_elements", []) or []
     if not isinstance(candidates, list):
         return None
@@ -641,12 +707,15 @@ def _first_openended_candidate_index(observation: Dict[str, Any], history: Dict[
             continue
         if not candidate.get("is_interactive") and not candidate.get("clickable"):
             continue
-        if float(candidate.get("visibility", 0.0) or 0.0) <= 0.0:
+        if _safe_visibility(candidate) <= 0.0:
             continue
-        key = str(candidate.get("bid") or candidate.get("name") or candidate.get("text") or "")
+        key = _candidate_key(candidate)
         if isinstance(click_counts, dict) and int(click_counts.get(key, 0) or 0) >= 2:
             continue
         score = float(candidate.get("openended_action_priority", 0.0) or 0.0)
+        score += 3.0 if candidate.get("functional_priority_candidate") or candidate.get("functional_priority") else 0.0
+        score += 2.0 if str(candidate.get("semantic_action_type") or "") == "workout_add" else 0.0
+        score += 1.0 if candidate.get("is_high_value_functional_candidate") else 0.0
         score += 1.0 if candidate.get("openended_keyword_matches") else 0.0
         score += 0.5 if candidate.get("clickable") else 0.0
         score += 0.8 if str(candidate.get("role") or "").lower() in {"button", "link", "menuitem"} else 0.0
@@ -665,7 +734,7 @@ def _has_openended_interactive_candidate(observation: Dict[str, Any]) -> bool:
     return isinstance(candidates, list) and any(
         isinstance(candidate, dict)
         and bool(candidate.get("is_interactive") or candidate.get("clickable"))
-        and float(candidate.get("visibility", 0.0) or 0.0) > 0.0
+        and _safe_visibility(candidate) > 0.0
         for candidate in candidates
     )
 
@@ -675,6 +744,21 @@ def _has_workout_add_candidate(observation: Dict[str, Any]) -> bool:
     return isinstance(candidates, list) and any(
         isinstance(candidate, dict) and bool(candidate.get("is_workout_add_action")) for candidate in candidates
     )
+
+
+def _safe_visibility(candidate: Mapping[str, Any]) -> float:
+    if "visibility" in candidate and candidate.get("visibility") is not None:
+        try:
+            value = float(candidate.get("visibility") or 0.0)
+        except (TypeError, ValueError):
+            value = 1.0
+    elif "visible" in candidate:
+        value = 1.0 if bool(candidate.get("visible")) else 0.0
+    else:
+        value = 1.0
+    if value != value:
+        return 1.0
+    return max(0.0, min(1.0, value))
 
 
 def _enrich_action(action: Dict[str, Any], observation: Dict[str, Any]) -> None:
@@ -688,13 +772,94 @@ def _enrich_action(action: Dict[str, Any], observation: Dict[str, Any]) -> None:
         action["input_text"] = _input_text_for_candidate(candidate, int(action.get("candidate_index", 0) or 0))
     action["clicked_text"] = candidate.get("text") if candidate else ""
     action["clicked_bid"] = candidate.get("bid") if candidate else ""
+    action["action_bid"] = candidate.get("bid") if candidate else ""
+    action["action_text"] = candidate.get("text") or candidate.get("name") if candidate else ""
+    action["action_element_key"] = _candidate_key(candidate)
     action["is_purchase_action"] = bool(candidate and candidate.get("is_purchase_action"))
     action["is_workout_add_action"] = bool(candidate and candidate.get("is_workout_add_action"))
+    action["functional_priority_candidate"] = bool(candidate and (candidate.get("functional_priority_candidate") or candidate.get("functional_priority")))
+    action["semantic_action_type"] = str(candidate.get("semantic_action_type") or "") if candidate else ""
+    action["action_semantic_type"] = action["semantic_action_type"]
+    action["is_high_value_functional_candidate"] = bool(candidate and candidate.get("is_high_value_functional_candidate"))
+    action["is_low_value_generic_candidate"] = bool(candidate and candidate.get("is_low_value_generic_candidate"))
+    action["dom_state_hash"] = _dom_state_hash(observation)
+    action["action_signature"] = _action_signature_from_parts(
+        action_type=str(action.get("action_type") or ""),
+        element_key=str(action.get("action_element_key") or ""),
+        candidate_index=int(action.get("candidate_index", 0) or 0),
+    )
+
+
+def _policy_safe_target_signature(observation: Mapping[str, Any], action: Mapping[str, Any]) -> str:
+    action_type = str(action.get("action_type") or "")
+    if action_type in {"inspect_dom", "inspect_network", "inspect_console", "inspect_layout", "change_viewport_mobile", "finish_episode"}:
+        return action_type
+    candidates = observation.get("candidate_elements", []) or []
+    candidate = None
+    index = int(action.get("candidate_index", 0) or 0)
+    if isinstance(candidates, list) and 0 <= index < len(candidates) and isinstance(candidates[index], Mapping):
+        candidate = candidates[index]
+    target = ""
+    if candidate:
+        target = _candidate_key(candidate)
+    if not target:
+        target = str(action.get("clicked_bid") or action.get("clicked_text") or action.get("target_text") or index)
+    return f"{action_type}:{target}"
     action["is_interactive"] = bool(candidate and candidate.get("is_interactive"))
     action["openended_keyword_matches"] = list(candidate.get("openended_keyword_matches", [])) if candidate else []
-    action["catalog_bug_id_matches"] = list(candidate.get("catalog_bug_id_matches", [])) if candidate else []
-    action["catalog_keyword_matches"] = list(candidate.get("catalog_keyword_matches", [])) if candidate else []
-    action["catalog_selector_match"] = bool(candidate and candidate.get("catalog_selector_match"))
+
+
+def _candidate_key(candidate: Mapping[str, Any] | None) -> str:
+    if not candidate:
+        return ""
+    return str(candidate.get("element_key") or candidate.get("bid") or candidate.get("name") or candidate.get("text") or "")
+
+
+def _action_signature_from_parts(*, action_type: str, element_key: str, candidate_index: int) -> str:
+    if element_key:
+        return f"{action_type}::{element_key}"
+    return f"{action_type}::candidate-{candidate_index}"
+
+
+def _dom_state_hash(observation: Mapping[str, Any]) -> str:
+    page_state = observation.get("page_state", {}) if isinstance(observation, Mapping) else {}
+    candidates = observation.get("candidate_elements", []) if isinstance(observation, Mapping) else []
+    payload = {
+        "url": str(page_state.get("url") or "") if isinstance(page_state, Mapping) else "",
+        "title": str(page_state.get("title") or "") if isinstance(page_state, Mapping) else "",
+        "text_length": int(page_state.get("page_text_length") or len(str(page_state.get("page_text") or ""))) if isinstance(page_state, Mapping) else 0,
+        "candidate_count": len(candidates) if isinstance(candidates, list) else 0,
+    }
+    return hashlib.sha1(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:12]
+
+
+def _is_functional_action_type(action_type: str) -> bool:
+    return action_type in {
+        "click_element",
+        "fill_input",
+        "press_enter",
+        "submit_form",
+        "click_button",
+        "navigate_link",
+        "select_option",
+        "trigger_api_action",
+    }
+
+
+def _is_debug_meta_action_type(action_type: str) -> bool:
+    return action_type in {
+        "open_detail_panel",
+        "click_retry_button",
+        "scroll_down",
+        "scroll_up",
+        "inspect_dom",
+        "inspect_layout",
+        "inspect_network",
+        "inspect_console",
+        "inspect_cart",
+        "click_trigger_button",
+        "click_recovery_button",
+    }
 
 
 def _input_text_for_candidate(candidate: Optional[Mapping[str, Any]], candidate_index: int = 0) -> str:
@@ -709,8 +874,6 @@ def _input_text_for_candidate(candidate: Optional[Mapping[str, Any]], candidate_
             "title",
             "id",
             "class_name",
-            "catalog_keyword_matches",
-            "catalog_bug_id_matches",
         )
     ).lower()
     if "sparse" in haystack:
@@ -732,13 +895,6 @@ def _input_text_for_candidate(candidate: Optional[Mapping[str, Any]], candidate_
     if candidate_index <= 3:
         return "admin123"
     return "test"
-
-
-def _has_catalog_candidate(observation: Dict[str, Any]) -> bool:
-    candidates = observation.get("candidate_elements", []) or []
-    return isinstance(candidates, list) and any(
-        isinstance(candidate, dict) and bool(candidate.get("catalog_bug_id_matches")) for candidate in candidates
-    )
 
 
 def _canonical_detected_key(record: Mapping[str, Any]) -> tuple[str, str, str, str]:
@@ -765,6 +921,37 @@ def _canonical_detected_key(record: Mapping[str, Any]) -> tuple[str, str, str, s
 
 def _normalize_text(value: str) -> str:
     return " ".join(str(value or "").lower().split())
+
+
+def _observed_signal_types_from_totals(totals: Mapping[str, Any]) -> List[str]:
+    observed = []
+    if int(totals.get("multi_signal_anomaly_count", 0) or 0):
+        observed.extend(["ui-dom", "interaction", "layout"])
+    if int(totals.get("console_error_count", 0) or 0):
+        observed.append("console-error")
+    if int(totals.get("runtime_exception_count", 0) or 0):
+        observed.append("runtime-exception")
+    if int(totals.get("network_request_failed_count", 0) or totals.get("network_error_count", 0) or 0):
+        observed.append("network-error")
+    if int(totals.get("api_4xx_count", 0) or 0):
+        observed.append("api-4xx")
+    if int(totals.get("api_5xx_count", 0) or 0):
+        observed.append("api-5xx")
+    if int(totals.get("api_timeout_count", 0) or 0):
+        observed.append("api-timeout")
+    if int(totals.get("api_ui_mismatch_count", 0) or 0):
+        observed.append("api-ui-mismatch")
+    if int(totals.get("security_signal_count", 0) or 0):
+        observed.extend(["auth-permission-anomaly", "sensitive-data-exposure", "token-exposure"])
+    return sorted(set(observed))
+
+
+def _signal_type_coverage(targets: Any, observed: Any) -> float:
+    target_set = {str(item) for item in targets or [] if item}
+    observed_set = {str(item) for item in observed or [] if item}
+    if not target_set:
+        return round(len(observed_set) / 5.0, 4) if observed_set else 0.0
+    return round(len(target_set & observed_set) / len(target_set), 4)
 
 
 def _set_seed(seed: int) -> None:

@@ -21,6 +21,7 @@ class RolloutBuffer:
         done: bool,
         value: float,
         action_mask: np.ndarray,
+        memory_state: np.ndarray | None = None,
         info: Dict[str, Any] | None = None,
     ) -> None:
         self.observations.append(np.asarray(observation, dtype=np.float32))
@@ -30,6 +31,10 @@ class RolloutBuffer:
         self.dones.append(bool(done))
         self.values.append(float(value))
         self.action_masks.append(np.asarray(action_mask, dtype=np.float32))
+        if memory_state is None:
+            self.memory_states.append(np.zeros(0, dtype=np.float32))
+        else:
+            self.memory_states.append(np.asarray(memory_state, dtype=np.float32))
         self.infos.append(dict(info or {}))
 
     def clear(self) -> None:
@@ -40,6 +45,7 @@ class RolloutBuffer:
         self.dones: List[bool] = []
         self.values: List[float] = []
         self.action_masks: List[np.ndarray] = []
+        self.memory_states: List[np.ndarray] = []
         self.infos: List[Dict[str, Any]] = []
         self.returns: List[float] = []
         self.advantages: List[float] = []
@@ -52,6 +58,7 @@ class RolloutBuffer:
         self.dones.extend(other.dones)
         self.values.extend(other.values)
         self.action_masks.extend(other.action_masks)
+        self.memory_states.extend(other.memory_states)
         self.infos.extend(other.infos)
         self.returns.extend(other.returns)
         self.advantages.extend(other.advantages)
@@ -93,6 +100,7 @@ class RolloutBuffer:
         returns = np.asarray(self.returns, dtype=np.float32)
         advantages = np.asarray(self.advantages, dtype=np.float32)
         action_masks = np.asarray(self.action_masks, dtype=np.float32)
+        memory_states = np.asarray(self.memory_states, dtype=np.float32)
 
         for start in range(0, size, batch_size):
             batch_indices = indices[start : start + batch_size]
@@ -103,4 +111,5 @@ class RolloutBuffer:
                 "returns": torch.from_numpy(returns[batch_indices]),
                 "advantages": torch.from_numpy(advantages[batch_indices]),
                 "action_masks": torch.from_numpy(action_masks[batch_indices]),
+                "memory_states": torch.from_numpy(memory_states[batch_indices]),
             }

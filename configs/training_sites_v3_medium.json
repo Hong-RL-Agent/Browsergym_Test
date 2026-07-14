@@ -1,0 +1,41 @@
+{
+  "version": "v3_policy_safe_medium",
+  "run_id": "v3_policy_safe_medium",
+  "config_name": "v3_policy_safe_medium",
+  "shared_model_path": "artifacts/models/jaws_browsergym_shared_ppo_v3_policy_safe_medium.pt",
+  "output_dir": "artifacts/multisite/v3_policy_safe_medium",
+  "training_log_dir": "artifacts/training_logs/v3_policy_safe_medium",
+  "evaluation_output_dir": "artifacts/evaluation/v3_policy_safe_medium",
+  "reward_mode": "signal_based",
+  "use_known_bug_reward": false,
+  "use_known_bug_for_training": false,
+  "use_known_bug_for_evaluation": false,
+  "training_uses_site_specific_bug_catalog": false,
+  "total_updates": 10,
+  "episodes_per_site": 2,
+  "eval_episodes": 1,
+  "max_steps": 15,
+  "site_timeout_seconds": 240,
+  "episode_timeout_seconds": 120,
+  "reset_timeout_ms": 60000,
+  "reset_retry_count": 1,
+  "no_progress_patience": 4,
+  "enable_guided_actions": false,
+  "debug_action_mask": false,
+  "sites": [
+    {
+      "site_id": "site001",
+      "base_url": "http://127.0.0.1:9220",
+      "has_bug_catalog": true,
+      "bug_catalog_path": "datasets/site001/bug_catalog.json",
+      "reward_scale": 0.5
+    },
+    {
+      "site_id": "site003",
+      "base_url": "http://localhost:9222",
+      "has_bug_catalog": true,
+      "bug_catalog_path": "datasets/site003/bug_catalog.json",
+      "reward_scale": 1.2
+    }
+  ]
+}

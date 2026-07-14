@@ -119,6 +119,13 @@ class BrowserGymJAWSEnv:
             "inspect_latency",
             "inspect_server_logs",
             "inspect_runtime_metrics",
+            "inspect_network_status",
+            "inspect_api_response",
+            "inspect_console_errors",
+            "inspect_resource_loading",
+            "inspect_alert_card",
+            "inspect_metric_card",
+            "inspect_timeline",
         }:
             info = self._inspect_infra(browser_action.action_type)
         elif browser_action.action_type == "fill_input":

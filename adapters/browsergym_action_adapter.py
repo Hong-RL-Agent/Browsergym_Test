@@ -37,13 +37,20 @@ class BrowserGymActionAdapter:
             "inspect_latency",
             "inspect_server_logs",
             "inspect_runtime_metrics",
+            "inspect_network_status",
+            "inspect_api_response",
+            "inspect_console_errors",
+            "inspect_resource_loading",
+            "inspect_alert_card",
+            "inspect_metric_card",
+            "inspect_timeline",
             "change_viewport_mobile",
             "change_viewport_desktop",
             "finish_episode",
         }:
             return BrowserGymAction(action=None, executable=False, action_type=action_type)
 
-        if action_type == "click_element":
+        if action_type in {"click_element", "click_trigger_button", "click_retry_button", "click_recovery_button", "open_detail_panel"}:
             candidate = self._candidate_at(raw_observation, candidate_index)
             if not candidate:
                 return BrowserGymAction(

@@ -15,6 +15,29 @@ class ActionSpace:
         "scroll_up",
         "inspect_dom",
         "inspect_layout",
+        "inspect_network",
+        "inspect_console",
+        "inspect_cart",
+        "inspect_server_health",
+        "inspect_port_status",
+        "inspect_latency",
+        "inspect_server_logs",
+        "inspect_runtime_metrics",
+        "inspect_network_status",
+        "inspect_api_response",
+        "inspect_console_errors",
+        "inspect_resource_loading",
+        "inspect_alert_card",
+        "inspect_metric_card",
+        "inspect_timeline",
+        "click_trigger_button",
+        "click_retry_button",
+        "click_recovery_button",
+        "open_detail_panel",
+        "fill_input",
+        "press_enter",
+        "change_viewport_mobile",
+        "change_viewport_desktop",
         "finish_episode",
     ]
 
@@ -42,7 +65,40 @@ class ActionSpace:
         }
 
     def is_element_action(self, action_type: str) -> bool:
-        return action_type == "click_element"
+        return action_type in {
+            "click_element",
+            "fill_input",
+            "press_enter",
+            "click_trigger_button",
+            "click_retry_button",
+            "click_recovery_button",
+            "open_detail_panel",
+        }
+
+    def is_click_action(self, action_type: str) -> bool:
+        return action_type in {
+            "click_element",
+            "click_trigger_button",
+            "click_retry_button",
+            "click_recovery_button",
+            "open_detail_panel",
+        }
+
+    def is_infra_action(self, action_type: str) -> bool:
+        return action_type in {
+            "inspect_server_health",
+            "inspect_port_status",
+            "inspect_latency",
+            "inspect_server_logs",
+            "inspect_runtime_metrics",
+            "inspect_network_status",
+            "inspect_api_response",
+            "inspect_console_errors",
+            "inspect_resource_loading",
+            "inspect_alert_card",
+            "inspect_metric_card",
+            "inspect_timeline",
+        }
 
     def get_action_dim(self) -> int:
         return len(self.action_types) * self.max_candidates
@@ -51,12 +107,80 @@ class ActionSpace:
         mask = np.zeros(self.get_action_dim(), dtype=np.float32)
         candidates = raw_observation.get("candidate_elements", []) if raw_observation else []
         candidate_count = len(candidates) if isinstance(candidates, list) else 0
+        page_state = raw_observation.get("page_state", {}) if isinstance(raw_observation, Mapping) else {}
+        runtime_signals = raw_observation.get("runtime_signals", {}) if isinstance(raw_observation, Mapping) else {}
+        infra_signals = raw_observation.get("infra_signals", {}) if isinstance(raw_observation, Mapping) else {}
+        site_id = str(page_state.get("site_id") or runtime_signals.get("site_id") or "")
+        if not site_id:
+            url = str(page_state.get("url") or "")
+            site_id = "site003" if ":9221" in url else "site001" if ":9220" in url else ""
+        infra_enabled = _is_infra_port(page_state, infra_signals)
 
         for action_type in self.action_types:
+            if site_id and site_id not in {"site001", "site9800"} and action_type == "inspect_cart":
+                continue
+            if self.is_infra_action(action_type) and not infra_enabled:
+                continue
+            if action_type == "finish_episode":
+                history = raw_observation.get("history", {}) if isinstance(raw_observation, Mapping) else {}
+                if int(history.get("step_index", 0) or 0) < 5:
+                    continue
             if self.is_element_action(action_type):
                 for idx in range(min(candidate_count, self.max_candidates)):
-                    mask[self.encode(action_type, idx)] = 1.0
+                    candidate = candidates[idx] if isinstance(candidates, list) else {}
+                    if not isinstance(candidate, Mapping):
+                        continue
+                    if action_type == "fill_input" and not candidate.get("is_form_field"):
+                        continue
+                    if action_type == "press_enter" and not candidate.get("is_form_field"):
+                        continue
+                    if action_type == "click_trigger_button" and not candidate.get("is_api_trigger"):
+                        continue
+                    if action_type == "click_retry_button" and not candidate.get("is_retry_button"):
+                        continue
+                    if action_type == "click_recovery_button" and not candidate.get("is_recovery_button"):
+                        continue
+                    if action_type == "open_detail_panel" and not candidate.get("is_detail_trigger"):
+                        continue
+                    if self.is_click_action(action_type) and not _is_clickable_candidate(candidate, site_id):
+                        continue
+                    if candidate.get("catalog_bug_id_matches"):
+                        mask[self.encode(action_type, idx)] = 1.0
+                    elif bool(candidate.get("visible", True)):
+                        mask[self.encode(action_type, idx)] = 1.0
+                    elif site_id == "site001":
+                        mask[self.encode(action_type, idx)] = 1.0
             else:
                 mask[self.encode(action_type, 0)] = 1.0
 
+        if not mask.any():
+            mask[self.encode("noop", 0)] = 1.0
         return mask
+
+
+def _is_infra_port(page_state: Mapping[str, Any], infra_signals: Any) -> bool:
+    port = None
+    if isinstance(infra_signals, Mapping):
+        port = infra_signals.get("port")
+    if port in (None, ""):
+        url = str(page_state.get("url") or "")
+        for token in url.split(":")[2:3]:
+            digits = "".join(char for char in token if char.isdigit())
+            if digits:
+                port = digits
+                break
+    try:
+        value = int(port)
+    except (TypeError, ValueError):
+        return False
+    return 9000 <= value <= 9100
+
+
+def _is_clickable_candidate(candidate: Mapping[str, Any], site_id: str) -> bool:
+    if bool(candidate.get("clickable") or candidate.get("is_interactive")):
+        return True
+    if str(candidate.get("role") or "").lower() in {"button", "link", "tab", "menuitem"}:
+        return True
+    if str(candidate.get("tag") or "").lower() in {"button", "a", "summary"}:
+        return True
+    return bool(candidate.get("data_testid") or candidate.get("has_data_testid"))

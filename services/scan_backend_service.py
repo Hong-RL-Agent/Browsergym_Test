@@ -14,7 +14,7 @@ from urllib.request import Request, urlopen
 
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_MODEL_PATH = "artifacts/models/jaws_browsergym_shared_ppo_v2_browsergym_raw_obs.pt"
+DEFAULT_MODEL_PATH = "artifacts/models/jaws_browsergym_shared_ppo_v3_policy_safe.pt"
 EVALUATOR_PATH = "runners/evaluate_multisite_browsergym_agent.py"
 
 

@@ -61,6 +61,10 @@ PURCHASE_KEYWORDS = (
 )
 CART_KEYWORDS = ("장바구니", "카트", "cart", "basket", "?λ컮援щ땲", "移댄듃")
 SOURCE_PRIORITY = {
+    "infra_extra_props": 10,
+    "infra_axtree": 9,
+    "infra_dom": 8,
+    "infra_virtual": 5,
     "axtree": 7,
     "dom": 6,
     "extra_props_clickable": 5,
@@ -88,6 +92,13 @@ CHART_LIKE_KEYWORDS = (
     "svg",
     "canvas",
 )
+INFRA_ALERT_KEYWORDS = ("alert", "incident", "error", "failed", "failure", "critical", "warning", "down", "unhealthy")
+INFRA_METRIC_KEYWORDS = ("metric", "latency", "cpu", "memory", "throughput", "uptime", "status", "health", "requests")
+INFRA_API_TRIGGER_KEYWORDS = ("api", "request", "trigger", "probe", "check", "test", "fetch", "ping", "simulate")
+INFRA_RETRY_KEYWORDS = ("retry", "rerun", "again", "reload", "refresh")
+INFRA_RECOVERY_KEYWORDS = ("recover", "restart", "restore", "rollback", "heal", "reconnect", "fallback")
+INFRA_DETAIL_KEYWORDS = ("detail", "details", "more", "expand", "open", "view", "inspect", "logs", "trace", "timeline")
+INFRA_TIMELINE_KEYWORDS = ("timeline", "history", "event", "events", "log", "logs", "trace")
 
 
 class BrowserGymObservationAdapter:
@@ -310,6 +321,18 @@ class BrowserGymObservationAdapter:
             source_counts[dom_candidate["source"]] += 1
 
         candidates = list(candidates_by_key.values())
+        if _is_infra_observation(obs, page_text):
+            for candidate in _infra_candidates(obs, page_text, site_profile):
+                _add_candidate(candidates_by_key, candidate)
+                source_counts[candidate["source"]] += 1
+            if len(candidates_by_key) < 10:
+                for candidate in _infra_virtual_candidates(obs, page_text, site_profile):
+                    _add_candidate(candidates_by_key, candidate)
+                    source_counts[candidate["source"]] += 1
+                    if len(candidates_by_key) >= 10:
+                        break
+            candidates = list(candidates_by_key.values())
+
         if not candidates:
             for key, prop in properties.items():
                 candidate = self._candidate_from_extra_prop(
@@ -358,7 +381,7 @@ class BrowserGymObservationAdapter:
                     clickable_score=0.1,
                     action_priority=0.1,
                     data_bug_id=_attr_value(prop, "data-bug-id", "data_bug_id"),
-                    has_data_testid=_has_attr(prop, "data-testid", "data_testid"),
+                    data_testid=_attr_value(prop, "data-testid", "data_testid", "testid"),
                     aria_label=_as_str(prop.get("aria-label") or prop.get("aria_label")),
                     title=_as_str(prop.get("title")),
                     element_id=_as_str(prop.get("id")),
@@ -468,7 +491,7 @@ class BrowserGymObservationAdapter:
             set_of_marks=set_of_marks,
             clickable_score=max(0.0, min(1.0, clickable_score)),
             data_bug_id=_attr_value(prop, "data-bug-id", "data_bug_id"),
-            has_data_testid=_has_attr(prop, "data-testid", "data_testid"),
+            data_testid=_attr_value(prop, "data-testid", "data_testid", "testid"),
             aria_label=_as_str(prop.get("aria-label") or prop.get("aria_label")),
             title=_as_str(prop.get("title")),
             element_id=_as_str(prop.get("id")),
@@ -540,7 +563,7 @@ class BrowserGymObservationAdapter:
             clickable_score=score,
             action_priority=max(0.1, score),
             data_bug_id=_attr_value(prop, "data-bug-id", "data_bug_id"),
-            has_data_testid=_has_attr(prop, "data-testid", "data_testid"),
+            data_testid=_attr_value(prop, "data-testid", "data_testid", "testid"),
             aria_label=_as_str(prop.get("aria-label") or prop.get("aria_label")),
             title=_as_str(prop.get("title")),
             element_id=_as_str(prop.get("id")),
@@ -565,15 +588,15 @@ def _make_candidate(
     clickable_score: float = 0.0,
     action_priority: Optional[float] = None,
     data_bug_id: str = "",
-    has_data_testid: bool = False,
+    data_testid: str = "",
     aria_label: str = "",
     title: str = "",
     element_id: str = "",
     class_name: str = "",
     site_profile: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
-    selector_hint = f'[data-bug-id="{data_bug_id}"]' if data_bug_id else ""
-    keyword_text = " ".join([text, name, aria_label, title, element_id, class_name, data_bug_id])
+    selector_hint = f'[data-bug-id="{data_bug_id}"]' if data_bug_id else f'[data-testid="{data_testid}"]' if data_testid else ""
+    keyword_text = " ".join([text, name, aria_label, title, element_id, class_name, data_bug_id, data_testid])
     initial_candidate = {
         "text": text,
         "name": name,
@@ -624,6 +647,13 @@ def _make_candidate(
     is_quantity_control = _contains_keyword(lower_catalog_text, ("quantity", "qty", "+", "-", "plus", "minus"))
     is_cart_quantity_related = _contains_keyword(lower_catalog_text, ("cart", "quantity", "qty", "subtotal", "total"))
     is_network_related = _contains_keyword(lower_catalog_text, ("api", "network", "forbidden", "403"))
+    is_alert_card = _contains_keyword(keyword_text, INFRA_ALERT_KEYWORDS)
+    is_metric_card = _contains_keyword(keyword_text, INFRA_METRIC_KEYWORDS)
+    is_api_trigger = _contains_keyword(keyword_text, INFRA_API_TRIGGER_KEYWORDS)
+    is_retry_button = _contains_keyword(keyword_text, INFRA_RETRY_KEYWORDS)
+    is_recovery_button = _contains_keyword(keyword_text, INFRA_RECOVERY_KEYWORDS)
+    is_detail_trigger = _contains_keyword(keyword_text, INFRA_DETAIL_KEYWORDS)
+    is_timeline_related = _contains_keyword(keyword_text, INFRA_TIMELINE_KEYWORDS)
     is_workout_add_action = bool(catalog_bug_id_matches and ("click" in action_hints or "button-no-response" in bug_types))
     is_weekly_stats_related = bool(catalog_keyword_matches and profile_keyword_matches(keyword_text, site_profile, "section_keywords"))
     is_empty_state_related = bool(
@@ -665,6 +695,8 @@ def _make_candidate(
     openended_priority += 0.25 if any((is_login_related, is_cart_related_openended, is_checkout_related, is_search_related, is_filter_related, is_submit_related)) else 0.0
     priority += openended_priority
     priority += 0.25 if data_bug_id else 0.0
+    priority += 0.25 if data_testid else 0.0
+    priority += 0.45 if any((is_alert_card, is_metric_card, is_api_trigger, is_retry_button, is_recovery_button, is_detail_trigger, is_timeline_related)) else 0.0
     priority += 0.2 if visibility > 0.2 else 0.0
     priority += 0.1 if _has_bbox(bbox) else 0.0
     if visibility <= 0.0:
@@ -700,6 +732,13 @@ def _make_candidate(
         "is_hang_related": is_hang_related,
         "is_cart_quantity_related": is_cart_quantity_related,
         "is_network_related": is_network_related,
+        "is_alert_card": is_alert_card,
+        "is_metric_card": is_metric_card,
+        "is_api_trigger": is_api_trigger,
+        "is_retry_button": is_retry_button,
+        "is_recovery_button": is_recovery_button,
+        "is_detail_trigger": is_detail_trigger,
+        "is_timeline_related": is_timeline_related,
         "is_checkout_related": is_checkout_related,
         "is_search_related": is_search_related,
         "is_filter_related": is_filter_related,
@@ -724,12 +763,13 @@ def _make_candidate(
         "text_length": len(text or name),
         "data_bug_id": data_bug_id,
         "has_data_bug_id": bool(data_bug_id),
-        "has_data_testid": has_data_testid,
+        "data_testid": data_testid,
+        "has_data_testid": bool(data_testid),
     }
 
 
 def _add_candidate(candidates: Dict[str, Dict[str, Any]], candidate: Dict[str, Any]) -> None:
-    key = str(candidate.get("bid") or "")
+    key = _dedupe_candidate_key(candidate)
     if not key:
         return
     previous = candidates.get(key)
@@ -737,10 +777,32 @@ def _add_candidate(candidates: Dict[str, Dict[str, Any]], candidate: Dict[str, A
         candidates[key] = candidate
 
 
+def _dedupe_candidate_key(candidate: Mapping[str, Any]) -> str:
+    data_testid = _as_str(candidate.get("data_testid"))
+    if data_testid:
+        return f"testid:{data_testid}"
+    selector = _as_str(candidate.get("selector") or candidate.get("selector_hint"))
+    if selector:
+        return f"selector:{selector}"
+    data_bug_id = _as_str(candidate.get("data_bug_id"))
+    if data_bug_id:
+        return f"bugid:{data_bug_id}"
+    bid = _as_str(candidate.get("bid"))
+    return f"bid:{bid}" if bid else ""
+
+
 def _candidate_sort_key(item: Mapping[str, Any]) -> tuple[Any, ...]:
     return (
         bool(item.get("catalog_bug_id_matches")),
+        bool(item.get("is_retry_button")),
+        bool(item.get("is_recovery_button")),
+        bool(item.get("is_api_trigger")),
+        bool(item.get("is_alert_card")),
+        bool(item.get("is_metric_card")),
+        bool(item.get("is_detail_trigger")),
+        bool(item.get("is_timeline_related")),
         bool(item.get("has_data_bug_id")),
+        bool(item.get("has_data_testid")),
         bool(item.get("catalog_selector_match")),
         float(item.get("catalog_action_priority", 0.0) or 0.0),
         len(item.get("catalog_keyword_matches", []) or []),
@@ -759,6 +821,185 @@ def _candidate_sort_key(item: Mapping[str, Any]) -> tuple[Any, ...]:
         SOURCE_PRIORITY.get(str(item.get("source") or ""), 0),
         float(item.get("action_priority", 0.0) or 0.0),
     )
+
+
+def _is_infra_observation(obs: Mapping[str, Any], page_text: str) -> bool:
+    url = _as_str(obs.get("url") or _active_page_value(obs, "open_pages_urls"))
+    match = re.search(r":(\d{4,5})(?:/|$)", url)
+    if match:
+        try:
+            port = int(match.group(1))
+            if 9000 <= port <= 9100:
+                return True
+        except ValueError:
+            pass
+    return _contains_keyword(page_text, INFRA_ALERT_KEYWORDS + INFRA_METRIC_KEYWORDS + INFRA_API_TRIGGER_KEYWORDS)
+
+
+def _infra_candidates(
+    obs: Mapping[str, Any],
+    page_text: str,
+    site_profile: Optional[Mapping[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    properties = _index_extra_properties(obs.get("extra_element_properties"))
+    candidates: List[Dict[str, Any]] = []
+
+    for key, prop in properties.items():
+        if not isinstance(prop, Mapping):
+            continue
+        candidate = _infra_candidate_from_mapping(
+            bid=str(key),
+            mapping=prop,
+            page_text=page_text,
+            source="infra_extra_props",
+            site_profile=site_profile,
+        )
+        if candidate:
+            candidates.append(candidate)
+
+    for node in _axtree_nodes(obs.get("axtree_object")):
+        if not isinstance(node, Mapping):
+            continue
+        bid = _node_bid(node) or _as_str(node.get("backendDOMNodeId"))
+        prop = properties.get(str(bid), {})
+        merged = {
+            "text": _as_str(_ax_value(node.get("text"))),
+            "name": _as_str(_ax_value(node.get("name"))),
+            "role": _normalize_role(node.get("role")),
+            "bbox": prop.get("bbox") or prop.get("bounding_box") or node.get("bbox"),
+            "visibility": prop.get("visibility", 1.0),
+            "clickable": prop.get("clickable") or _ax_property_bool(node, "focusable"),
+            "data-testid": _attr_value(prop, "data-testid", "data_testid", "testid"),
+            "data-bug-id": _attr_value(prop, "data-bug-id", "data_bug_id"),
+            "aria-label": _as_str(prop.get("aria-label") or prop.get("aria_label")),
+            "title": _as_str(prop.get("title")),
+            "id": _as_str(prop.get("id")),
+            "class": _as_str(prop.get("class") or prop.get("className")),
+        }
+        candidate = _infra_candidate_from_mapping(
+            bid=str(bid or f"infra-ax-{len(candidates)}"),
+            mapping=merged,
+            page_text=page_text,
+            source="infra_axtree",
+            site_profile=site_profile,
+        )
+        if candidate:
+            candidates.append(candidate)
+
+    for candidate in _dom_candidates(obs.get("dom_object"), page_text, site_profile):
+        text = " ".join(_as_str(candidate.get(key)) for key in ("text", "name", "role", "tag", "id", "class_name", "data_testid"))
+        if _contains_keyword(text, INFRA_ALERT_KEYWORDS + INFRA_METRIC_KEYWORDS + INFRA_API_TRIGGER_KEYWORDS + INFRA_DETAIL_KEYWORDS):
+            candidate = dict(candidate)
+            candidate["source"] = "infra_dom"
+            candidates.append(candidate)
+
+    return candidates
+
+
+def _infra_candidate_from_mapping(
+    bid: str,
+    mapping: Mapping[str, Any],
+    page_text: str,
+    source: str,
+    site_profile: Optional[Mapping[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    text = _as_str(
+        mapping.get("text")
+        or mapping.get("name")
+        or mapping.get("aria-label")
+        or mapping.get("aria_label")
+        or mapping.get("title")
+        or mapping.get("value")
+        or mapping.get("data-testid")
+        or mapping.get("data_testid")
+        or mapping.get("id")
+        or ""
+    ).strip()
+    role = _as_str(mapping.get("role") or "")
+    tag = _as_str(mapping.get("tag") or mapping.get("tagName") or "")
+    data_testid = _attr_value(mapping, "data-testid", "data_testid", "testid")
+    data_bug_id = _attr_value(mapping, "data-bug-id", "data_bug_id")
+    class_name = _as_str(mapping.get("class") or mapping.get("className"))
+    keyword_text = " ".join([text, role, tag, data_testid, data_bug_id, class_name, _as_str(mapping.get("id"))])
+    if not _contains_keyword(
+        keyword_text,
+        INFRA_ALERT_KEYWORDS
+        + INFRA_METRIC_KEYWORDS
+        + INFRA_API_TRIGGER_KEYWORDS
+        + INFRA_RETRY_KEYWORDS
+        + INFRA_RECOVERY_KEYWORDS
+        + INFRA_DETAIL_KEYWORDS
+        + INFRA_TIMELINE_KEYWORDS,
+    ):
+        return None
+    bbox = _normalize_bbox(mapping.get("bbox") or mapping.get("bounding_box"))
+    visibility = max(0.2, min(1.0, _as_float(mapping.get("visibility"), default=1.0 if _has_bbox(bbox) else 0.2)))
+    clickable = _as_bool(mapping.get("clickable"), role.lower() == "button" or tag.lower() in DOM_INTERACTIVE_TAGS or bool(data_testid))
+    return _make_candidate(
+        bid=bid,
+        text=text or data_testid or role or f"infra-{bid}",
+        name=text or data_testid or role or f"infra-{bid}",
+        role=role or ("button" if clickable else "region"),
+        tag=tag,
+        bbox=bbox,
+        visibility=visibility,
+        clickable=clickable,
+        enabled=not _as_bool(mapping.get("disabled"), False),
+        source=source,
+        page_text=page_text,
+        clickable_score=0.7 if clickable else 0.35,
+        action_priority=0.9,
+        data_bug_id=data_bug_id,
+        data_testid=data_testid,
+        aria_label=_as_str(mapping.get("aria-label") or mapping.get("aria_label")),
+        title=_as_str(mapping.get("title")),
+        element_id=_as_str(mapping.get("id")),
+        class_name=class_name,
+        site_profile=site_profile,
+    )
+
+
+def _infra_virtual_candidates(
+    obs: Mapping[str, Any],
+    page_text: str,
+    site_profile: Optional[Mapping[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    url = _as_str(obs.get("url") or _active_page_value(obs, "open_pages_urls"))
+    targets = [
+        ("infra-network-status", "Network Status", "status network requests errors", "is_metric_card"),
+        ("infra-api-response", "API Response", "api response status payload", "is_api_trigger"),
+        ("infra-console-errors", "Console Errors", "console errors exceptions warnings", "is_alert_card"),
+        ("infra-resource-loading", "Resource Loading", "resource loading failed timeout", "is_metric_card"),
+        ("infra-alert-card", "Alert Card", "alert critical warning incident", "is_alert_card"),
+        ("infra-metric-card", "Metric Card", "metric latency cpu memory", "is_metric_card"),
+        ("infra-timeline", "Timeline", "timeline history events logs trace", "is_timeline_related"),
+        ("infra-server-health", "Server Health", "server health uptime process", "is_metric_card"),
+        ("infra-server-logs", "Server Logs", "server logs exceptions trace", "is_detail_trigger"),
+        ("infra-detail-panel", "Detail Panel", "details inspect expand", "is_detail_trigger"),
+    ]
+    candidates: List[Dict[str, Any]] = []
+    for bid, label, keywords, flag in targets:
+        if not page_text or _contains_keyword(page_text, keywords.split()) or url:
+            candidate = _make_candidate(
+                bid=bid,
+                text=label,
+                name=label,
+                role="region",
+                tag="",
+                bbox=[0.0, 0.0, 0.0, 0.0],
+                visibility=0.2,
+                clickable=False,
+                enabled=True,
+                source="infra_virtual",
+                page_text=page_text,
+                clickable_score=0.0,
+                action_priority=0.55,
+                site_profile=site_profile,
+            )
+            candidate[flag] = True
+            candidate["is_infra_virtual"] = True
+            candidates.append(candidate)
+    return candidates
 
 
 def _dom_candidates(
@@ -819,7 +1060,7 @@ def _dom_candidates(
                     page_text=page_text,
                     clickable_score=min(1.0, score),
                     data_bug_id=attr_map.get("data-bug-id", ""),
-                    has_data_testid=bool(attr_map.get("data-testid")),
+                    data_testid=attr_map.get("data-testid", ""),
                     aria_label=attr_map.get("aria-label", ""),
                     title=attr_map.get("title", ""),
                     element_id=attr_map.get("id", ""),
@@ -1397,6 +1638,9 @@ def _candidate_selector(candidate: Mapping[str, Any]) -> str:
     data_bug_id = _as_str(candidate.get("data_bug_id"))
     if data_bug_id:
         return f'[data-bug-id="{data_bug_id}"]'
+    data_testid = _as_str(candidate.get("data_testid"))
+    if data_testid:
+        return f'[data-testid="{data_testid}"]'
     tag = _as_str(candidate.get("tag") or "*")
     bid = _as_str(candidate.get("bid"))
     return f"{tag}[bid='{bid}']" if bid else tag

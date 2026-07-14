@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any, Dict, Mapping, Optional
 
 from adapters.browsergym_action_adapter import BrowserGymActionAdapter
@@ -24,6 +25,8 @@ class BrowserGymJAWSEnv:
         exploration_profile: str | Dict[str, Any] | None = None,
         requires_login: bool = False,
         login_config: Optional[Mapping[str, Any]] = None,
+        page_timeout_ms: int = 15000,
+        navigation_timeout_ms: int = 15000,
     ) -> None:
         self.site_id = site_id
         if not base_url:
@@ -35,6 +38,8 @@ class BrowserGymJAWSEnv:
         self.site_profile = dict(site_profile or build_site_profile(site_id or "", exploration_profile=exploration_profile))
         self.requires_login = bool(requires_login)
         self.login_config = dict(login_config or {})
+        self.page_timeout_ms = int(page_timeout_ms or 15000)
+        self.navigation_timeout_ms = int(navigation_timeout_ms or 15000)
 
         self.observation_adapter = BrowserGymObservationAdapter(max_candidates=max_candidates, site_profile=self.site_profile)
         self.action_adapter = BrowserGymActionAdapter()
@@ -47,6 +52,18 @@ class BrowserGymJAWSEnv:
         self.previous_action_type = "noop"
         self._browser_obs: Optional[Dict[str, Any]] = None
         self._jaws_obs: Optional[Dict[str, Any]] = None
+        self._playwright_events: list[Dict[str, Any]] = []
+        self._playwright_listener_page: Any = None
+        self._playwright_listener_flags: Dict[str, bool] = {
+            "playwright_console_listener_enabled": False,
+            "playwright_pageerror_listener_enabled": False,
+            "playwright_network_listener_enabled": False,
+            "playwright_request_listener_enabled": False,
+            "playwright_response_listener_enabled": False,
+            "playwright_requestfailed_listener_enabled": False,
+            "signal_collector_enabled": True,
+        }
+        self._playwright_listener_warning = ""
 
     def reset(self) -> tuple[Dict[str, Any], Dict[str, Any]]:
         gym = _import_browsergym()
@@ -60,6 +77,8 @@ class BrowserGymJAWSEnv:
             headless=self.headless,
         )
         browser_obs, info = self.env.reset()
+        self._apply_page_timeouts()
+        self._install_playwright_listeners()
         login_info: Dict[str, Any] = {
             "login_required": self.requires_login,
             "login_attempted": False,
@@ -94,6 +113,7 @@ class BrowserGymJAWSEnv:
         self._stamp_site_id(self._jaws_obs)
         self._stamp_login_info(self._jaws_obs, info)
         self._stamp_infra_info(self._jaws_obs, info)
+        self._stamp_playwright_signals(self._jaws_obs, self._playwright_signal_counts(0))
         return self._jaws_obs, self._info(info, self.previous_action_type)
 
     def step(self, action_id: int) -> tuple[Dict[str, Any], float, bool, Dict[str, Any]]:
@@ -102,6 +122,7 @@ class BrowserGymJAWSEnv:
 
         decoded_action = self.action_space.decode(action_id)
         browser_action = self.action_adapter.adapt(decoded_action, self._jaws_obs)
+        event_start_index = len(self._playwright_events)
         action_error = False
         done = False
         info: Dict[str, Any] = {}
@@ -119,6 +140,13 @@ class BrowserGymJAWSEnv:
             "inspect_latency",
             "inspect_server_logs",
             "inspect_runtime_metrics",
+            "inspect_network_status",
+            "inspect_api_response",
+            "inspect_console_errors",
+            "inspect_resource_loading",
+            "inspect_alert_card",
+            "inspect_metric_card",
+            "inspect_timeline",
         }:
             info = self._inspect_infra(browser_action.action_type)
         elif browser_action.action_type == "fill_input":
@@ -146,6 +174,7 @@ class BrowserGymJAWSEnv:
                 browser_obs, _, terminated, truncated, info = _normalize_step_result(
                     self.env.step(browser_action.action)
                 )
+                self._apply_page_timeouts()
                 done = bool(terminated or truncated)
             except Exception as exc:
                 action_error = True
@@ -176,6 +205,8 @@ class BrowserGymJAWSEnv:
             done = True
 
         previous_jaws_obs = self._jaws_obs
+        playwright_signal_info = self._playwright_signal_counts(event_start_index)
+        info.update(playwright_signal_info)
         next_jaws_obs = self.observation_adapter.convert(
             browser_obs,
             info,
@@ -184,6 +215,7 @@ class BrowserGymJAWSEnv:
         )
         self._stamp_site_id(next_jaws_obs)
         self._stamp_infra_info(next_jaws_obs, info)
+        self._stamp_playwright_signals(next_jaws_obs, playwright_signal_info)
         self._browser_obs = browser_obs
         self._jaws_obs = next_jaws_obs
         self.previous_action_type = browser_action.action_type
@@ -206,9 +238,238 @@ class BrowserGymJAWSEnv:
                     "viewport_height": info.get("viewport_height"),
                 },
                 "infra_signals": next_jaws_obs.get("infra_signals", {}),
+                **playwright_signal_info,
             }
         )
         return next_jaws_obs, 0.0, done, step_info
+
+    def _apply_page_timeouts(self) -> None:
+        page = _active_page(self.env)
+        if page is None:
+            return
+        try:
+            page.set_default_timeout(self.page_timeout_ms)
+            page.set_default_navigation_timeout(self.navigation_timeout_ms)
+        except Exception:
+            return
+
+    def _install_playwright_listeners(self) -> None:
+        page = _active_page(self.env)
+        if page is None:
+            self._playwright_listener_warning = "active Playwright page not found"
+            return
+        if page is self._playwright_listener_page:
+            return
+        self._playwright_listener_page = page
+        self._playwright_events = []
+        self._playwright_listener_flags = {
+            "playwright_console_listener_enabled": False,
+            "playwright_pageerror_listener_enabled": False,
+            "playwright_network_listener_enabled": False,
+            "playwright_request_listener_enabled": False,
+            "playwright_response_listener_enabled": False,
+            "playwright_requestfailed_listener_enabled": False,
+            "signal_collector_enabled": True,
+        }
+        self._playwright_listener_warning = ""
+        try:
+            page.on("console", self._on_playwright_console)
+            self._playwright_listener_flags["playwright_console_listener_enabled"] = True
+        except Exception as exc:
+            self._append_listener_warning(f"console listener failed: {exc}")
+        try:
+            page.on("pageerror", self._on_playwright_pageerror)
+            self._playwright_listener_flags["playwright_pageerror_listener_enabled"] = True
+        except Exception as exc:
+            self._append_listener_warning(f"pageerror listener failed: {exc}")
+        network_ok = False
+        for event_name, handler in (
+            ("request", self._on_playwright_request),
+            ("response", self._on_playwright_response),
+            ("requestfailed", self._on_playwright_requestfailed),
+        ):
+            try:
+                page.on(event_name, handler)
+                self._playwright_listener_flags[f"playwright_{event_name}_listener_enabled"] = True
+                network_ok = True
+            except Exception as exc:
+                self._append_listener_warning(f"{event_name} listener failed: {exc}")
+                continue
+        self._playwright_listener_flags["playwright_network_listener_enabled"] = network_ok
+
+    def _append_listener_warning(self, message: str) -> None:
+        if not self._playwright_listener_warning:
+            self._playwright_listener_warning = message
+        elif message not in self._playwright_listener_warning:
+            self._playwright_listener_warning += f"; {message}"
+
+    def _on_playwright_console(self, message: Any) -> None:
+        message_type = _safe_attr(message, "type", "")
+        text = _safe_attr(message, "text", "")
+        self._playwright_events.append(
+            {
+                "event": "console",
+                "event_type": "console",
+                "type": str(message_type or ""),
+                "message": str(text or ""),
+                "timestamp": _monotonic_timestamp(),
+                "step_index": self.step_index,
+                "action_signature": self.previous_action_type,
+            }
+        )
+
+    def _on_playwright_pageerror(self, error: Any) -> None:
+        self._playwright_events.append(
+            {
+                "event": "pageerror",
+                "event_type": "pageerror",
+                "type": error.__class__.__name__,
+                "message": str(error or ""),
+                "timestamp": _monotonic_timestamp(),
+                "step_index": self.step_index,
+                "action_signature": self.previous_action_type,
+            }
+        )
+
+    def _on_playwright_request(self, request: Any) -> None:
+        self._playwright_events.append(
+            {
+                "event": "request",
+                "event_type": "request",
+                "url": str(_safe_attr(request, "url", "") or ""),
+                "method": str(_safe_attr(request, "method", "") or ""),
+                "resource_type": str(_safe_attr(request, "resource_type", "") or ""),
+                "timestamp": _monotonic_timestamp(),
+                "step_index": self.step_index,
+                "action_signature": self.previous_action_type,
+            }
+        )
+
+    def _on_playwright_response(self, response: Any) -> None:
+        request = _safe_attr(response, "request", None)
+        self._playwright_events.append(
+            {
+                "event": "response",
+                "event_type": "response",
+                "url": str(_safe_attr(response, "url", "") or ""),
+                "method": str(_safe_attr(request, "method", "") or ""),
+                "status": int(_safe_attr(response, "status", 0) or 0),
+                "resource_type": str(_safe_attr(request, "resource_type", "") or ""),
+                "timestamp": _monotonic_timestamp(),
+                "step_index": self.step_index,
+                "action_signature": self.previous_action_type,
+            }
+        )
+
+    def _on_playwright_requestfailed(self, request: Any) -> None:
+        failure = _safe_attr(request, "failure", None)
+        error_text = ""
+        if callable(failure):
+            try:
+                failure = failure()
+            except Exception:
+                failure = None
+        if isinstance(failure, dict):
+            error_text = str(failure.get("errorText") or failure.get("error_text") or "")
+        self._playwright_events.append(
+            {
+                "event": "requestfailed",
+                "event_type": "requestfailed",
+                "url": str(_safe_attr(request, "url", "") or ""),
+                "method": str(_safe_attr(request, "method", "") or ""),
+                "resource_type": str(_safe_attr(request, "resource_type", "") or ""),
+                "message": error_text,
+                "failure_text": error_text,
+                "timestamp": _monotonic_timestamp(),
+                "step_index": self.step_index,
+                "action_signature": self.previous_action_type,
+            }
+        )
+
+    def _playwright_signal_counts(self, start_index: int = 0) -> Dict[str, Any]:
+        events = self._playwright_events[max(0, int(start_index or 0)) :]
+        entries = [
+            event for event in events if event.get("event") in {"request", "response", "requestfailed"}
+        ]
+        counts: Dict[str, Any] = {
+            **self._playwright_listener_flags,
+            "playwright_listener_warning": self._playwright_listener_warning,
+            "playwright_event_count": len(events),
+            "network_entries": entries[-50:],
+            "console_error_count": 0,
+            "console_warning_count": 0,
+            "page_error_count": 0,
+            "runtime_exception_count": 0,
+            "unhandled_rejection_count": 0,
+            "network_request_failed_count": 0,
+            "api_4xx_count": 0,
+            "api_5xx_count": 0,
+            "api_timeout_count": 0,
+            "static_asset_failure_count": 0,
+            "auth_permission_anomaly_count": 0,
+            "sensitive_data_exposure_signal_count": 0,
+            "token_exposure_signal_count": 0,
+        }
+        for event in events:
+            message = str(event.get("message") or "").lower()
+            event_type = str(event.get("type") or "").lower()
+            url = str(event.get("url") or "").lower()
+            if event.get("event") == "console":
+                if event_type == "error" or any(token in message for token in ("error", "exception", "failed")):
+                    counts["console_error_count"] += 1
+                elif event_type in {"warning", "warn"}:
+                    counts["console_warning_count"] += 1
+                if "unhandled" in message and "rejection" in message:
+                    counts["unhandled_rejection_count"] += 1
+            if event.get("event") == "pageerror":
+                counts["page_error_count"] += 1
+                counts["runtime_exception_count"] += 1
+            if event.get("event") == "requestfailed":
+                counts["network_request_failed_count"] += 1
+                if "timeout" in message:
+                    counts["api_timeout_count"] += 1
+            status = int(event.get("status") or 0)
+            if 400 <= status < 500:
+                counts["api_4xx_count"] += 1
+                if status in {401, 403}:
+                    counts["auth_permission_anomaly_count"] += 1
+            if status >= 500:
+                counts["api_5xx_count"] += 1
+            if any(url.endswith(suffix) for suffix in (".js", ".css", ".png", ".jpg", ".jpeg", ".svg", ".woff", ".woff2")) and (
+                event.get("event") == "requestfailed" or status >= 400
+            ):
+                counts["static_asset_failure_count"] += 1
+            if any(token in message for token in ("token", "bearer ", "authorization")):
+                counts["token_exposure_signal_count"] += 1
+            if any(token in message for token in ("password", "secret")):
+                counts["sensitive_data_exposure_signal_count"] += 1
+        for field in (
+            "console_error_count",
+            "console_warning_count",
+            "page_error_count",
+            "runtime_exception_count",
+            "unhandled_rejection_count",
+            "network_request_failed_count",
+            "api_4xx_count",
+            "api_5xx_count",
+            "api_timeout_count",
+            "static_asset_failure_count",
+            "auth_permission_anomaly_count",
+            "sensitive_data_exposure_signal_count",
+            "token_exposure_signal_count",
+        ):
+            counts[f"delta_{field}"] = counts[field]
+        return counts
+
+    def _stamp_playwright_signals(self, observation: Dict[str, Any], signal_info: Mapping[str, Any]) -> None:
+        runtime = observation.setdefault("runtime_signals", {})
+        for key, value in signal_info.items():
+            if key == "network_entries":
+                runtime[key] = value
+            elif key == "playwright_listener_warning":
+                runtime[key] = str(value or "")
+            elif isinstance(value, (bool, int, float, str)):
+                runtime[key] = value
 
     def _set_viewport(self, width: int, height: int, action_type: str) -> Dict[str, Any]:
         info: Dict[str, Any] = {
@@ -260,7 +521,7 @@ class BrowserGymJAWSEnv:
             page.locator(password_selector).first.fill(password, timeout=2000)
             page.locator(submit_selector).first.click(timeout=2000)
             try:
-                page.wait_for_load_state("networkidle", timeout=4000)
+                page.wait_for_load_state("domcontentloaded", timeout=min(self.navigation_timeout_ms, 4000))
             except Exception:
                 page.wait_for_timeout(800)
             current_url = page.url
@@ -499,14 +760,97 @@ def _normalize_step_result(result: Any) -> tuple[Any, float, bool, bool, Dict[st
 
 
 def _active_page(env: Any) -> Any:
-    candidates = [env, getattr(env, "unwrapped", None)]
-    for candidate in candidates:
-        if candidate is None:
-            continue
-        page = getattr(candidate, "page", None)
+    for candidate in _walk_page_candidates(env):
+        page = _page_from_candidate(candidate)
         if page is not None:
             return page
-        pages = getattr(candidate, "pages", None)
-        if pages:
-            return pages[0]
     return None
+
+
+def _walk_page_candidates(root: Any, max_depth: int = 4) -> list[Any]:
+    seen: set[int] = set()
+    queue: list[tuple[Any, int]] = [(root, 0)]
+    candidates: list[Any] = []
+    attr_names = (
+        "unwrapped",
+        "env",
+        "_env",
+        "task",
+        "_task",
+        "browser",
+        "_browser",
+        "context",
+        "_context",
+        "browser_context",
+        "playwright_context",
+        "page",
+        "_page",
+        "pages",
+    )
+    while queue:
+        obj, depth = queue.pop(0)
+        if obj is None:
+            continue
+        obj_id = id(obj)
+        if obj_id in seen:
+            continue
+        seen.add(obj_id)
+        candidates.append(obj)
+        if depth >= max_depth:
+            continue
+        for attr_name in attr_names:
+            try:
+                value = getattr(obj, attr_name, None)
+            except Exception:
+                continue
+            if value is None:
+                continue
+            if isinstance(value, (list, tuple)):
+                queue.extend((item, depth + 1) for item in value)
+            else:
+                queue.append((value, depth + 1))
+    return candidates
+
+
+def _page_from_candidate(candidate: Any) -> Any:
+    if candidate is None:
+        return None
+    if callable(getattr(candidate, "on", None)) and (
+        callable(getattr(candidate, "locator", None)) or callable(getattr(candidate, "evaluate", None))
+    ):
+        return candidate
+    for attr_name in ("page", "_page"):
+        try:
+            page = getattr(candidate, attr_name, None)
+        except Exception:
+            page = None
+        if page is not None and callable(getattr(page, "on", None)):
+            return page
+    try:
+        pages = getattr(candidate, "pages", None)
+    except Exception:
+        pages = None
+    if pages:
+        for page in pages:
+            if page is not None and callable(getattr(page, "on", None)):
+                return page
+    return None
+
+
+def _safe_attr(obj: Any, name: str, default: Any = None) -> Any:
+    if obj is None:
+        return default
+    try:
+        value = getattr(obj, name, default)
+        if callable(value):
+            try:
+                return value()
+            except TypeError:
+                return value
+        return value
+    except Exception:
+        return default
+
+
+def _monotonic_timestamp() -> float:
+    return time.monotonic()

@@ -69,7 +69,7 @@ OBSERVATION_FIELDS = [
 ACTION_SPACE_FIELDS = [
     "run_id", "batch_id", "site_id", "episode_id", "step_id", "tick_id", "timestamp",
     "action_index", "action_type", "action_name", "action_description",
-    "target_candidate_index", "target_selector", "target_text", "target_role", "target_tag",
+    "target_candidate_index", "target_selector", "target_testid", "target_text", "target_role", "target_tag",
     "target_bbox_x", "target_bbox_y", "target_bbox_width", "target_bbox_height",
     "is_valid", "is_enabled", "is_visible", "is_in_viewport",
     "policy_logit", "policy_probability", "selected", "selection_rank",
@@ -255,7 +255,8 @@ class EpisodeCsvLogger:
         for action_index in action_indices:
             decoded = action_space.decode(action_index)
             candidate_index = int(decoded.get("candidate_index", 0) or 0)
-            candidate = _candidate_at(observation, candidate_index) if action_space.is_element_action(str(decoded.get("action_type"))) else {}
+            action_type = str(decoded.get("action_type") or "")
+            candidate = _candidate_at(observation, candidate_index) if action_space.is_element_action(action_type) else {}
             bbox = _bbox(candidate)
             is_valid = bool(action_index < len(mask) and mask[action_index] > 0)
             self._write(
@@ -269,11 +270,12 @@ class EpisodeCsvLogger:
                     "tick_id": tick_id,
                     "timestamp": timestamp,
                     "action_index": action_index,
-                    "action_type": decoded.get("action_type", ""),
-                    "action_name": decoded.get("action_type", ""),
+                    "action_type": action_type,
+                    "action_name": action_type,
                     "action_description": _action_description(decoded, candidate),
                     "target_candidate_index": candidate_index if candidate else "",
                     "target_selector": _selector(candidate),
+                    "target_testid": candidate.get("data_testid", "") if isinstance(candidate, Mapping) else "",
                     "target_text": _candidate_text(candidate),
                     "target_role": candidate.get("role", "") if isinstance(candidate, Mapping) else "",
                     "target_tag": candidate.get("tag", "") if isinstance(candidate, Mapping) else "",
@@ -794,6 +796,9 @@ def _in_viewport(candidate: Mapping[str, Any], observation: Mapping[str, Any]) -
 def _selector(candidate: Mapping[str, Any]) -> str:
     if not isinstance(candidate, Mapping):
         return ""
+    data_testid = str(candidate.get("data_testid") or "")
+    if data_testid:
+        return f'[data-testid="{data_testid}"]'
     return str(candidate.get("selector") or candidate.get("selector_hint") or candidate.get("data_bug_id") or candidate.get("bid") or "")
 
 

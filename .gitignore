@@ -12,6 +12,7 @@ __pycache__/
 .mypy_cache/
 
 # Runtime artifacts
+artifacts/
 artifacts/scans/
 artifacts/evaluations/
 artifacts/training/
@@ -24,14 +25,14 @@ configs/generated/
 
 # Logs
 *.log
-stdout.txt
-stderr.txt
-raw_result.txt
+    stdout.txt
+    stderr.txt
+    raw_result.txt
 
-# Playwright
-.playwright/
-playwright-report/
-test-results/
+    # Playwright
+    .playwright/
+    playwright-report/
+    test-results/
 
 # IDE / OS
 .vscode/
@@ -64,5 +65,3 @@ artifacts/tmp_*.json
 
 artifacts/logs/
 artifacts/tmp_*/
-
-artifacts/csv_smoke/

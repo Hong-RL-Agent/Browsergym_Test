@@ -10,7 +10,7 @@ import gymnasium as gym
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://localhost:9220")
-    args = parser.parse_args()
+    args = parser.parse_args() 
 
     print(f"[openended-test] requested base_url: {args.base_url}")
     env = gym.make(
@@ -50,7 +50,7 @@ def main() -> int:
 
 
 def _first_url(value: object) -> str:
-    if isinstance(value, (list, tuple)) and value:
+    if isinstance(value, (list, tuple)) and value: 
         return str(value[0])
     return ""
 
@@ -60,6 +60,170 @@ def _warn_if_url_mismatch(requested_url: str, observed_url: object) -> None:
     observed = urlparse(str(observed_url or ""))
     if requested.netloc and observed.netloc and requested.netloc != observed.netloc:
         print(f"WARNING: requested base_url is {requested_url} but BrowserGym opened {observed_url}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+``
+
+
+
+
+
 
 
 if __name__ == "__main__":

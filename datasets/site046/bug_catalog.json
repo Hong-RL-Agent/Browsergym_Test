@@ -1,0 +1,52 @@
+{
+  "site_id": "site046",
+  "generated_by": "fleet-phase2-v1",
+  "bugs": [
+    {
+      "id": "site046-auto-01",
+      "bug_id": "site046-auto-01",
+      "site_id": "site046",
+      "type": "duplicated-rendering",
+      "selector": "",
+      "action_hints": [
+        "change_viewport_mobile",
+        "click_element",
+        "fill_input",
+        "inspect_console",
+        "inspect_layout",
+        "press_enter"
+      ],
+      "anomaly_evidence_keywords": [
+        "axtree_or_text_only",
+        "book_context",
+        "duplicated_titles",
+        "visible_duplicate_candidates"
+      ],
+      "discovery_confidence": 0.9,
+      "reproduction_count": 20,
+      "generated": true
+    },
+    {
+      "id": "site046-auto-02",
+      "bug_id": "site046-auto-02",
+      "site_id": "site046",
+      "type": "layout-overlap",
+      "selector": "",
+      "action_hints": [
+        "change_viewport_mobile",
+        "inspect_layout"
+      ],
+      "anomaly_evidence_keywords": [
+        "action_type",
+        "layout_overlap_count",
+        "mobile_viewport",
+        "viewport_height",
+        "viewport_type",
+        "viewport_width"
+      ],
+      "discovery_confidence": 0.9,
+      "reproduction_count": 5,
+      "generated": true
+    }
+  ]
+}

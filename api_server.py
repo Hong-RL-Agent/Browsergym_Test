@@ -1,5 +1,6 @@
 """FastAPI job server for J.A.W.S BrowserGym exploration."""
 from __future__ import annotations
+import json
 import threading
 import traceback
 import uuid
@@ -14,9 +15,15 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from services.exploration_service import ExplorationService
 
 ROOT = Path(__file__).resolve().parent
-DEFAULT_MODEL = ROOT / "artifacts" / "models" / "jaws_browsergym_shared_ppo.pt"
+POLICY_CONFIG_PATH = ROOT / "configs" / "default_policy.json"
+DEFAULT_POLICY = json.loads(POLICY_CONFIG_PATH.read_text(encoding="utf-8"))
+DEFAULT_ALGORITHM = str(DEFAULT_POLICY.get("algorithm", "ppo"))
+DEFAULT_MODEL = ROOT / str(DEFAULT_POLICY.get("model_path", "artifacts/models/jaws_browsergym_shared_ppo.pt"))
 JOBS_ROOT = ROOT / "artifacts" / "jobs"
-EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="browsergym-job")
+# BrowserGym 0.13 keeps one process-global synchronous Playwright instance.
+# It is bound to the event loop of the thread that creates it, so every job
+# must run on the same dedicated worker thread.
+EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="browsergym-job")
 LOCK = threading.RLock()
 JOBS: dict[str, dict[str, Any]] = {}
 FUTURES: dict[str, Future[Any]] = {}
@@ -48,7 +55,8 @@ class LegacyPredictRequest(BaseModel):
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", "modelReady": DEFAULT_MODEL.exists(), "activeJobs": sum(1 for job in JOBS.values() if job["status"] in {"queued", "running"})}
+    return {"status": "ok", "modelReady": DEFAULT_MODEL.exists(), "defaultAlgorithm": DEFAULT_ALGORITHM,
+            "activeJobs": sum(1 for job in JOBS.values() if job["status"] in {"queued", "running"})}
 
 @app.post("/explorations", status_code=202)
 def create_exploration(request: ExplorationRequest) -> dict[str, Any]:

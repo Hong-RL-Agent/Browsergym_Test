@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Mapping
 from urllib.parse import quote
 
 from services.api_catalog_service import ApiEndpoint, ApiSite
+from services.owasp_test_catalog_service import safe_test_metadata
 
 
 API_MUTATIONS = [
@@ -38,12 +39,17 @@ class ApiFuzzCase:
     request: Dict[str, Any]
 
 
-def build_fuzz_cases(site: ApiSite, endpoint: ApiEndpoint, max_cases: int | None = None) -> List[ApiFuzzCase]:
+def build_fuzz_cases(site: ApiSite, endpoint: ApiEndpoint, max_cases: int | None = None,
+                     allow_mutating: bool = False) -> List[ApiFuzzCase]:
+    if endpoint.method not in {"GET", "HEAD"} and not (
+        allow_mutating and site.allow_mutating_requests and endpoint.test_safe
+    ):
+        return []
     base_request = _valid_request(site, endpoint)
     cases = [
         _case(site, endpoint, mutation, _mutate_request(base_request, site, endpoint, mutation))
         for mutation in API_MUTATIONS
-        if _mutation_applies(endpoint, mutation)
+        if _mutation_applies(endpoint, mutation) and safe_test_metadata(mutation) is not None
     ]
     if max_cases is not None and max_cases > 0:
         return cases[:max_cases]
@@ -62,6 +68,7 @@ def build_url(base_url: str, path: str, path_params: Mapping[str, Any] | None = 
 
 
 def _case(site: ApiSite, endpoint: ApiEndpoint, mutation: str, request: Dict[str, Any]) -> ApiFuzzCase:
+    safety = safe_test_metadata(mutation) or {}
     observation = {
         "source": "api",
         "site_id": site.site_id,
@@ -83,6 +90,8 @@ def _case(site: ApiSite, endpoint: ApiEndpoint, mutation: str, request: Dict[str
         "api_id": endpoint.api_id,
         "method": endpoint.method,
         "url": request["url"],
+        "owasp_refs": list(safety.get("owasp", [])),
+        "safety": {"mode": "non-destructive", "risk": safety.get("risk", "low"), "allowlisted": True},
     }
     return ApiFuzzCase(observation=observation, action=action, request=request)
 

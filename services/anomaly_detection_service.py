@@ -268,8 +268,50 @@ def detect_anomalies(
     catalog_layout_anomaly = _detect_catalog_layout_overflow(after_observation, action_type, site_profile, overflow_count, overflow_details)
     if catalog_layout_anomaly:
         anomalies.append(catalog_layout_anomaly)
+    layout_signals = after_observation.get("layout_signals", {}) or {}
+    viewport_type = _viewport_type(after_observation)
+    explicit_layout_targets = [
+        detail for detail in layout_signals.get("layout_overflow_candidates", []) or []
+        if isinstance(detail, Mapping)
+        and detail.get("data_bug_id")
+        and detail.get("is_layout_target")
+    ]
+    if not explicit_layout_targets:
+        explicit_layout_targets = [
+            candidate for candidate in after_observation.get("candidate_elements", []) or []
+            if isinstance(candidate, Mapping)
+            and candidate.get("data_bug_id")
+            and candidate.get("is_layout_target")
+        ]
+    # BrowserGym's accessibility tree can omit child rectangles. In that case
+    # the geometric overlap counter cannot see an intentional mobile layout
+    # target even though the catalog-enriched DOM node is present. Only use
+    # this fallback for an explicit target during an explicit layout probe.
+    if (
+        overlap_count < 2
+        and viewport_type == "mobile"
+        and action_type == "inspect_layout"
+        and explicit_layout_targets
+    ):
+        target = explicit_layout_targets[0]
+        anomalies.append(
+            {
+                "type": "layout-overlap",
+                "confidence": 0.82,
+                "evidence": {
+                    "layout_overlap_count": overlap_count,
+                    "viewport_type": viewport_type,
+                    "mobile_viewport": True,
+                    "action_type": action_type,
+                    "layout_check": "mobile_overlap",
+                    "bbox_observation_incomplete": True,
+                    "data_bug_id": target.get("data_bug_id"),
+                    "selector_hint": target.get("selector_hint"),
+                    "catalog_bug_id_matches": target.get("catalog_bug_id_matches", []),
+                },
+            }
+        )
     if overlap_count >= 2:
-        viewport_type = _viewport_type(after_observation)
         mobile_layout_action = action_type in {"inspect_layout", "change_viewport_mobile"} or _previous_action_type(
             after_observation
         ) == "change_viewport_mobile"

@@ -21,6 +21,7 @@ def main() -> int:
     parser.add_argument("--headless", type=_parse_bool, default=True)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--entropy-coef", type=float, default=0.02)
+    parser.add_argument("--algorithm", choices=["ppo", "rainbow-dqn"], default="ppo")
     parser.add_argument("--load-model", default="")
     parser.add_argument("--save-model", default="")
     args = parser.parse_args()
@@ -33,6 +34,7 @@ def main() -> int:
         headless=args.headless,
         seed=args.seed,
         entropy_coef=args.entropy_coef,
+        algorithm=args.algorithm,
         load_model_path=args.load_model or None,
         model_output_path=args.save_model or None,
     )

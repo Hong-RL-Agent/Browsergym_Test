@@ -34,6 +34,8 @@ def main() -> int:
     parser.add_argument("--max-cases-per-endpoint", type=int, default=16)
     parser.add_argument("--timeout-ms", type=int, default=3000)
     parser.add_argument("--run-id", default="")
+    parser.add_argument("--allow-mutating", action="store_true",
+                        help="Still requires site.allow_mutating_requests and endpoint.test_safe in the catalog.")
     args = parser.parse_args()
 
     sites = load_api_catalog(args.config, args.start_port, args.end_port)
@@ -48,7 +50,7 @@ def main() -> int:
     evaluated_sites = 0
 
     for site in sites:
-        site_result = _evaluate_site(site, args.max_cases_per_endpoint, args.timeout_ms, scorer)
+        site_result = _evaluate_site(site, args.max_cases_per_endpoint, args.timeout_ms, scorer, args.allow_mutating)
         site_results[site.site_id] = site_result
         all_anomalies.extend(site_result["anomalies"])
         transitions.extend(site_result["transitions"])
@@ -84,6 +86,7 @@ def _evaluate_site(
     max_cases_per_endpoint: int,
     timeout_ms: int,
     scorer: ApiRewardScorer,
+    allow_mutating: bool = False,
 ) -> Dict[str, Any]:
     site_anomalies: List[Dict[str, Any]] = []
     transitions: List[Dict[str, Any]] = []
@@ -95,7 +98,7 @@ def _evaluate_site(
         endpoint_anomalies = 0
         endpoint_reward = 0.0
         try:
-            cases = build_fuzz_cases(site, endpoint, max_cases=max_cases_per_endpoint)
+            cases = build_fuzz_cases(site, endpoint, max_cases=max_cases_per_endpoint, allow_mutating=allow_mutating)
             for case in cases:
                 responses = _execute_case(case, timeout_ms)
                 case_anomalies: List[Dict[str, Any]] = []

@@ -1,0 +1,7 @@
+{
+  "algorithm": "ppo",
+  "model_path": "artifacts/models/jaws_browsergym_shared_ppo.pt",
+  "decision_source": "artifacts/algorithm_ab_multiseed_trained/aggregate.json",
+  "decision_date": "2026-07-14",
+  "reason": "Three-seed pure-policy evaluation tied on recall and precision; PPO had higher mean reward and lower variance."
+}

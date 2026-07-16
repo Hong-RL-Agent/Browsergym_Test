@@ -137,21 +137,28 @@ def _catalog_score(anomaly_type: str, evidence: Mapping[str, Any], bug: Mapping[
     for value in evidence.get("catalog_bug_id_matches", []) or []:
         catalog_ids.add(str(value))
 
+    has_direct_identity = bool(direct_ids)
     if bug_id and bug_id in direct_ids:
         score += 0.8
         reasons.append("data-bug-id-match")
     elif selector_data_bug_id and selector_data_bug_id in direct_ids:
         score += 0.8
         reasons.append("data-bug-id-match")
-    elif bug_id and bug_id in catalog_ids:
+    elif not has_direct_identity and bug_id and bug_id in catalog_ids:
         score += 0.8
         reasons.append("catalog-bug-id-match")
-    elif selector_data_bug_id and selector_data_bug_id in catalog_ids:
+    elif not has_direct_identity and selector_data_bug_id and selector_data_bug_id in catalog_ids:
         score += 0.8
         reasons.append("catalog-bug-id-match")
     elif selector and selector in selector_values:
         score += 0.7
         reasons.append("selector-match")
+
+    # A concrete DOM identity is stronger than broad section keywords. When
+    # another bug was clicked, do not let generic words reassign the anomaly.
+    identity_conflict = has_direct_identity and bug_id not in direct_ids and selector_data_bug_id not in direct_ids
+    if identity_conflict:
+        return (0.4 if type_matched else 0.0), ("type-match" if type_matched else "")
 
     for field, weight in (
         ("target_keywords", 0.2),

@@ -1,8 +1,9 @@
-"""Single-environment BrowserGym PPO training service."""
+"""Single-environment BrowserGym training service."""
 
 from __future__ import annotations
 
 import json
+import os
 import random
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
@@ -11,13 +12,15 @@ import numpy as np
 import torch
 
 from agents.ppo_agent import PPOAgent
+from agents.rainbow_dqn_agent import RainbowDQNAgent
 from agents.rollout_buffer import RolloutBuffer
 from envs.browsergym_jaws_env import BrowserGymJAWSEnv
 from models.action_space import ActionSpace
 from models.observation_encoder import ObservationEncoder
 from services.anomaly_detection_service import detect_anomalies
-from services.autonomous_reward_service import calculate_autonomous_reward
+from services.autonomous_reward_service import calculate_autonomous_reward, calculate_security_reward
 from services.known_bug_matcher import load_known_bugs, match_anomalies_to_known_bugs
+from services.probe_planner import next_probe_action
 from services.site_profile_service import build_site_profile, load_training_site_config, validate_site_identity
 
 
@@ -35,6 +38,9 @@ class BrowserGymTrainingService:
         load_model_path: Optional[str] = None,
         seed: int = 42,
         entropy_coef: float = 0.02,
+        algorithm: str = "rainbow-dqn",
+        dqn_updates_per_step: int = 2,
+        security_mode: bool = False,
     ) -> None:
         self.site_id = site_id
         self.base_url = base_url
@@ -43,18 +49,25 @@ class BrowserGymTrainingService:
         self.max_candidates = max_candidates
         self.headless = headless
         self.output_dir = Path(output_dir or f"artifacts/browsergym/{site_id}")
-        self.model_output_path = Path(model_output_path or f"artifacts/models/{site_id}_browsergym_ppo.pt")
+        self.model_output_path = Path(model_output_path or f"artifacts/models/{site_id}_browsergym_{algorithm.lower().replace('-', '_')}.pt")
         self.load_model_path = Path(load_model_path) if load_model_path else None
         self.seed = seed
         self.entropy_coef = max(0.02, float(entropy_coef))
+        self.algorithm = algorithm.lower().strip()
+        self.dqn_updates_per_step = max(1, int(dqn_updates_per_step))
+        self.security_mode = bool(security_mode)
+        self.imitation_prior = _load_imitation_prior()
+        if self.algorithm not in {"ppo", "rainbow-dqn"}:
+            raise ValueError("algorithm must be 'ppo' or 'rainbow-dqn'")
 
         self.encoder = ObservationEncoder(max_candidates=max_candidates)
         self.action_space = ActionSpace(max_candidates=max_candidates)
-        self.agent = PPOAgent(
-            self.encoder.get_obs_dim(),
-            self.action_space.get_action_dim(),
-            entropy_coef=self.entropy_coef,
-        )
+        if self.algorithm == "ppo":
+            self.agent = PPOAgent(
+                self.encoder.get_obs_dim(), self.action_space.get_action_dim(), entropy_coef=self.entropy_coef,
+            )
+        else:
+            self.agent = RainbowDQNAgent(self.encoder.get_obs_dim(), self.action_space.get_action_dim())
         if self.load_model_path and self.load_model_path.exists():
             self.agent.load(self.load_model_path)
         self.known_bugs = load_known_bugs(site_id)
@@ -85,6 +98,10 @@ class BrowserGymTrainingService:
         cart_count_detected_count = 0
         button_no_response_candidates = 0
         last_update: Dict[str, float] = {}
+        policy_action_count = 0
+        guided_action_count = 0
+        successful_episode_count = 0
+        failure_type_counts: Dict[str, int] = {}
 
         for episode_index in range(1, self.episodes + 1):
             episode_id = f"EP-{episode_index:04d}"
@@ -99,7 +116,7 @@ class BrowserGymTrainingService:
                 requires_login=bool(self.site_config.get("requires_login")),
                 login_config=self.site_config.get("login") if isinstance(self.site_config.get("login"), Mapping) else None,
             )
-            buffer = RolloutBuffer()
+            buffer = RolloutBuffer() if self.algorithm == "ppo" else None
             episode_reward = 0.0
             episode_anomaly_count = 0
             history: Dict[str, Any] = {
@@ -117,6 +134,7 @@ class BrowserGymTrainingService:
 
             try:
                 observation, _ = env.reset()
+                successful_episode_count += 1
                 identity = validate_site_identity(self.site_id, observation)
                 for warning in identity.get("identity_warnings", []) or []:
                     print(warning)
@@ -125,8 +143,41 @@ class BrowserGymTrainingService:
                     obs_vector = self.encoder.encode_observation(observation)
                     action_mask = self.action_space.build_action_mask(observation)
                     selected = self.agent.select_action(obs_vector, action_mask)
-                    action_id = _guided_action_id(self.action_space, observation, history, selected["action_id"])
-                    if action_id != selected["action_id"]:
+                    goal = _select_exploration_goal(observation, history, self.security_mode)
+                    site_id = str(observation.get("page_state", {}).get("site_id") or self.site_id)
+                    planned_probe = next_probe_action(site_id, observation, history, self.known_bugs)
+                    guided_action_id = _guided_action_id(
+                        self.action_space, observation,
+                        {**history, "active_goal": goal, "imitation_prior": self.imitation_prior},
+                        selected["action_id"]
+                    )
+                    if planned_probe:
+                        planned_id = _planned_probe_action_id(
+                            self.action_space, observation, history, planned_probe, guided_action_id
+                        )
+                        if action_mask[planned_id] > 0:
+                            guided_action_id = planned_id
+                        if planned_probe == "inspect_layout":
+                            history["layout_probe_attempts"] = int(history.get("layout_probe_attempts", 0) or 0) + 1
+                    if self.algorithm == "rainbow-dqn":
+                        progress_ratio = ((episode_index - 1) * self.max_steps + step) / max(
+                            1, self.episodes * self.max_steps
+                        )
+                        guide_probability = 0.75 + (0.15 - 0.75) * progress_ratio
+                        if goal in {"mobile_layout_inspection", "security_surface_inspection", "recovery"}:
+                            guide_probability = 1.0
+                        use_guided_action = (
+                            guided_action_id != selected["action_id"] and random.random() < guide_probability
+                        )
+                        action_id = guided_action_id if use_guided_action else selected["action_id"]
+                    else:
+                        use_guided_action = guided_action_id != selected["action_id"]
+                        action_id = guided_action_id
+                    if use_guided_action:
+                        guided_action_count += 1
+                    else:
+                        policy_action_count += 1
+                    if self.algorithm == "ppo" and action_id != selected["action_id"]:
                         selected = self.agent.score_action(obs_vector, action_mask, action_id)
                     action = self.action_space.decode(action_id)
                     action["action_id"] = action_id
@@ -135,6 +186,22 @@ class BrowserGymTrainingService:
 
                     next_observation, _, done, step_info = env.step(action_id)
                     action["failed"] = bool(step_info.get("last_action_error"))
+                    if action["failed"]:
+                        # Environment-level recovery: refresh the DOM immediately
+                        # instead of waiting for the next policy decision.
+                        recovery_id = self.action_space.encode("inspect_dom", 0)
+                        recovery_observation, _, recovery_done, recovery_info = env.step(recovery_id)
+                        action["recovery_action_type"] = "inspect_dom"
+                        action["recovery_action_id"] = recovery_id
+                        step_info = {
+                            **step_info,
+                            "recovery_attempted": True,
+                            "recovery_success": not bool(recovery_info.get("last_action_error")),
+                            "recovery_info": recovery_info,
+                        }
+                        if not recovery_info.get("last_action_error"):
+                            next_observation = recovery_observation
+                            done = bool(done or recovery_done)
                     anomalies = detect_anomalies(
                         observation,
                         next_observation,
@@ -145,7 +212,8 @@ class BrowserGymTrainingService:
                     action["matched_bug_ids"] = [
                         str(match.get("matched_bug_id")) for match in known_matches if match.get("matched_bug_id")
                     ]
-                    reward, reward_breakdown = calculate_autonomous_reward(
+                    reward_calculator = calculate_security_reward if self.security_mode else calculate_autonomous_reward
+                    reward, reward_breakdown = reward_calculator(
                         observation,
                         next_observation,
                         action,
@@ -154,17 +222,24 @@ class BrowserGymTrainingService:
                         history,
                         self.site_profile,
                     )
-
-                    buffer.add(
-                        obs_vector,
-                        action_id,
-                        selected["log_prob"],
-                        reward,
-                        done,
-                        selected["value"],
-                        action_mask,
-                        step_info,
+                    failure_type = _classify_failure(
+                        observation, next_observation, action, anomalies, known_matches, step_info
                     )
+                    failure_type_counts[failure_type] = failure_type_counts.get(failure_type, 0) + 1
+                    termination_reason = _termination_reason(done, step_info, failure_type)
+
+                    if self.algorithm == "ppo":
+                        buffer.add(obs_vector, action_id, selected["log_prob"], reward, done,
+                                   selected["value"], action_mask, step_info)
+                    else:
+                        next_vector = self.encoder.encode_observation(next_observation)
+                        next_mask = self.action_space.build_action_mask(next_observation)
+                        self.agent.observe(obs_vector, action_id, reward, next_vector, done, next_mask)
+                        update_metrics = [self.agent.update() for _ in range(self.dqn_updates_per_step)]
+                        last_update = update_metrics[-1]
+                        trained_losses = [metric["loss"] for metric in update_metrics if metric.get("trained", 0.0)]
+                        if trained_losses:
+                            last_update["mean_loss"] = float(np.mean(trained_losses))
                     episode_reward += reward
                     total_steps += 1
                     episode_anomaly_count += len(anomalies)
@@ -195,8 +270,21 @@ class BrowserGymTrainingService:
                             },
                             "action": action,
                             "action_type": action_type,
+                            "action_source": "guided" if use_guided_action else "policy",
+                            "exploration_goal": goal,
+                            "planned_probe": planned_probe,
+                            "execution_success": not bool(action.get("failed")),
+                            "failure_type": failure_type,
+                            "termination_reason": termination_reason,
+                            "recovery_attempt": int(history.get("recovery_attempts", 0) or 0),
                             "reward": reward,
                             "reward_breakdown": reward_breakdown,
+                            "reward_breakdown_valid": _reward_breakdown_matches(reward, reward_breakdown),
+                            "next_state_summary": {
+                                "url": next_observation.get("page_state", {}).get("url", ""),
+                                "viewport_type": next_observation.get("page_state", {}).get("viewport_type", ""),
+                                "candidate_count": len(next_observation.get("candidate_elements", []) or []),
+                            },
                             "catalog_matches": {
                                 "candidate_catalog_matches": action.get("catalog_bug_id_matches", []),
                                 "candidate_keyword_matches": action.get("catalog_keyword_matches", []),
@@ -210,18 +298,40 @@ class BrowserGymTrainingService:
                         }
                     )
 
+                    recovery_parent_failure = history.get("last_failure_type") == "ACTION_EXECUTION_FAILED"
                     _update_history(history, observation, action, anomalies)
+                    if any(
+                        anomaly.get("type") in {"layout-overlap", "layout-overflow"}
+                        or "layout_overlap_count" in (anomaly.get("evidence", {}) or {})
+                        for anomaly in anomalies
+                    ):
+                        history["layout_oracle_observed"] = True
+                    history["last_failure_type"] = failure_type
+                    if failure_type == "ACTION_EXECUTION_FAILED":
+                        history["last_failed_action_type"] = action_type
+                        history["last_failed_candidate_index"] = int(action.get("candidate_index", 0) or 0)
+                        history["recovery_attempts"] = 0
+                    elif recovery_parent_failure and action_type == "inspect_dom":
+                        history["last_failure_type"] = "ACTION_EXECUTION_FAILED"
+                        history["recovery_attempts"] = 1
+                    elif history.get("last_failure_type") != "ACTION_EXECUTION_FAILED":
+                        history["recovery_attempts"] = 0
                     observation = next_observation
                     if done:
                         break
             except Exception as exc:
+                failure_type_counts["INFRA_FAILURE"] = failure_type_counts.get("INFRA_FAILURE", 0) + 1
                 self._append_transition(
                     {
                         "site_id": self.site_id,
                         "episode_id": episode_id,
-                        "step": len(buffer) + 1,
+                        "step": (len(buffer) if buffer is not None else total_steps) + 1,
                         "state_summary": {"url": "", "candidate_count": 0},
                         "action": {"action_id": None, "action_type": "exception", "candidate_index": 0},
+                        "action_source": "system",
+                        "execution_success": False,
+                        "failure_type": "INFRA_FAILURE",
+                        "termination_reason": "episode_exception",
                         "reward": 0.0,
                         "reward_breakdown": {"final_reward": 0.0},
                         "anomalies": [{"type": "episode-exception", "confidence": 1.0, "evidence": {"error": str(exc)}}],
@@ -232,18 +342,34 @@ class BrowserGymTrainingService:
             finally:
                 env.close()
 
-            if len(buffer) > 0:
+            if self.algorithm == "ppo" and buffer is not None and len(buffer) > 0:
                 last_value = 0.0 if done else self.agent.estimate_value(self.encoder.encode_observation(observation))
                 buffer.compute_returns_and_advantages(last_value, self.agent.gamma, self.agent.gae_lambda)
                 last_update = self.agent.update(buffer)
 
             episode_rewards.append(episode_reward)
+            self._save_checkpoint_atomically()
+            progress = {
+                "site_id": self.site_id,
+                "algorithm": self.algorithm,
+                "completed_episodes": episode_index,
+                "requested_episodes": self.episodes,
+                "total_steps": total_steps,
+                "latest_episode_reward": episode_reward,
+                "training_steps": getattr(self.agent, "training_steps", None),
+                "model_path": str(self.model_output_path),
+            }
+            (self.output_dir / "training_progress.json").write_text(
+                json.dumps(_jsonable(progress), indent=2), encoding="utf-8"
+            )
             print(
                 f"[train] finished {episode_id}: reward={episode_reward:.3f}, "
                 f"anomalies={episode_anomaly_count}, loss={last_update}"
             )
 
-        self.agent.save(self.model_output_path)
+        self._save_checkpoint_atomically()
+        if successful_episode_count == 0:
+            raise RuntimeError(f"all training episodes failed to open {self.base_url}")
         matched_bug_ids = sorted(
             {str(bug.get("matched_bug_id")) for bug in self.detected_bugs if bug.get("matched_bug_id")}
         )
@@ -254,7 +380,9 @@ class BrowserGymTrainingService:
         known_bug_match_count = len(matched_bug_ids)
         summary = {
             "site_id": self.site_id,
+            "security_mode": self.security_mode,
             "episodes": self.episodes,
+            "successful_episode_count": successful_episode_count,
             "max_steps": self.max_steps,
             "total_steps": total_steps,
             "average_episode_reward": float(np.mean(episode_rewards)) if episode_rewards else 0.0,
@@ -266,6 +394,7 @@ class BrowserGymTrainingService:
             "inspect_cart_count": inspect_cart_count,
             "cart_count_detected_count": cart_count_detected_count,
             "button_no_response_candidates": button_no_response_candidates,
+            "failure_type_counts": failure_type_counts,
             "matched_bug_ids": matched_bug_ids,
             "missed_bug_ids": missed_bug_ids,
             "precision": known_bug_match_count / unique_detected_candidates if unique_detected_candidates else 0.0,
@@ -273,13 +402,28 @@ class BrowserGymTrainingService:
             "model_path": str(self.model_output_path),
             "transition_log_path": str(self.transition_log_path),
             "last_update": last_update,
-            "entropy_coef": self.agent.entropy_coef,
+            "entropy_coef": getattr(self.agent, "entropy_coef", None),
+            "algorithm": self.algorithm,
+            "policy_action_count": policy_action_count,
+            "guided_action_count": guided_action_count,
         }
+        if self.algorithm != "ppo":
+            summary.pop("entropy_coef", None)
+            summary["dqn_updates_per_step"] = self.dqn_updates_per_step
+            summary["dqn_training_steps"] = self.agent.training_steps
+            if self.agent.training_steps == 0:
+                raise RuntimeError("Rainbow DQN completed without any gradient update; increase the training budget")
         self.summary_path.write_text(json.dumps(_jsonable(summary), indent=2), encoding="utf-8")
         self.detected_bugs_path.write_text(json.dumps(_jsonable(self.detected_bugs), indent=2), encoding="utf-8")
         print(f"[train] summary: {self.summary_path}")
         print(f"[train] model: {self.model_output_path}")
         return summary
+
+    def _save_checkpoint_atomically(self) -> None:
+        """Keep the previous checkpoint valid if saving is interrupted."""
+        temporary_path = self.model_output_path.with_suffix(self.model_output_path.suffix + ".tmp")
+        self.agent.save(temporary_path)
+        os.replace(temporary_path, self.model_output_path)
 
     def _append_transition(self, row: Dict[str, Any]) -> None:
         with self.transition_log_path.open("a", encoding="utf-8") as handle:
@@ -397,6 +541,39 @@ def _guided_action_id(
     selected_action_id: int,
 ) -> int:
     counts = history.get("action_type_counts", {})
+    active_goal = str(history.get("active_goal") or "")
+    prior = history.get("imitation_prior", {})
+    if isinstance(prior, Mapping) and active_goal in prior and active_goal == "mobile_layout_inspection":
+        prior_actions = prior.get(active_goal, {})
+        if isinstance(prior_actions, Mapping):
+            for action_type, _probability in sorted(prior_actions.items(), key=lambda item: -float(item[1] or 0.0)):
+                if action_type in {"inspect_layout", "inspect_dom", "inspect_network", "inspect_console"} \
+                        and int(counts.get(action_type, 0) or 0) == 0:
+                    return action_space.encode(str(action_type), 0)
+    if history.get("last_failure_type") == "ACTION_EXECUTION_FAILED":
+        # Recovery is deliberately staged: re-observe the DOM, then choose a
+        # different visible candidate for the failed action type.
+        attempts = int(history.get("recovery_attempts", 0) or 0)
+        if attempts == 0:
+            return action_space.encode("inspect_dom", 0)
+        failed_type = str(history.get("last_failed_action_type") or "")
+        if failed_type in {"click_element", "fill_input", "press_enter"}:
+            failed_index = int(history.get("last_failed_candidate_index", -1) or -1)
+            candidates = observation.get("candidate_elements", []) or []
+            if isinstance(candidates, list):
+                for index, candidate in enumerate(candidates):
+                    if index == failed_index or not isinstance(candidate, Mapping):
+                        continue
+                    if candidate.get("visible") and candidate.get("enabled", True):
+                        history["recovery_attempts"] = attempts + 1
+                        return action_space.encode(failed_type, index)
+        history["recovery_attempts"] = attempts + 1
+        return selected_action_id
+    if active_goal == "mobile_layout_inspection":
+        if not history.get("mobile_viewport_seen"):
+            return action_space.encode("change_viewport_mobile", 0)
+        if int(counts.get("inspect_layout", 0) or 0) < 4:
+            return action_space.encode("inspect_layout", 0)
     site_id = str(observation.get("page_state", {}).get("site_id") or "")
     if not site_id:
         url = str(observation.get("page_state", {}).get("url") or "")
@@ -452,6 +629,60 @@ def _guided_action_id(
         if purchase_index is not None:
             return action_space.encode("click_element", purchase_index)
     return selected_action_id
+
+
+def _planned_probe_action_id(
+    action_space: ActionSpace,
+    observation: Mapping[str, Any],
+    history: Mapping[str, Any],
+    planned_probe: str,
+    guided_action_id: int,
+) -> int:
+    """Resolve element probes to a meaningful target instead of candidate zero."""
+    normalized = action_space.action_aliases.get(str(planned_probe).strip().lower(), planned_probe)
+    if normalized == "click_element":
+        guided = action_space.decode(guided_action_id)
+        if guided.get("action_type") == "click_element":
+            return guided_action_id
+        purchase_index = _first_purchase_candidate_index(dict(observation), dict(history))
+        if purchase_index is not None:
+            return action_space.encode("click_element", purchase_index)
+        catalog_index = _first_catalog_candidate_index(observation, history)
+        if catalog_index is not None:
+            return action_space.encode("click_element", catalog_index)
+    return action_space.encode(str(normalized), 0)
+
+
+def _load_imitation_prior() -> Dict[str, Any]:
+    path = Path("artifacts/imitation/goal_action_prior.json")
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _select_exploration_goal(
+    observation: Mapping[str, Any], history: Mapping[str, Any], security_mode: bool
+) -> str:
+    """High-level controller: choose a goal before the value-based action is selected."""
+    matched = set(history.get("matched_bug_ids", set()) or set())
+    counts = history.get("action_type_counts", {})
+    viewport = str((observation.get("page_state", {}) or {}).get("viewport_type") or "")
+    bug_types = _site_profile_bug_types(observation)
+    if "site001-bug03" not in matched and (
+        viewport == "mobile" or int(counts.get("change_viewport_mobile", 0) or 0) > 0
+    ):
+        return "mobile_layout_inspection"
+    if security_mode and {"api-forbidden", "api-ui-mismatch"}.intersection(bug_types):
+        return "security_surface_inspection"
+    if "site001-bug01" not in matched and int(counts.get("inspect_cart", 0) or 0) < 1:
+        return "bug_reproduction"
+    if history.get("last_failure_type") == "ACTION_EXECUTION_FAILED":
+        return "recovery"
+    return "novel_state_exploration"
 
 
 def _guided_infra_action_id(
@@ -765,6 +996,84 @@ def _canonical_detected_key(record: Mapping[str, Any]) -> tuple[str, str, str, s
 
 def _normalize_text(value: str) -> str:
     return " ".join(str(value or "").lower().split())
+
+
+def _classify_failure(
+    before_observation: Mapping[str, Any],
+    after_observation: Mapping[str, Any],
+    action: Mapping[str, Any],
+    anomalies: List[Dict[str, Any]],
+    known_matches: List[Dict[str, Any]],
+    step_info: Mapping[str, Any],
+) -> str:
+    infrastructure_keys = {
+        "fallback_error", "viewport_error", "network_error", "console_error", "login_warning"
+    }
+    if any(step_info.get(key) for key in infrastructure_keys):
+        return "INFRA_FAILURE"
+    if action.get("failed") or step_info.get("last_action_error"):
+        return "ACTION_EXECUTION_FAILED"
+    likely_false_positive = any(
+        anomaly.get("human_review_status") == "likely_false_positive" for anomaly in anomalies
+    )
+    if likely_false_positive and not known_matches:
+        return "FALSE_POSITIVE"
+    expected_bug_ids = {
+        str(value)
+        for value in action.get("catalog_bug_id_matches", []) or []
+        if value
+    }
+    matched_bug_ids = {
+        str(match.get("matched_bug_id"))
+        for match in known_matches
+        if match.get("matched_bug_id")
+    }
+    if expected_bug_ids and not expected_bug_ids.intersection(matched_bug_ids):
+        return "DETECTION_MISS"
+    before_state = before_observation.get("page_state", {}) or {}
+    after_state = after_observation.get("page_state", {}) or {}
+    before_signature = (
+        str(before_state.get("url") or ""),
+        str(before_state.get("state_signature") or before_state.get("dom_signature") or ""),
+    )
+    after_signature = (
+        str(after_state.get("url") or ""),
+        str(after_state.get("state_signature") or after_state.get("dom_signature") or ""),
+    )
+    if before_signature == after_signature:
+        return "NO_STATE_CHANGE"
+    return "NONE"
+
+
+def _termination_reason(done: bool, step_info: Mapping[str, Any], failure_type: str) -> str:
+    if failure_type == "INFRA_FAILURE":
+        return "infrastructure_failure"
+    if not done:
+        return "continue"
+    if step_info.get("terminated"):
+        return "environment_terminated"
+    if step_info.get("truncated"):
+        return "environment_truncated"
+    return "episode_complete"
+
+
+def _reward_breakdown_matches(reward: float, breakdown: Mapping[str, Any]) -> bool:
+    if breakdown.get("reward_profile") == "security_v1":
+        components = [
+            float(value) for key, value in breakdown.items()
+            if key not in {"reward_profile", "final_reward"} and isinstance(value, (int, float))
+        ]
+        raw_total = sum(components)
+        clamped_total = max(-1.0, min(1.5, raw_total))
+        return abs(float(reward) - clamped_total) <= 1e-6
+    components = (
+        "purchase_action_reward", "cart_inspection_reward", "catalog_reward",
+        "openended_reward", "known_bug_reward", "anomaly_reward",
+        "exploration_reward", "error_signal_reward", "penalty",
+    )
+    raw_total = sum(float(breakdown.get(key, 0.0) or 0.0) for key in components)
+    clamped_total = max(-1.0, min(1.5, raw_total))
+    return abs(float(reward) - clamped_total) <= 1e-6
 
 
 def _set_seed(seed: int) -> None:

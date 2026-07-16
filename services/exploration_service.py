@@ -108,7 +108,7 @@ class ExplorationService:
                     update_general_history(history, observation, action)
                     observation = next_observation
                     completed_steps += 1
-                    self.on_event({"type": "step", "progress": min(99, round(completed_steps * 100 / total_budget)), "episode": episode, "step": step, "action": action.get("action_type"), "action_id": stable_action_id, "policy": action.get("policy"), "url": row["url_after"], "success": row["success"], "new_state": row["new_state"], "candidate_count": len(candidates), "anomaly_count": len(anomalies), "anomalies": anomalies, "screenshot_file": row.get("screenshot_file")})
+                    self.on_event({"type": "step", "progress": min(99, round(completed_steps * 100 / total_budget)), "episode": episode, "step": step, "action": action.get("action_type"), "action_id": stable_action_id, "policy": action.get("policy"), "url": row["url_after"], "url_before": row["url_before"], "url_after": row["url_after"], "state_id_before": before_id, "state_id_after": after_id, "viewport_width_before": int(observation.get("page_state", {}).get("viewport_width") or 0), "viewport_width_after": int(next_observation.get("page_state", {}).get("viewport_width") or 0), "success": row["success"], "new_state": row["new_state"], "candidate_count": len(candidates), "anomaly_count": len(anomalies), "anomalies": anomalies, "screenshot_file": row.get("screenshot_file")})
                     if done: break
             finally:
                 env.close()

@@ -1,0 +1,29 @@
+{
+  "site_id": "site021",
+  "generated_by": "fleet-phase2-v1",
+  "bugs": [
+    {
+      "id": "site021-auto-01",
+      "bug_id": "site021-auto-01",
+      "site_id": "site021",
+      "type": "api-forbidden",
+      "selector": "",
+      "action_hints": [
+        "click_element",
+        "fill_input",
+        "finish_episode",
+        "inspect_layout",
+        "press_enter"
+      ],
+      "anomaly_evidence_keywords": [
+        "after_url",
+        "before_url",
+        "page_text_contains_forbidden",
+        "target"
+      ],
+      "discovery_confidence": 0.8,
+      "reproduction_count": 7,
+      "generated": true
+    }
+  ]
+}

@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from services.multisignal_collector import collect_multi_signal_counts
+from services.web_error_finding_service import finding_signature
 
 
 FUNCTIONAL_ACTION_TYPES = {
@@ -82,13 +83,33 @@ def calculate_autonomous_reward(
     reward_functional_action_caused_state_change = 0.0
     reward_functional_action_caused_signal_delta = 0.0
     reward_functional_action_caused_network_request = 0.0
+    reward_verified_finding = 0.0
+    reward_finding_evidence = 0.0
+    reward_finding_coverage = 0.0
+    reward_finding_reproduction = 0.0
     penalty_no_functional_action_episode = 0.0
     penalty_debug_meta_repeat = 0.0
     penalty_repeated_meta_action = 0.0
     penalty_retry_button_repeat = 0.0
+    reward_email_input_filled = 0.0
+    reward_password_input_filled = 0.0
+    reward_submit_clicked = 0.0
+    reward_submit_result_checked = 0.0
+    penalty_repeated_same_input_fill = 0.0
+    penalty_email_repeated_password_pending = 0.0
+    penalty_submit_missing = 0.0
+    penalty_login_flow_incomplete_early_stop = 0.0
+    penalty_targetless_action_success = 0.0
+    penalty_inspect_dom_failure_completed = 0.0
     signal_counts = collect_multi_signal_counts(before_observation, after_observation, action, anomalies)
 
     valid_anomalies: List[Dict[str, Any]] = []
+    seen_finding_signatures = set(str(item) for item in (history.get("seen_anomaly_keys", set()) or set()))
+    current_finding_signatures: set[str] = set()
+    new_anomaly_confidences: List[float] = []
+    new_verified_finding_rewards: List[float] = []
+    new_verified_evidence_rewards: List[float] = []
+    reproduction_rewards: List[float] = []
     for anomaly in anomalies or []:
         if not isinstance(anomaly, Mapping):
             continue
@@ -101,11 +122,27 @@ def calculate_autonomous_reward(
         if anomaly_type == "action-error" and not _anomaly_error_message(anomaly):
             continue
 
-        valid_anomalies.append(dict(anomaly))
-        if confidence >= 0.8:
-            reward_new_anomaly += 0.25
-        elif confidence >= 0.5:
-            reward_new_anomaly += 0.1
+        anomaly_dict = dict(anomaly)
+        signature = str(anomaly_dict.get("signature") or finding_signature(anomaly_dict))
+        anomaly_dict["signature"] = signature
+        valid_anomalies.append(anomaly_dict)
+        current_finding_signatures.add(signature)
+        if signature not in seen_finding_signatures:
+            if confidence >= 0.5:
+                new_anomaly_confidences.append(confidence)
+            verified_reward = _verified_finding_reward(anomaly_dict)
+            if verified_reward > 0.0:
+                new_verified_finding_rewards.append(verified_reward)
+                new_verified_evidence_rewards.append(_evidence_richness_reward(anomaly_dict))
+        elif anomaly_dict.get("reproducible") or anomaly_dict.get("reproduced"):
+            reproduction_rewards.append(_reproduction_reward(anomaly_dict))
+    if new_anomaly_confidences:
+        reward_new_anomaly = 0.0
+    if new_verified_finding_rewards:
+        reward_verified_finding = max(new_verified_finding_rewards)
+        reward_finding_evidence = min(1.0, max(new_verified_evidence_rewards or [0.0]))
+    if reproduction_rewards:
+        reward_finding_reproduction = min(2.0, max(reproduction_rewards))
 
     matched_ids: set[str] = set()
     reward_known_bug_match = 0.0
@@ -117,7 +154,8 @@ def calculate_autonomous_reward(
         if str(item)
     }
     new_types = {item for item in current_types if item and item not in seen_types}
-    reward_type_diversity = min(0.3, 0.1 * len(new_types))
+    reward_type_diversity = 0.0
+    reward_finding_coverage = min(0.3, 0.1 * len({sig.split("|", 1)[0] for sig in current_finding_signatures if sig not in seen_finding_signatures}))
 
     state_changed = _url(before_observation) != _url(after_observation) or before_signature != after_signature
     if _url(before_observation) != _url(after_observation):
@@ -141,6 +179,55 @@ def calculate_autonomous_reward(
         reward_first_inspect_dom = 0.2
     if action_type == "inspect_network" and current_action_type_count == 0:
         reward_first_inspect_network = 0.2
+
+    login_flow = history.get("login_flow", {}) if isinstance(history, Mapping) else {}
+    if not isinstance(login_flow, Mapping):
+        login_flow = {}
+    login_form_present = bool(login_flow.get("has_login_form")) or _has_login_form_candidates(before_observation)
+    candidate_key = _candidate_key(clicked_candidate) if clicked_candidate else ""
+    if action_type == "fill_input":
+        if clicked_candidate is None:
+            if bool(action.get("action_success")) or bool(action.get("filled")):
+                penalty_targetless_action_success -= 0.5
+        else:
+            filled_keys = history.get("filled_input_element_keys", set()) or set()
+            if candidate_key and candidate_key in filled_keys:
+                penalty_repeated_same_input_fill -= 0.2
+            if _is_password_candidate(clicked_candidate) and not bool(login_flow.get("password_input_filled")):
+                reward_password_input_filled = 0.1
+            elif _is_email_text_candidate(clicked_candidate) and not bool(login_flow.get("email_input_filled")):
+                reward_email_input_filled = 0.1
+            if (
+                _is_email_text_candidate(clicked_candidate)
+                and bool(login_flow.get("email_input_filled"))
+                and bool(login_flow.get("has_password_input"))
+                and not bool(login_flow.get("password_input_filled"))
+            ):
+                penalty_email_repeated_password_pending -= 0.2
+    if action_type in {"click_element", "click_submit"} and clicked_candidate is None:
+        if bool(action.get("action_success")) or bool(action.get("clicked")):
+            penalty_targetless_action_success -= 0.5
+    if action_type == "click_submit":
+        if clicked_candidate is not None and _is_submit_candidate(clicked_candidate) and not bool(login_flow.get("submit_clicked")):
+            reward_submit_clicked = 0.2
+        elif clicked_candidate is None and (bool(action.get("action_success")) or bool(action.get("clicked"))):
+            penalty_targetless_action_success -= 0.5
+    submit_checked_before = bool(login_flow.get("submit_result_checked"))
+    submit_clicked_before = bool(login_flow.get("submit_clicked"))
+    if submit_clicked_before and not submit_checked_before:
+        if action_type in {"inspect_network", "inspect_console", "inspect_dom", "check_login_state"} or state_changed:
+            reward_submit_result_checked = 0.2
+    if action_type == "finish_episode" and login_form_present and not bool(login_flow.get("login_flow_completed")):
+        penalty_login_flow_incomplete_early_stop -= 1.0
+    if (
+        login_form_present
+        and bool(login_flow.get("has_submit_button"))
+        and not bool(login_flow.get("submit_clicked"))
+        and action_type in {"finish_episode", "noop"}
+    ):
+        penalty_submit_missing -= 0.2
+    if action_type == "inspect_dom" and bool(action.get("failed")) and not str(action.get("failure_reason") or ""):
+        penalty_inspect_dom_failure_completed -= 0.5
 
     is_functional_action = _is_functional_action(action_type)
     is_debug_meta_action = _is_debug_meta_action(action_type)
@@ -225,7 +312,12 @@ def calculate_autonomous_reward(
         penalty_no_effect -= min(0.25, 0.05 * repeated_anomaly_count)
 
     signal_rewards = _signal_rewards(signal_counts, valid_anomalies)
+    raw_signal_reward_total = sum(signal_rewards.values())
+    # Raw signal/category rewards are metrics only. Rewarding each signal directly
+    # can teach PPO to farm noisy console/network/UI symptoms rather than find
+    # distinct verified defects.
     signal_reward_total = sum(signal_rewards.values())
+    signal_reward_total = 0.0
     inspect_action_reward_total = reward_first_inspect_dom + reward_first_inspect_network
     functional_action_signal_reward_total = signal_reward_total if is_functional_action and signal_delta_count > 0 else 0.0
     reward_functional_action_total = (
@@ -242,6 +334,20 @@ def calculate_autonomous_reward(
         + penalty_retry_button_repeat
         + penalty_open_detail_panel_repeat
         + penalty_no_functional_action_episode
+    )
+    login_form_coverage_reward_total = (
+        reward_email_input_filled
+        + reward_password_input_filled
+        + reward_submit_clicked
+        + reward_submit_result_checked
+    )
+    login_flow_penalty_total = (
+        penalty_repeated_same_input_fill
+        + penalty_email_repeated_password_pending
+        + penalty_submit_missing
+        + penalty_login_flow_incomplete_early_stop
+        + penalty_targetless_action_success
+        + penalty_inspect_dom_failure_completed
     )
     exploration_reward_total = (
         reward_state_change
@@ -318,13 +424,17 @@ def calculate_autonomous_reward(
         reward_new_anomaly
         + reward_known_bug_match
         + reward_type_diversity
-        + signal_reward_total
+        + reward_verified_finding
+        + reward_finding_evidence
+        + reward_finding_coverage
+        + reward_finding_reproduction
         + reward_first_click_element
         + reward_new_action_type
         + reward_new_target
         + reward_first_inspect_dom
         + reward_first_inspect_network
         + reward_functional_action_total
+        + login_form_coverage_reward_total
         + reward_state_change
         + penalty_repeat_action
         + penalty_same_target_click
@@ -339,6 +449,7 @@ def calculate_autonomous_reward(
         + penalty_repeated_meta_action
         + penalty_retry_button_repeat
         + penalty_no_functional_action_episode
+        + login_flow_penalty_total
         + penalty_step_cost
     )
     breakdown = {
@@ -358,6 +469,10 @@ def calculate_autonomous_reward(
         "reward_first_inspect_dom": reward_first_inspect_dom,
         "reward_first_inspect_network": reward_first_inspect_network,
         "reward_state_change": reward_state_change,
+        "reward_verified_finding": reward_verified_finding,
+        "reward_finding_evidence": reward_finding_evidence,
+        "reward_finding_coverage": reward_finding_coverage,
+        "reward_finding_reproduction": reward_finding_reproduction,
         "penalty_repeat_action": penalty_repeat_action,
         "penalty_same_target_click": penalty_same_target_click,
         "penalty_same_action_type_repeat": penalty_same_action_type_repeat,
@@ -370,6 +485,18 @@ def calculate_autonomous_reward(
         "penalty_debug_meta_repeat": penalty_debug_meta_repeat,
         "penalty_repeated_meta_action": penalty_repeated_meta_action,
         "penalty_retry_button_repeat": penalty_retry_button_repeat,
+        "reward_email_input_filled": reward_email_input_filled,
+        "reward_password_input_filled": reward_password_input_filled,
+        "reward_submit_clicked": reward_submit_clicked,
+        "reward_submit_result_checked": reward_submit_result_checked,
+        "login_form_coverage_reward_total": login_form_coverage_reward_total,
+        "penalty_repeated_same_input_fill": penalty_repeated_same_input_fill,
+        "penalty_email_repeated_password_pending": penalty_email_repeated_password_pending,
+        "penalty_submit_missing": penalty_submit_missing,
+        "penalty_login_flow_incomplete_early_stop": penalty_login_flow_incomplete_early_stop,
+        "penalty_targetless_action_success": penalty_targetless_action_success,
+        "penalty_inspect_dom_failure_completed": penalty_inspect_dom_failure_completed,
+        "login_flow_penalty_total": login_flow_penalty_total,
         "penalty_timeout": penalty_timeout,
         "penalty_step_cost": penalty_step_cost,
         "reward_first_functional_action": reward_first_functional_action,
@@ -394,6 +521,12 @@ def calculate_autonomous_reward(
         "reward_total": reward_total,
         "known_bug_reward_total": reward_known_bug_match,
         "signal_reward_total": signal_reward_total,
+        "raw_signal_reward_metric_total": raw_signal_reward_total,
+        "direct_signal_reward_used_for_policy": False,
+        "verified_finding_reward_total": reward_verified_finding,
+        "finding_evidence_reward_total": reward_finding_evidence,
+        "finding_coverage_reward_total": reward_finding_coverage,
+        "finding_reproduction_reward_total": reward_finding_reproduction,
         "signal_delta_reward_total": signal_reward_total,
         "inspect_action_reward_total": inspect_action_reward_total,
         "functional_action_signal_reward_total": functional_action_signal_reward_total,
@@ -419,6 +552,7 @@ def calculate_autonomous_reward(
             + penalty_same_action_signature_repeat
             + penalty_open_detail_panel_repeat
             + penalty_no_effect_open_detail
+            + login_flow_penalty_total
         ),
         "first_click_reward_count": 1.0 if reward_first_click_element > 0.0 else 0.0,
         "new_action_type_reward_count": 1.0 if reward_new_action_type > 0.0 else 0.0,
@@ -540,6 +674,64 @@ def _signal_rewards(signal_counts: Mapping[str, int], anomalies: List[Mapping[st
     }
 
 
+def _verified_finding_reward(anomaly: Mapping[str, Any]) -> float:
+    if str(anomaly.get("classification") or "") != "verified_browser_signal":
+        return 0.0
+    if anomaly.get("verified") is False:
+        return 0.0
+    confidence = max(0.0, min(1.0, float(anomaly.get("confidence", 0.0) or 0.0)))
+    severity = str(anomaly.get("severity") or "").lower()
+    severity_score = {
+        "critical": 10.0,
+        "high": 8.0,
+        "medium": 5.0,
+        "low": 2.0,
+    }.get(severity, 0.5)
+    return severity_score * confidence
+
+
+def _evidence_richness_reward(anomaly: Mapping[str, Any]) -> float:
+    evidence = anomaly.get("evidence", {})
+    if not isinstance(evidence, Mapping):
+        return 0.0
+    evidence_keys = {
+        "status",
+        "url",
+        "method",
+        "message",
+        "count_delta",
+        "request_count_delta",
+        "matched_backend_error_patterns",
+        "action_signature",
+        "trace_id",
+        "db_engine",
+        "db_invariant",
+        "missing_required_fields",
+        "type_mismatch_fields",
+        "source_policies",
+    }
+    present = sum(1 for key in evidence_keys if evidence.get(key) not in (None, "", [], {}))
+    source_policies = anomaly.get("source_policies")
+    source_count = len(source_policies) if isinstance(source_policies, list) else 0
+    cross_layer_bonus = 0.0
+    if source_count >= 4:
+        cross_layer_bonus = 0.8
+    elif source_count >= 3:
+        cross_layer_bonus = 0.5
+    elif source_count >= 2:
+        cross_layer_bonus = 0.3
+    trace_bonus = min(0.5, max(0.0, float(anomaly.get("correlation_confidence", 0.0) or 0.0)) * 0.5)
+    return min(1.0, 0.1 * present + cross_layer_bonus + trace_bonus)
+
+
+def _reproduction_reward(anomaly: Mapping[str, Any]) -> float:
+    if str(anomaly.get("classification") or "") != "verified_browser_signal":
+        return 0.0
+    source_policies = anomaly.get("source_policies")
+    independent_evidence = isinstance(source_policies, list) and len(set(str(item) for item in source_policies)) >= 2
+    return 2.0 if independent_evidence else 1.0
+
+
 def _is_functional_action(action_type: str) -> bool:
     return action_type in FUNCTIONAL_ACTION_TYPES
 
@@ -619,13 +811,60 @@ def _is_new_interactive_click(
 
 
 def _clicked_candidate(before_observation: Mapping[str, Any], action: Mapping[str, Any]) -> Mapping[str, Any] | None:
-    if action.get("action_type") != "click_element":
+    if action.get("action_type") not in {"click_element", "click_submit", "fill_input", "press_enter"}:
         return None
     candidates = before_observation.get("candidate_elements", []) or []
     index = int(action.get("candidate_index", 0) or 0)
     if isinstance(candidates, list) and 0 <= index < len(candidates) and isinstance(candidates[index], Mapping):
         return candidates[index]
     return None
+
+
+def _has_login_form_candidates(observation: Mapping[str, Any]) -> bool:
+    candidates = observation.get("candidate_elements", []) if isinstance(observation, Mapping) else []
+    if not isinstance(candidates, list):
+        return False
+    return bool(
+        any(isinstance(candidate, Mapping) and _is_email_text_candidate(candidate) for candidate in candidates)
+        and any(isinstance(candidate, Mapping) and _is_password_candidate(candidate) for candidate in candidates)
+        and any(isinstance(candidate, Mapping) and _is_submit_candidate(candidate) for candidate in candidates)
+    )
+
+
+def _is_password_candidate(candidate: Mapping[str, Any]) -> bool:
+    if not bool(candidate.get("fillable")):
+        return False
+    if bool(candidate.get("is_password")):
+        return True
+    input_type = str(candidate.get("type") or candidate.get("input_type") or "").lower()
+    return input_type == "password"
+
+
+def _is_email_text_candidate(candidate: Mapping[str, Any]) -> bool:
+    if not bool(candidate.get("fillable")) or _is_password_candidate(candidate):
+        return False
+    input_type = str(candidate.get("type") or candidate.get("input_type") or "").lower()
+    role = str(candidate.get("role") or "").lower()
+    tag = str(candidate.get("tag") or "").lower()
+    text = " ".join(
+        str(candidate.get(key) or "")
+        for key in ("name", "text", "placeholder", "aria_label", "title", "id")
+    ).lower()
+    return bool(
+        input_type in {"", "text", "email", "search"}
+        or role in {"textbox", "searchbox"}
+        or tag == "textarea"
+        or any(token in text for token in ("email", "username", "user", "login"))
+    )
+
+
+def _is_submit_candidate(candidate: Mapping[str, Any]) -> bool:
+    if bool(candidate.get("is_submit")):
+        return True
+    input_type = str(candidate.get("type") or candidate.get("input_type") or "").lower()
+    semantic = str(candidate.get("semantic_action_type") or "").lower()
+    text = " ".join(str(candidate.get(key) or "") for key in ("name", "text", "aria_label", "title")).lower()
+    return bool(input_type == "submit" or semantic in {"submit", "login"} or any(token in text for token in ("submit", "login", "sign in", "로그인")))
 
 
 def _candidate_key(candidate: Mapping[str, Any] | None) -> str:

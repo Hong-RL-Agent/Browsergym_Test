@@ -16,6 +16,7 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MODEL_PATH = "artifacts/models/jaws_browsergym_shared_ppo_v3_policy_safe.pt"
 EVALUATOR_PATH = "runners/evaluate_multisite_browsergym_agent.py"
+RUNNING_PROCESSES: dict[str, subprocess.Popen[str]] = {}
 
 
 @dataclass(frozen=True)
@@ -32,10 +33,15 @@ def start_browsergym_scan(
     *,
     scan_id: str,
     target_url: str,
-    episodes: int = 3,
-    max_steps: int = 25,
+    episodes: int = 1,
+    max_steps: int = 30,
+    site_timeout_seconds: int = 300,
+    episode_timeout_seconds: int = 0,
+    reset_timeout_ms: int = 60000,
+    step_timeout_ms: int = 45000,
     model_path: str = DEFAULT_MODEL_PATH,
     python_executable: str | None = None,
+    agent_config: dict[str, Any] | None = None,
 ) -> ScanStartResult:
     """Start a BrowserGym scan for exactly one user-provided target URL."""
 
@@ -48,11 +54,34 @@ def start_browsergym_scan(
     output_path = scan_dir / "evaluation.json"
 
     site_id = _site_id_from_url(normalized_url)
+    agent_config = agent_config if isinstance(agent_config, dict) else {}
+    observability_config = _observability_config(agent_config)
     config = {
+        "run_id": scan_id,
+        "eval_episodes": episodes,
+        "max_steps": max_steps,
+        "site_timeout_seconds": site_timeout_seconds,
+        "episode_timeout_seconds": episode_timeout_seconds,
+        "reset_timeout_ms": reset_timeout_ms,
+        "step_timeout_ms": step_timeout_ms,
+        "enforce_target_url_boundary": bool(agent_config.get("enforce_target_url_boundary", True)),
+        "allowed_hosts": _allowed_hosts(normalized_url, agent_config),
+        "allowed_path_prefixes": _allowed_path_prefixes(normalized_url, agent_config),
+        "blocked_url_keywords": _blocked_url_keywords(agent_config),
+        "finish_on_external_navigation": bool(agent_config.get("finish_on_external_navigation", True)),
+        "reset_retry_count": 1,
+        "use_memory_encoder": "gru_memory" in str(model_path).lower(),
+        "memory_encoder_type": "gru",
+        "memory_hidden_size": 128,
+        "use_known_bug_for_evaluation": False,
+        "use_known_bug_reward": False,
+        "allow_known_bug_reward_for_debug_only": False,
+        "policy_uses_bug_labels": False,
         "sites": [
             {
                 "site_id": site_id,
                 "base_url": normalized_url,
+                **observability_config,
             }
         ],
     }
@@ -83,6 +112,14 @@ def start_browsergym_scan(
         str(episodes),
         "--max-steps",
         str(max_steps),
+        "--site-timeout-seconds",
+        str(site_timeout_seconds),
+        "--episode-timeout-seconds",
+        str(episode_timeout_seconds),
+        "--reset-timeout-ms",
+        str(reset_timeout_ms),
+        "--step-timeout-ms",
+        str(step_timeout_ms),
         "--output",
         str(output_path),
         "--run-id",
@@ -99,9 +136,10 @@ def start_browsergym_scan(
         encoding="utf-8",
         errors="replace",
     )
+    RUNNING_PROCESSES[scan_id] = process
     threading.Thread(
         target=_capture_process_output,
-        args=(process, action_log, errors_log),
+        args=(scan_id, process, action_log, errors_log),
         daemon=True,
     ).start()
     return ScanStartResult(
@@ -114,8 +152,27 @@ def start_browsergym_scan(
     )
 
 
-def _capture_process_output(process: subprocess.Popen[str], action_log: Path, errors_log: Path) -> None:
+def cancel_browsergym_scan(scan_id: str, *, action_log_path: str | Path | None = None) -> bool:
+    process = RUNNING_PROCESSES.get(str(scan_id))
+    if process is None or process.poll() is not None:
+        return False
+    try:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+        if action_log_path:
+            _append_action(Path(action_log_path), event="subprocess_terminated", scan_id=scan_id, return_code=process.returncode)
+        return True
+    finally:
+        RUNNING_PROCESSES.pop(str(scan_id), None)
+
+
+def _capture_process_output(scan_id: str, process: subprocess.Popen[str], action_log: Path, errors_log: Path) -> None:
     stdout_text, stderr_text = process.communicate()
+    RUNNING_PROCESSES.pop(str(scan_id), None)
     for line in stdout_text.splitlines():
         text = line.rstrip()
         if not text:
@@ -167,6 +224,71 @@ def _site_id_from_url(target_url: str) -> str:
         return f"site{parsed.port}"
     host = "".join(ch for ch in parsed.hostname or "target" if ch.isalnum())
     return f"site{host or 'target'}"
+
+
+def _allowed_hosts(target_url: str, agent_config: dict[str, Any]) -> list[str]:
+    configured = _string_list(agent_config.get("allowed_hosts") or agent_config.get("allowedHosts"))
+    if configured:
+        return configured
+    parsed = urlparse(target_url)
+    return [str(parsed.hostname or "").lower()] if parsed.hostname else []
+
+
+def _allowed_path_prefixes(target_url: str, agent_config: dict[str, Any]) -> list[str]:
+    configured = _string_list(agent_config.get("allowed_path_prefixes") or agent_config.get("allowedPathPrefixes"))
+    if configured:
+        return configured
+    parsed = urlparse(target_url)
+    path = str(parsed.path or "/")
+    if path.endswith("/"):
+        return [path]
+    parent = path.rsplit("/", 1)[0] + "/"
+    return [path, parent]
+
+
+def _blocked_url_keywords(agent_config: dict[str, Any]) -> list[str]:
+    configured = _string_list(agent_config.get("blocked_url_keywords") or agent_config.get("blockedUrlKeywords"))
+    defaults = [
+        "checkout",
+        "payment",
+        "billing",
+        "gumroad.com",
+        "paypal.com",
+        "stripe.com",
+        "oauth",
+        "sign-up",
+        "signup",
+    ]
+    return configured or defaults
+
+
+def _observability_config(agent_config: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "server_log_paths": _string_list(agent_config.get("server_log_paths") or agent_config.get("serverLogPaths")),
+        "database_paths": _string_list(
+            agent_config.get("database_paths")
+            or agent_config.get("db_paths")
+            or agent_config.get("databasePaths")
+            or agent_config.get("dbPaths")
+        ),
+        "db_engine": str(agent_config.get("db_engine") or agent_config.get("dbEngine") or ""),
+        "relational_db_hook_available": bool(agent_config.get("relational_db_hook_available") or agent_config.get("relationalDbHookAvailable")),
+        "postgres_hook_available": bool(agent_config.get("postgres_hook_available") or agent_config.get("postgresHookAvailable")),
+        "mysql_hook_available": bool(agent_config.get("mysql_hook_available") or agent_config.get("mysqlHookAvailable")),
+        "db_invariant_available": bool(agent_config.get("db_invariant_available") or agent_config.get("dbInvariantAvailable")),
+        "trace_collector_available": bool(agent_config.get("trace_collector_available") or agent_config.get("traceCollectorAvailable")),
+        "api_contract_available": bool(agent_config.get("api_contract_available") or agent_config.get("apiContractAvailable")),
+        "schema_available": bool(agent_config.get("schema_available") or agent_config.get("schemaAvailable")),
+        "openapi_spec_available": bool(agent_config.get("openapi_spec_available") or agent_config.get("openapiSpecAvailable")),
+        "openapi_spec_path": str(agent_config.get("openapi_spec_path") or agent_config.get("openapiSpecPath") or ""),
+        "api_contract": agent_config.get("api_contract") if isinstance(agent_config.get("api_contract"), dict) else {},
+    }
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item).strip()]
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:

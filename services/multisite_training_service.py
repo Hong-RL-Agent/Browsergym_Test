@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import random
+import traceback
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,6 +27,7 @@ from services.autonomous_reward_service import (
 from services.browsergym_training_service import (
     _enrich_action,
     _target_bid,
+    _update_login_flow_state,
     _update_history,
 )
 from services.episode_csv_logger import EpisodeCsvLogger, infer_run_id
@@ -67,6 +69,7 @@ class MultiSiteTrainingService:
         fallback_reward_cap_enabled: bool | None = None,
         fallback_reward_cap_value: float | None = None,
         fallback_curriculum_enabled: bool | None = None,
+        fail_on_episode_exception: bool | None = None,
     ) -> None:
         self.config_path = Path(config_path)
         self.config = _read_json_dict(self.config_path)
@@ -136,6 +139,11 @@ class MultiSiteTrainingService:
             if fallback_curriculum_enabled is None
             else fallback_curriculum_enabled
         )
+        self.fail_on_episode_exception = bool(
+            self.config.get("fail_on_episode_exception", False)
+            if fail_on_episode_exception is None
+            else fail_on_episode_exception
+        )
 
         self.encoder = ObservationEncoder(max_candidates=max_candidates)
         self.action_space = ActionSpace(max_candidates=max_candidates)
@@ -170,6 +178,7 @@ class MultiSiteTrainingService:
                 exploration_profile=site.get("exploration_profile"),
             )
             site_profile.update(_reward_mode_config(self.config, site))
+            site_profile.update(_observability_hook_config(site))
             if self.blind_url_training:
                 site_profile.pop("site_group", None)
                 site_profile.pop("target_signal_types", None)
@@ -259,6 +268,7 @@ class MultiSiteTrainingService:
                 "valid_click_total": 0,
                 "valid_fill_total": 0,
                 "errors": [],
+                "episode_errors": [],
                 "preflight": {},
             }
 
@@ -303,7 +313,14 @@ class MultiSiteTrainingService:
                     for local_episode in range(1, self.episodes_per_site + 1):
                         global_episode += 1
                         episode_id = f"U{update_idx:04d}-{site_id}-EP{local_episode:03d}"
-                        episode = self._collect_episode(site, state, episode_id, csv_logger=csv_logger)
+                        episode = self._collect_episode(
+                            site,
+                            state,
+                            episode_id,
+                            csv_logger=csv_logger,
+                            update_id=update_idx,
+                            local_episode_id=local_episode,
+                        )
                         if len(episode["buffer"]) > 0:
                             shared_buffer.extend(episode["buffer"])
                         site_rewards.append(float(episode["raw_reward"]))
@@ -357,6 +374,8 @@ class MultiSiteTrainingService:
         state: Dict[str, Any],
         episode_id: str,
         csv_logger: EpisodeCsvLogger | None = None,
+        update_id: int | None = None,
+        local_episode_id: int | None = None,
     ) -> Dict[str, Any]:
         site_id = str(site["site_id"])
         reward_scale = _reward_scale(site)
@@ -394,6 +413,7 @@ class MultiSiteTrainingService:
         try:
             observation, _ = env.reset()
             for step in range(1, self.max_steps + 1):
+                _attach_action_history_to_observation(observation, history)
                 obs_vector = self.encoder.encode_observation(observation)
                 action_mask = self.action_space.build_action_mask(observation)
                 selected = self.agent.select_action(obs_vector, action_mask, memory_state=memory_state)
@@ -628,7 +648,8 @@ class MultiSiteTrainingService:
                         "done": done,
                     },
                 )
-                _update_history(history, observation, action, anomalies)
+                _record_seen_anomaly_signatures(history, anomalies)
+                _update_history(history, observation, action, anomalies, after_observation=next_observation)
                 for verification_key in (
                     "verification_action_after_high_value_click_count",
                     "high_value_click_pending_verification_count",
@@ -640,13 +661,14 @@ class MultiSiteTrainingService:
                 if done:
                     break
         except Exception as exc:
-            state.setdefault("errors", []).append(
-                {
-                    "site_id": site_id,
-                    "episode_id": episode_id,
-                    "step": len(buffer) + 1,
-                    "error_message": str(exc),
-                }
+            error_record = self._record_episode_exception(
+                state,
+                site_id=site_id,
+                update_id=update_id,
+                episode_id=episode_id,
+                local_episode_id=local_episode_id,
+                step=len(buffer) + 1,
+                exc=exc,
             )
             self._append_transition(
                 state["transition_log_path"],
@@ -658,12 +680,25 @@ class MultiSiteTrainingService:
                     "action": {"action_id": None, "action_type": "exception", "candidate_index": 0, "site_id": site_id},
                     "reward": 0.0,
                     "reward_breakdown": {"final_reward": 0.0},
-                    "anomalies": [{"type": "episode-exception", "confidence": 1.0, "evidence": {"error": str(exc)}}],
+                    "anomalies": [
+                        {
+                            "type": "episode-exception",
+                            "confidence": 1.0,
+                            "evidence": {
+                                "error": str(exc),
+                                "exception_type": type(exc).__name__,
+                                "traceback": error_record.get("traceback", ""),
+                            },
+                        }
+                    ],
                     "done": True,
                 },
             )
             done = True
             print(f"  [site {site_id}] {episode_id} exception: {exc}")
+            print(error_record.get("traceback", ""))
+            if self.fail_on_episode_exception:
+                raise
         finally:
             env.close()
 
@@ -813,6 +848,14 @@ class MultiSiteTrainingService:
             "fallback_curriculum_enabled": self.fallback_curriculum_enabled,
             "diversity_reward_total": float(state.get("diversity_reward_total", 0.0) or 0.0),
             "repeated_action_penalty_total": float(state.get("repeated_action_penalty_total", 0.0) or 0.0),
+            "login_form_coverage_reward_total": float(state.get("login_form_coverage_reward_total", 0.0) or 0.0),
+            "login_flow_penalty_total": float(state.get("login_flow_penalty_total", 0.0) or 0.0),
+            "reward_email_input_filled": float(state.get("reward_email_input_filled", 0.0) or 0.0),
+            "reward_password_input_filled": float(state.get("reward_password_input_filled", 0.0) or 0.0),
+            "reward_submit_clicked": float(state.get("reward_submit_clicked", 0.0) or 0.0),
+            "reward_submit_result_checked": float(state.get("reward_submit_result_checked", 0.0) or 0.0),
+            "penalty_login_flow_incomplete_early_stop": float(state.get("penalty_login_flow_incomplete_early_stop", 0.0) or 0.0),
+            "penalty_targetless_action_success": float(state.get("penalty_targetless_action_success", 0.0) or 0.0),
             **_state_signal_summary(state),
             "first_click_reward_count": int(state.get("first_click_reward_count", 0) or 0),
             "new_action_type_reward_count": int(state.get("new_action_type_reward_count", 0) or 0),
@@ -824,7 +867,35 @@ class MultiSiteTrainingService:
             "last_update": dict(last_update_metrics),
             "transition_log_path": str(state["transition_log_path"]),
             "preflight": dict(state.get("preflight", {})),
+            "episode_exception_count": len(state.get("episode_errors", []) or state.get("errors", []) or []),
+            "episode_errors": list(state.get("episode_errors", []) or state.get("errors", []) or []),
+            "valid_training_run": not bool(state.get("episode_errors") or state.get("errors")),
         }
+
+    def _record_episode_exception(
+        self,
+        state: Dict[str, Any],
+        *,
+        site_id: str,
+        update_id: int | None,
+        episode_id: str,
+        local_episode_id: int | None,
+        step: int,
+        exc: Exception,
+    ) -> Dict[str, Any]:
+        record = {
+            "site_id": site_id,
+            "update_id": update_id,
+            "episode_id": episode_id,
+            "local_episode_id": local_episode_id,
+            "step": step,
+            "exception_type": type(exc).__name__,
+            "exception_message": str(exc),
+            "traceback": traceback.format_exc(),
+        }
+        state.setdefault("errors", []).append(record)
+        state.setdefault("episode_errors", []).append(record)
+        return record
 
     def _run_preflight_checks(self) -> None:
         print("[multisite-preflight]")
@@ -959,6 +1030,10 @@ class MultiSiteTrainingService:
             "policy_uses_bug_labels": False,
             **self.policy_safety_audit,
             **self._site_config_summary(),
+            "episode_exception_count": _episode_exception_count(self.site_states.values()),
+            "episode_errors": _episode_errors(self.site_states.values()),
+            "valid_training_run": _episode_exception_count(self.site_states.values()) == 0,
+            "fail_on_episode_exception": self.fail_on_episode_exception,
             "average_reward_across_sites": float(np.mean(rewards)) if rewards else 0.0,
             "sites": site_summaries,
             "updates": update_summaries,
@@ -1040,6 +1115,10 @@ class MultiSiteTrainingService:
                 if self.blind_url_training
                 else bool(self.config.get("training_uses_site_specific_bug_catalog", False)),
                 "policy_uses_bug_labels": False,
+                "episode_exception_count": _episode_exception_count(self.site_states.values()),
+                "episode_errors": _episode_errors(self.site_states.values()),
+                "valid_training_run": _episode_exception_count(self.site_states.values()) == 0,
+                "fail_on_episode_exception": self.fail_on_episode_exception,
                 "target_signal_types": []
                 if self.blind_url_training
                 else list(self.config.get("target_signal_types", []) or []),
@@ -1382,6 +1461,19 @@ def _safe_visibility(candidate: Mapping[str, Any]) -> float:
     return max(0.0, min(1.0, value))
 
 
+def _attach_action_history_to_observation(observation: Mapping[str, Any], history: Mapping[str, Any]) -> None:
+    if not isinstance(observation, dict):
+        return
+    _update_login_flow_state(history, observation=observation, action=None, after_observation=None)
+    obs_history = observation.setdefault("history", {})
+    if not isinstance(obs_history, dict):
+        obs_history = {}
+        observation["history"] = obs_history
+    counts = history.get("action_type_counts", {})
+    obs_history["action_type_counts"] = dict(counts) if isinstance(counts, Mapping) else {}
+    obs_history["login_flow"] = dict(history.get("login_flow", {}) or {})
+
+
 def _masked_action_id(
     action_space: ActionSpace,
     action_mask: np.ndarray,
@@ -1395,6 +1487,27 @@ def _masked_action_id(
     if action_id >= len(action_mask) or float(action_mask[action_id]) <= 0.0:
         return None
     return action_id
+
+
+def _record_seen_anomaly_signatures(history: Dict[str, Any], anomalies: List[Mapping[str, Any]]) -> None:
+    seen = history.setdefault("seen_anomaly_keys", set())
+    if not isinstance(seen, set):
+        seen = set(seen or [])
+        history["seen_anomaly_keys"] = seen
+    for anomaly in anomalies or []:
+        if not isinstance(anomaly, Mapping):
+            continue
+        signature = anomaly.get("signature")
+        if signature:
+            seen.add(str(signature))
+        evidence = anomaly.get("evidence", {})
+        target = ""
+        if isinstance(evidence, Mapping):
+            target = str(evidence.get("clicked_bid") or evidence.get("selector") or "")
+            nested = evidence.get("target")
+            if not target and isinstance(nested, Mapping):
+                target = str(nested.get("element_key") or nested.get("bid") or nested.get("text") or "")
+        seen.add(f"{anomaly.get('type')}:{target}")
 
 
 def _attach_policy_execution_fields(
@@ -1492,6 +1605,32 @@ def _reward_mode_config(config: Mapping[str, Any], site: Mapping[str, Any]) -> D
         else list(site.get("target_signal_types") or config.get("target_signal_types") or []),
         "signal_collector_enabled": True,
     }
+
+
+def _observability_hook_config(site: Mapping[str, Any]) -> Dict[str, Any]:
+    return {
+        "server_log_paths": _string_list(site.get("server_log_paths") or site.get("serverLogPaths")),
+        "database_paths": _string_list(
+            site.get("database_paths") or site.get("db_paths") or site.get("databasePaths") or site.get("dbPaths")
+        ),
+        "db_engine": str(site.get("db_engine") or site.get("dbEngine") or ""),
+        "relational_db_hook_available": bool(site.get("relational_db_hook_available") or site.get("relationalDbHookAvailable")),
+        "postgres_hook_available": bool(site.get("postgres_hook_available") or site.get("postgresHookAvailable")),
+        "mysql_hook_available": bool(site.get("mysql_hook_available") or site.get("mysqlHookAvailable")),
+        "db_invariant_available": bool(site.get("db_invariant_available") or site.get("dbInvariantAvailable")),
+        "trace_collector_available": bool(site.get("trace_collector_available") or site.get("traceCollectorAvailable")),
+        "api_contract_available": bool(site.get("api_contract_available") or site.get("apiContractAvailable")),
+        "schema_available": bool(site.get("schema_available") or site.get("schemaAvailable")),
+        "openapi_spec_available": bool(site.get("openapi_spec_available") or site.get("openapiSpecAvailable")),
+        "openapi_spec_path": str(site.get("openapi_spec_path") or site.get("openapiSpecPath") or ""),
+        "api_contract": site.get("api_contract") if isinstance(site.get("api_contract"), Mapping) else {},
+    }
+
+
+def _string_list(value: Any) -> List[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item).strip()]
 
 
 def _summary_reward_mode_fields(profile: Mapping[str, Any]) -> Dict[str, Any]:
@@ -1594,6 +1733,18 @@ def _accumulate_reward_breakdown(state: Dict[str, Any], reward_breakdown: Mappin
         "functional_action_signal_reward_total",
         "reward_functional_action_total",
         "penalty_debug_meta_total",
+        "login_form_coverage_reward_total",
+        "login_flow_penalty_total",
+        "reward_email_input_filled",
+        "reward_password_input_filled",
+        "reward_submit_clicked",
+        "reward_submit_result_checked",
+        "penalty_repeated_same_input_fill",
+        "penalty_email_repeated_password_pending",
+        "penalty_submit_missing",
+        "penalty_login_flow_incomplete_early_stop",
+        "penalty_targetless_action_success",
+        "penalty_inspect_dom_failure_completed",
     ):
         state[key] = float(state.get(key, 0.0) or 0.0) + float(reward_breakdown.get(key, 0.0) or 0.0)
     for key in (
@@ -1927,6 +2078,19 @@ def _set_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
+
+
+def _episode_errors(states: Iterable[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+    errors: List[Dict[str, Any]] = []
+    for state in states:
+        for item in state.get("episode_errors", state.get("errors", [])) or []:
+            if isinstance(item, Mapping):
+                errors.append(dict(item))
+    return errors
+
+
+def _episode_exception_count(states: Iterable[Mapping[str, Any]]) -> int:
+    return len(_episode_errors(states))
 
 
 def _jsonable(value: Any) -> Any:

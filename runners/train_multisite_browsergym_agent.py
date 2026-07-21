@@ -44,6 +44,7 @@ def main() -> int:
     parser.add_argument("--fallback-reward-cap-enabled", type=_parse_bool, default=None)
     parser.add_argument("--fallback-reward-cap-value", type=float, default=None)
     parser.add_argument("--fallback-curriculum-enabled", type=_parse_bool, default=None)
+    parser.add_argument("--fail-on-episode-exception", type=_parse_bool, default=None)
     args = parser.parse_args()
     config_defaults = _read_config_defaults(args.config)
 
@@ -75,6 +76,7 @@ def main() -> int:
         fallback_reward_cap_enabled=_bool_arg(args.fallback_reward_cap_enabled, config_defaults, "fallback_reward_cap_enabled", True),
         fallback_reward_cap_value=_float_arg(args.fallback_reward_cap_value, config_defaults, "fallback_reward_cap_value", 0.0),
         fallback_curriculum_enabled=_bool_arg(args.fallback_curriculum_enabled, config_defaults, "fallback_curriculum_enabled", True),
+        fail_on_episode_exception=_bool_arg(args.fail_on_episode_exception, config_defaults, "fail_on_episode_exception", False),
     )
     summary = service.train()
     print("shared_model_path:", summary["shared_model_path"])

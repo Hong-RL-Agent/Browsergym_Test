@@ -6,6 +6,9 @@ import re
 from collections import Counter
 from typing import Any, Dict, List, Mapping
 
+from services.extended_policy_oracle_service import detect_extended_policy_findings
+from services.web_error_finding_service import detect_web_error_findings
+
 
 ACTION_KEYWORDS = (
     "구매",
@@ -86,8 +89,8 @@ def detect_anomalies(
     no_state_change = _state_signature(before_observation) == _state_signature(after_observation)
 
     clicked_candidate = _candidate_at(before_candidates, candidate_index)
+    visibility = _visibility(clicked_candidate)
     if action_type == "click_element" and clicked_candidate:
-        visibility = _visibility(clicked_candidate)
         target_text = _candidate_text(clicked_candidate)
         is_purchase_action = _is_purchase_action(clicked_candidate)
         is_workout_add_action = _is_workout_add_action(clicked_candidate)
@@ -486,6 +489,8 @@ def detect_anomalies(
             )
 
     page_text_after = _page_text(after_observation).lower()
+    anomalies.extend(detect_web_error_findings(before_observation, after_observation, action_info))
+    anomalies.extend(detect_extended_policy_findings(before_observation, after_observation, action_info))
     if action_type == "inspect_network":
         api_403_count = int(action_info.get("api_403_count", 0) or 0)
         network_entries = action_info.get("network_entries", []) or []
@@ -637,7 +642,9 @@ def _candidate_at(candidates: Any, index: int) -> Mapping[str, Any] | None:
     return None
 
 
-def _visibility(candidate: Mapping[str, Any]) -> float:
+def _visibility(candidate: Mapping[str, Any] | None) -> float:
+    if not isinstance(candidate, Mapping):
+        return 1.0
     if "visible" in candidate and not bool(candidate.get("visible", True)):
         return 0.0
     if "visibility" not in candidate or candidate.get("visibility") is None:

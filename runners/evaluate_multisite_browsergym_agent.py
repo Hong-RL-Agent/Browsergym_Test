@@ -13,6 +13,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Mapping
+from urllib.parse import urlparse
 
 import numpy as np
 import torch
@@ -36,6 +37,7 @@ from services.anomaly_detection_service import detect_anomalies
 from services.autonomous_reward_service import apply_fallback_reward_policy, calculate_autonomous_reward
 from services.browsergym_training_service import (
     _enrich_action,
+    _update_login_flow_state,
     _has_openended_interactive_candidate,
     _target_bid,
     _update_history,
@@ -170,7 +172,7 @@ def main() -> int:
         args.model_path = args.model_path or str(config.get("shared_model_path") or "artifacts/models/jaws_browsergym_shared_ppo_v3_policy_safe.pt")
         args.run_id = args.run_id or config_run_id
         args.episodes = _eval_episodes_arg(args.episodes, config, 3)
-        args.max_steps = _int_arg(args.max_steps, config, "max_steps", 25)
+        args.max_steps = _int_arg(args.max_steps, config, "max_steps", 30)
         args.site_timeout_seconds = _int_arg(args.site_timeout_seconds, config, "site_timeout_seconds", 60)
         args.episode_timeout_seconds = _int_arg(args.episode_timeout_seconds, config, "episode_timeout_seconds", 0)
         args.no_progress_patience = _int_arg(args.no_progress_patience, config, "no_progress_patience", 0)
@@ -859,6 +861,8 @@ def _append_partial_transition(
     reward: float,
     anomalies: List[Mapping[str, Any]],
     url: str,
+    mask_stats: Mapping[str, Any] | None = None,
+    step_info: Mapping[str, Any] | None = None,
 ) -> None:
     if path is None:
         return
@@ -879,6 +883,49 @@ def _append_partial_transition(
             "detected_anomalies": anomalies,
             "url": url,
         }
+        if isinstance(mask_stats, Mapping):
+            row.update(
+                {
+                    "candidate_count": mask_stats.get("candidate_count"),
+                    "fillable_count": mask_stats.get("fillable_count"),
+                    "clickable_count": mask_stats.get("clickable_count"),
+                    "submit_count": mask_stats.get("submit_count"),
+                    "password_input_count": mask_stats.get("password_input_count"),
+                    "selected_action": mask_stats.get("selected_action_type"),
+                    "selected_target_element_key": mask_stats.get("selected_target_element_key"),
+                    "selected_target_text": mask_stats.get("selected_target_text"),
+                    "selected_target_name": mask_stats.get("selected_target_name"),
+                    "selected_target_role": mask_stats.get("selected_target_role"),
+                    "selected_target_type": mask_stats.get("selected_target_type"),
+                    "selected_target_semantic_type": mask_stats.get("selected_target_semantic_type"),
+                    "action_mask_enabled_actions": mask_stats.get("action_mask_enabled_actions"),
+                    "high_priority_candidate_count": mask_stats.get("high_priority_candidate_count"),
+                    "action_priority_reason": mask_stats.get("action_priority_reason"),
+                    "login_flow_status": mask_stats.get("login_flow_status"),
+                    "required_actions_remaining": mask_stats.get("required_actions_remaining"),
+                }
+            )
+        if isinstance(step_info, Mapping):
+            row.update(
+                {
+                    "action_success": bool(step_info.get("action_success") or step_info.get("clicked") or step_info.get("filled") or step_info.get("pressed")),
+                    "success_reason": str(step_info.get("success_reason") or ""),
+                    "action_success_reason": str(step_info.get("success_reason") or ""),
+                    "failure_reason": str(step_info.get("failure_reason") or step_info.get("invalid_action_reason") or step_info.get("action_error") or ""),
+                    "invalid_action_reason": str(step_info.get("invalid_action_reason") or ""),
+                    "failed_action_type": str(action.get("action_type") or "") if not bool(step_info.get("action_success") or step_info.get("clicked") or step_info.get("filled") or step_info.get("pressed")) else "",
+                    "exception_type": str(step_info.get("exception_type") or ""),
+                    "exception_message": str(step_info.get("exception_message") or step_info.get("click_error") or step_info.get("fill_error") or step_info.get("press_error") or step_info.get("action_error") or ""),
+                    "target_element_key": str(action.get("action_element_key") or ""),
+                    "target_selector": str(action.get("target_selector") or ""),
+                    "retryable": bool(step_info.get("retryable", False)),
+                    "fallback_applied": bool(action.get("fallback_applied", False)),
+                    "fallback_reason": str(action.get("fallback_reason") or ""),
+                    "new_url": str(step_info.get("new_url") or url or ""),
+                    "network_request_count": int(step_info.get("network_request_count", step_info.get("playwright_request_count", 0)) or 0),
+                    "console_error_count": int(step_info.get("console_error_count", step_info.get("playwright_console_error_count", 0)) or 0),
+                }
+            )
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
     except Exception as exc:
@@ -987,6 +1034,7 @@ def _evaluate_site(
             "policy_uses_bug_labels": False,
         }
     )
+    site_profile.update(_observability_hook_config(site))
     has_catalog = bool(site.get("has_bug_catalog")) and bool(known_bugs)
     episode_rewards: List[float] = []
     scaled_episode_rewards: List[float] = []
@@ -1311,6 +1359,31 @@ def _evaluate_site(
             for step_index in range(max_steps):
                 _raise_if_site_timeout(site_started_at, site_timeout_seconds, site_id)
                 _raise_if_episode_timeout(episode_started_at, episode_timeout_seconds, site_id, episode_index)
+                boundary_reason = _target_url_boundary_violation(observation, site)
+                if boundary_reason:
+                    early_stop_reason = "target_url_boundary"
+                    early_stop_reasons[early_stop_reason] += 1
+                    warnings.append(boundary_reason)
+                    _emit_event(
+                        event="warning",
+                        site_id=site_id,
+                        episode=episode_index,
+                        step=step_index + 1,
+                        message=boundary_reason,
+                    )
+                    _write_live_status(
+                        _live_dir(output_path),
+                        scan_id=scan_id,
+                        status="running",
+                        stage="target_url_boundary_stop",
+                        current_site=site_id,
+                        current_episode=episode_index,
+                        current_step=step_index + 1,
+                        message=boundary_reason,
+                    )
+                    done = True
+                    break
+                _attach_action_history_to_observation(observation, history)
                 obs_vector = encoder.encode_observation(observation)
                 action_mask = action_space.build_action_mask(observation)
                 policy_selected = agent.select_greedy_action(obs_vector, action_mask, memory_state=memory_state)
@@ -1376,6 +1449,7 @@ def _evaluate_site(
                 action["action_id"] = action_id
                 action["site_id"] = site_id
                 _enrich_action(action, observation)
+                mask_stats = action_space.build_action_mask_stats(observation, executed_mask, action_id)
                 detailed_reasons = list(history.get("_fallback_reasons_step", []) or [])
                 fallback_reason = ",".join(str(reason) for reason in detailed_reasons) if detailed_reasons else _fallback_reason(fallback_warning)
                 fallback_applied = bool(str(fallback_mode or "eval") != "strict" and (repeated or fallback_warning or action_id != policy_action_id))
@@ -1556,6 +1630,18 @@ def _evaluate_site(
                     "no_functional_action_episode_count",
                     "functional_action_signal_delta_count",
                     "functional_action_network_delta_count",
+                    "login_form_coverage_reward_total",
+                    "login_flow_penalty_total",
+                    "reward_email_input_filled",
+                    "reward_password_input_filled",
+                    "reward_submit_clicked",
+                    "reward_submit_result_checked",
+                    "penalty_repeated_same_input_fill",
+                    "penalty_email_repeated_password_pending",
+                    "penalty_submit_missing",
+                    "penalty_login_flow_incomplete_early_stop",
+                    "penalty_targetless_action_success",
+                    "penalty_inspect_dom_failure_completed",
                 ):
                     signal_summary[key] += float(reward_breakdown.get(key, 0.0) or 0.0)
                 if reward_breakdown.get("playwright_listener_warning"):
@@ -1584,6 +1670,8 @@ def _evaluate_site(
                     reward=_clamp_reward(reward * reward_scale),
                     anomalies=anomalies,
                     url=str(next_observation.get("page_state", {}).get("url", "") or ""),
+                    mask_stats=mask_stats,
+                    step_info=step_info,
                 )
                 if csv_logger is not None:
                     episode_id = f"{site_id}-EP{episode_index:03d}"
@@ -1847,12 +1935,18 @@ def _evaluate_site(
                     history["no_progress_steps"] = 0
                 else:
                     history["no_progress_steps"] = int(history.get("no_progress_steps", 0) or 0) + 1
-                _update_history(history, observation, action, anomalies)
+                _record_seen_anomaly_signatures(history, anomalies)
+                _update_history(history, observation, action, anomalies, after_observation=next_observation)
                 observation = next_observation
                 repeated_signature_count = _current_action_signature_count(history, action)
                 if no_progress_patience > 0 and int(history.get("no_progress_steps", 0) or 0) >= no_progress_patience:
                     unclicked_functional_count = len(observed_functional_priority_targets - clicked_functional_priority_targets)
-                    if unclicked_functional_count > 0:
+                    pending_reason = _required_observation_work_pending(observation, history)
+                    if pending_reason:
+                        early_stop_reasons[f"{pending_reason}_early_stop_blocked"] += 1
+                        history["no_progress_steps"] = max(0, no_progress_patience - 1)
+                        done = False
+                    elif unclicked_functional_count > 0:
                         no_progress_delayed_by_unclicked_functional_candidate_count += 1
                         history["no_progress_steps"] = max(0, no_progress_patience - 1)
                         done = False
@@ -2178,6 +2272,14 @@ def _evaluate_site(
         "penalty_debug_meta_total": float(signal_summary.get("penalty_debug_meta_total", 0.0)),
         "diversity_reward_total": diversity_reward_total,
         "repeated_action_penalty_total": repeated_action_penalty_total,
+        "login_form_coverage_reward_total": float(signal_summary.get("login_form_coverage_reward_total", 0.0)),
+        "login_flow_penalty_total": float(signal_summary.get("login_flow_penalty_total", 0.0)),
+        "reward_email_input_filled": float(signal_summary.get("reward_email_input_filled", 0.0)),
+        "reward_password_input_filled": float(signal_summary.get("reward_password_input_filled", 0.0)),
+        "reward_submit_clicked": float(signal_summary.get("reward_submit_clicked", 0.0)),
+        "reward_submit_result_checked": float(signal_summary.get("reward_submit_result_checked", 0.0)),
+        "penalty_login_flow_incomplete_early_stop": float(signal_summary.get("penalty_login_flow_incomplete_early_stop", 0.0)),
+        "penalty_targetless_action_success": float(signal_summary.get("penalty_targetless_action_success", 0.0)),
         "known_bug_reward_total": 0.0,
         "signal_reward_total": float(signal_summary.get("signal_reward_total", 0.0)),
         "exploration_reward_total": float(signal_summary.get("exploration_reward_total", 0.0)),
@@ -2429,7 +2531,9 @@ def _apply_eval_fallback_mask(
         warning = warning or f"WARNING: {site_id} low-value generic candidate suppressed; exploration fallback applied."
     suppressed_clicks = _suppress_repeated_clicks(action_space, mask, observation, history)
     if suppressed_clicks:
+        repeated = 1
         _record_fallback_reason(history, "visited_element_key")
+        warning = warning or f"WARNING: {site_id} visited target suppressed; unclicked candidate fallback applied."
     blocked_signatures = _suppress_repeated_action_signatures(action_space, mask, history)
     last_action_type = str(history.get("last_action_type") or "")
     counts = history.get("consecutive_action_type_counts", {})
@@ -2513,6 +2617,10 @@ def _apply_eval_fallback_mask(
             repeated = 1
             _record_fallback_reason(history, "visited_element_key")
             warning = warning or f"WARNING: {site_id} visited target suppressed; unclicked candidate fallback applied."
+    if not warning and _prefer_periodic_diagnostic_action(action_space, mask, history):
+        repeated = 1
+        _record_fallback_reason(history, "exploration_redirect")
+        warning = warning or f"WARNING: {site_id} periodic network/console diagnostic action selected."
     signature_scoped_actions = {"click_element", "fill_input", "press_enter"}
     if consecutive >= 2 and last_action_type and last_action_type not in signature_scoped_actions:
         if _prefer_functional_actions(action_space, mask, observation, history):
@@ -2805,6 +2913,42 @@ def _prefer_verification_action(action_space: ActionSpace, mask: np.ndarray, his
     return False
 
 
+def _prefer_periodic_diagnostic_action(action_space: ActionSpace, mask: np.ndarray, history: Mapping[str, Any]) -> bool:
+    action_counts = history.get("action_type_counts", {})
+    if not isinstance(action_counts, Mapping):
+        action_counts = {}
+    total_actions = sum(int(value or 0) for value in action_counts.values())
+    click_count = int(action_counts.get("click_element", 0) or 0)
+    if total_actions <= 0:
+        return False
+
+    # Early in a scan, force at least one network, console, and DOM inspection.
+    # Later, after several clicks, periodically re-check network/console signals.
+    diagnostic_plan: list[str] = []
+    if click_count >= 2:
+        diagnostic_plan.extend(["inspect_network", "inspect_console", "inspect_dom"])
+    if click_count >= 6 and total_actions % 6 in {0, 1}:
+        diagnostic_plan.extend(["inspect_network", "inspect_console"])
+    if click_count >= 12 and total_actions % 10 in {0, 1}:
+        diagnostic_plan.extend(["inspect_dom"])
+
+    for action_type in diagnostic_plan:
+        if int(action_counts.get(action_type, 0) or 0) > 0:
+            continue
+        try:
+            action_id = action_space.encode(action_type, 0)
+        except ValueError:
+            continue
+        if action_id < len(mask) and float(mask[action_id]) > 0.0:
+            mask[:] = 0.0
+            mask[action_id] = 1.0
+            if isinstance(history, dict):
+                history["verification_action_redirect_count"] = int(history.get("verification_action_redirect_count", 0) or 0) + 1
+                history["diagnostic_action_redirect_count"] = int(history.get("diagnostic_action_redirect_count", 0) or 0) + 1
+            return True
+    return False
+
+
 def _suppress_repeated_action_signatures(
     action_space: ActionSpace,
     mask: np.ndarray,
@@ -3086,11 +3230,111 @@ def _record_eval_action_signature(history: Dict[str, Any], action: Mapping[str, 
         counts[signature] = int(counts.get(signature, 0) or 0) + 1
 
 
+def _record_seen_anomaly_signatures(history: Dict[str, Any], anomalies: List[Mapping[str, Any]]) -> None:
+    seen = history.setdefault("seen_anomaly_keys", set())
+    if not isinstance(seen, set):
+        seen = set(seen or [])
+        history["seen_anomaly_keys"] = seen
+    for anomaly in anomalies or []:
+        if not isinstance(anomaly, Mapping):
+            continue
+        if anomaly.get("signature"):
+            seen.add(str(anomaly.get("signature")))
+        evidence = anomaly.get("evidence", {})
+        target = ""
+        if isinstance(evidence, Mapping):
+            target = str(evidence.get("clicked_bid") or evidence.get("selector") or "")
+            nested = evidence.get("target")
+            if not target and isinstance(nested, Mapping):
+                target = str(nested.get("element_key") or nested.get("bid") or nested.get("text") or "")
+        seen.add(f"{anomaly.get('type')}:{target}")
+
+
 def _current_action_signature_count(history: Mapping[str, Any], action: Mapping[str, Any]) -> int:
     counts = history.get("action_signature_counts", {})
     if not isinstance(counts, Mapping):
         return 0
     return int(counts.get(_action_signature(action), 0) or 0)
+
+
+def _login_form_unprocessed(observation: Mapping[str, Any], history: Mapping[str, Any]) -> bool:
+    login_flow = history.get("login_flow", {}) if isinstance(history, Mapping) else {}
+    if isinstance(login_flow, Mapping) and bool(login_flow.get("has_login_form")):
+        return not bool(login_flow.get("login_flow_completed"))
+    candidates = observation.get("candidate_elements", []) if isinstance(observation, Mapping) else []
+    if not isinstance(candidates, list):
+        return False
+    has_fillable = any(isinstance(candidate, Mapping) and bool(candidate.get("fillable")) for candidate in candidates)
+    has_password = any(isinstance(candidate, Mapping) and bool(candidate.get("is_password")) for candidate in candidates)
+    has_submit = any(isinstance(candidate, Mapping) and bool(candidate.get("is_submit")) for candidate in candidates)
+    if not (has_fillable or has_password or has_submit):
+        return False
+    counts = history.get("action_type_counts", {})
+    if not isinstance(counts, Mapping):
+        counts = {}
+    fill_done = int(counts.get("fill_input", 0) or 0) > 0
+    submit_done = int(counts.get("click_submit", 0) or 0) > 0 or int(counts.get("press_enter", 0) or 0) > 0
+    if (has_fillable or has_password) and not fill_done:
+        return True
+    if has_submit and not submit_done:
+        return True
+    return False
+
+
+def _required_observation_work_pending(observation: Mapping[str, Any], history: Mapping[str, Any]) -> str:
+    login_flow = history.get("login_flow", {}) if isinstance(history, Mapping) else {}
+    if isinstance(login_flow, Mapping) and bool(login_flow.get("has_login_form")):
+        remaining = login_flow.get("required_actions_remaining")
+        if isinstance(remaining, list) and remaining:
+            return "login_form"
+        if bool(login_flow.get("submit_clicked")) and not bool(login_flow.get("submit_result_checked")):
+            return "login_form"
+    if _login_form_unprocessed(observation, history):
+        return "login_form"
+    runtime = observation.get("runtime_signals", {}) if isinstance(observation, Mapping) else {}
+    infra = observation.get("infra_signals", {}) if isinstance(observation, Mapping) else {}
+    if not isinstance(runtime, Mapping):
+        runtime = {}
+    if not isinstance(infra, Mapping):
+        infra = {}
+    counts = history.get("action_type_counts", {})
+    if not isinstance(counts, Mapping):
+        counts = {}
+    network_count = max(
+        _safe_int(runtime.get("playwright_request_count"), 0),
+        _safe_int(runtime.get("network_request_count"), 0),
+        len(runtime.get("network_entries", [])) if isinstance(runtime.get("network_entries"), list) else 0,
+    )
+    if network_count > 0 and int(counts.get("inspect_network", 0) or 0) <= 0:
+        return "network_verification"
+    console_count = max(
+        _safe_int(runtime.get("playwright_console_error_count"), 0),
+        _safe_int(runtime.get("console_error_count"), 0),
+        _safe_int(infra.get("console_error_count"), 0),
+    )
+    if console_count > 0 and int(counts.get("inspect_console", 0) or 0) <= 0:
+        return "console_verification"
+    return ""
+
+
+def _attach_action_history_to_observation(observation: Mapping[str, Any], history: Mapping[str, Any]) -> None:
+    if not isinstance(observation, dict):
+        return
+    _update_login_flow_state(history, observation=observation, action=None, after_observation=None)
+    obs_history = observation.setdefault("history", {})
+    if not isinstance(obs_history, dict):
+        obs_history = {}
+        observation["history"] = obs_history
+    counts = history.get("action_type_counts", {})
+    obs_history["action_type_counts"] = dict(counts) if isinstance(counts, Mapping) else {}
+    obs_history["login_flow"] = dict(history.get("login_flow", {}) or {})
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
 
 
 def _action_signature(action: Mapping[str, Any]) -> str:
@@ -3104,7 +3348,7 @@ def _action_signature(action: Mapping[str, Any]) -> str:
     target = str(action.get("clicked_bid") or action.get("clicked_text") or "")
     if target:
         return f"{action_type}:{candidate_index}:{target}"
-    if action_type in {"click_element", "fill_input", "press_enter", "open_detail_panel", "click_trigger_button", "click_retry_button", "click_recovery_button"}:
+    if action_type in {"click_element", "click_submit", "fill_input", "press_enter", "open_detail_panel", "click_trigger_button", "click_retry_button", "click_recovery_button"}:
         return f"{action_type}:{candidate_index}"
     return f"{action_type}:*"
 
@@ -4096,6 +4340,36 @@ def _validate_sites(raw_sites: Any) -> List[Dict[str, Any]]:
     return [dict(site) for site in raw_sites if isinstance(site, Mapping) and site.get("enabled") is not False]
 
 
+def _target_url_boundary_violation(observation: Mapping[str, Any], site: Mapping[str, Any]) -> str:
+    if site.get("enforce_target_url_boundary") is False:
+        return ""
+    page_state = observation.get("page_state", {}) if isinstance(observation, Mapping) else {}
+    page_state = page_state if isinstance(page_state, Mapping) else {}
+    current_url = str(page_state.get("url") or "")
+    if not current_url:
+        return ""
+    parsed_current = urlparse(current_url)
+    current_host = str(parsed_current.hostname or "").lower()
+    allowed_hosts = [str(item).lower() for item in _string_list(site.get("allowed_hosts") or site.get("allowedHosts"))]
+    if not allowed_hosts:
+        parsed_base = urlparse(str(site.get("base_url") or ""))
+        if parsed_base.hostname:
+            allowed_hosts = [str(parsed_base.hostname).lower()]
+    if allowed_hosts and current_host and current_host not in allowed_hosts:
+        return f"target URL boundary reached: current host {current_host} is outside allowed hosts {allowed_hosts}"
+    lowered_url = current_url.lower()
+    blocked_keywords = [str(item).lower() for item in _string_list(site.get("blocked_url_keywords") or site.get("blockedUrlKeywords"))]
+    for keyword in blocked_keywords:
+        if keyword and keyword in lowered_url:
+            return f"target URL boundary reached: blocked URL keyword `{keyword}` in {current_url}"
+    allowed_prefixes = _string_list(site.get("allowed_path_prefixes") or site.get("allowedPathPrefixes"))
+    if allowed_prefixes:
+        current_path = parsed_current.path or "/"
+        if not any(current_path.startswith(prefix) for prefix in allowed_prefixes):
+            return f"target URL boundary reached: path {current_path} is outside allowed prefixes {allowed_prefixes}"
+    return ""
+
+
 def _apply_evaluation_defaults_to_sites(sites: List[Dict[str, Any]], config: Mapping[str, Any]) -> None:
     for site in sites:
         for key in (
@@ -4107,6 +4381,32 @@ def _apply_evaluation_defaults_to_sites(sites: List[Dict[str, Any]], config: Map
         ):
             if key not in site and key in config:
                 site[key] = config[key]
+
+
+def _observability_hook_config(site: Mapping[str, Any]) -> Dict[str, Any]:
+    return {
+        "server_log_paths": _string_list(site.get("server_log_paths") or site.get("serverLogPaths")),
+        "database_paths": _string_list(
+            site.get("database_paths") or site.get("db_paths") or site.get("databasePaths") or site.get("dbPaths")
+        ),
+        "db_engine": str(site.get("db_engine") or site.get("dbEngine") or ""),
+        "relational_db_hook_available": bool(site.get("relational_db_hook_available") or site.get("relationalDbHookAvailable")),
+        "postgres_hook_available": bool(site.get("postgres_hook_available") or site.get("postgresHookAvailable")),
+        "mysql_hook_available": bool(site.get("mysql_hook_available") or site.get("mysqlHookAvailable")),
+        "db_invariant_available": bool(site.get("db_invariant_available") or site.get("dbInvariantAvailable")),
+        "trace_collector_available": bool(site.get("trace_collector_available") or site.get("traceCollectorAvailable")),
+        "api_contract_available": bool(site.get("api_contract_available") or site.get("apiContractAvailable")),
+        "schema_available": bool(site.get("schema_available") or site.get("schemaAvailable")),
+        "openapi_spec_available": bool(site.get("openapi_spec_available") or site.get("openapiSpecAvailable")),
+        "openapi_spec_path": str(site.get("openapi_spec_path") or site.get("openapiSpecPath") or ""),
+        "api_contract": site.get("api_contract") if isinstance(site.get("api_contract"), Mapping) else {},
+    }
+
+
+def _string_list(value: Any) -> List[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item).strip()]
 
 
 def _configured_sites(raw_sites: Any) -> List[Dict[str, Any]]:

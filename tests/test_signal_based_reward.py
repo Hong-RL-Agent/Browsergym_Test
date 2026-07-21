@@ -147,8 +147,21 @@ class SignalBasedRewardTests(unittest.TestCase):
             {"action_type_counts": {"inspect_network": 0}, "functional_action_count": 0},
             {},
         )
-        self.assertGreater(breakdown["signal_delta_reward_total"], 0.0)
+        self.assertEqual(0.0, breakdown["signal_delta_reward_total"])
+        self.assertGreater(breakdown["raw_signal_reward_metric_total"], 0.0)
+        self.assertFalse(breakdown["direct_signal_reward_used_for_policy"])
         self.assertEqual(0.0, breakdown["functional_action_signal_reward_total"])
+
+    def test_raw_signal_category_reward_not_used_directly_for_policy(self) -> None:
+        after = _obs()
+        after["runtime_signals"].update({"console_error_count": 1, "network_entries": [{"status": 500}]})
+
+        _, breakdown = calculate_autonomous_reward(_obs(), after, {"action_type": "click_element"}, [], [], {}, {})
+
+        self.assertEqual(0.0, breakdown["signal_reward_total"])
+        self.assertEqual(0.0, breakdown["signal_delta_reward_total"])
+        self.assertGreaterEqual(breakdown["raw_signal_reward_metric_total"], 0.0)
+        self.assertFalse(breakdown["direct_signal_reward_used_for_policy"])
 
     def test_signal_based_reward_does_not_use_bug_labels(self) -> None:
         source = (ROOT / "services" / "autonomous_reward_service.py").read_text(encoding="utf-8").lower()

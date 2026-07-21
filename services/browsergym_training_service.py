@@ -145,6 +145,7 @@ class BrowserGymTrainingService:
                     print(warning)
                 done = False
                 for step in range(1, self.max_steps + 1):
+                    _attach_action_history_to_observation(observation, history)
                     obs_vector = self.encoder.encode_observation(observation)
                     action_mask = self.action_space.build_action_mask(observation)
                     selected = self.agent.select_action(obs_vector, action_mask, memory_state=memory_state)
@@ -276,7 +277,7 @@ class BrowserGymTrainingService:
                         }
                     )
 
-                    _update_history(history, observation, action, anomalies)
+                    _update_history(history, observation, action, anomalies, after_observation=next_observation)
                     observation = next_observation
                     if done:
                         break
@@ -463,8 +464,10 @@ def _update_history(
     observation: Dict[str, Any],
     action: Dict[str, Any],
     anomalies: Optional[List[Dict[str, Any]]] = None,
+    after_observation: Optional[Mapping[str, Any]] = None,
 ) -> None:
-    if action.get("action_type") in {"click_element", "fill_input", "press_enter"}:
+    _update_login_flow_state(history, observation=observation, action=action, after_observation=after_observation)
+    if action.get("action_type") in {"click_element", "click_submit", "fill_input", "press_enter"}:
         candidates = observation.get("candidate_elements", []) or []
         index = int(action.get("candidate_index", 0) or 0)
         if isinstance(candidates, list) and 0 <= index < len(candidates):
@@ -473,7 +476,7 @@ def _update_history(
             key = _candidate_key(candidate)
             if key:
                 target_counts = history.setdefault("click_target_counts", {})
-                if action.get("action_type") == "click_element" and isinstance(target_counts, dict):
+                if action.get("action_type") in {"click_element", "click_submit"} and isinstance(target_counts, dict):
                     target_counts[key] = int(target_counts.get(key, 0) or 0) + 1
                     history.setdefault("visited_targets", set()).add(key)
                     history.setdefault("visited_element_keys", set()).add(key)
@@ -483,6 +486,7 @@ def _update_history(
             if bid:
                 if action.get("action_type") == "fill_input":
                     history.setdefault("filled_bids", set()).add(str(bid))
+                    history.setdefault("filled_input_element_keys", set()).add(key)
                 elif action.get("action_type") == "press_enter":
                     history.setdefault("pressed_enter_bids", set()).add(str(bid))
                 else:
@@ -566,9 +570,10 @@ def _update_history(
     for bug_id in action.get("matched_bug_ids", []) or []:
         history.setdefault("matched_bug_ids", set()).add(str(bug_id))
     for anomaly in anomalies or []:
-        history.setdefault("seen_anomaly_keys", set()).add(
-            f"{anomaly.get('type')}:{anomaly.get('matched_bug_id') or _target_bid(anomaly.get('evidence', {}))}"
-        )
+        seen = history.setdefault("seen_anomaly_keys", set())
+        if anomaly.get("signature"):
+            seen.add(str(anomaly.get("signature")))
+        seen.add(f"{anomaly.get('type')}:{anomaly.get('matched_bug_id') or _target_bid(anomaly.get('evidence', {}))}")
 
 
 def _guided_action_id(
@@ -761,9 +766,120 @@ def _safe_visibility(candidate: Mapping[str, Any]) -> float:
     return max(0.0, min(1.0, value))
 
 
+def _attach_action_history_to_observation(observation: Mapping[str, Any], history: Mapping[str, Any]) -> None:
+    if not isinstance(observation, dict):
+        return
+    _update_login_flow_state(history, observation=observation, action=None, after_observation=None)
+    obs_history = observation.setdefault("history", {})
+    if not isinstance(obs_history, dict):
+        obs_history = {}
+        observation["history"] = obs_history
+    counts = history.get("action_type_counts", {})
+    obs_history["action_type_counts"] = dict(counts) if isinstance(counts, Mapping) else {}
+    obs_history["login_flow"] = dict(history.get("login_flow", {}) or {})
+
+
+def _update_login_flow_state(
+    history: Dict[str, Any],
+    *,
+    observation: Mapping[str, Any],
+    action: Mapping[str, Any] | None,
+    after_observation: Mapping[str, Any] | None = None,
+) -> Dict[str, Any]:
+    candidates = observation.get("candidate_elements", []) if isinstance(observation, Mapping) else []
+    candidates = candidates if isinstance(candidates, list) else []
+    has_email = any(isinstance(candidate, Mapping) and _is_email_text_candidate(candidate) for candidate in candidates)
+    has_password = any(isinstance(candidate, Mapping) and bool(candidate.get("is_password")) for candidate in candidates)
+    has_submit = any(isinstance(candidate, Mapping) and bool(candidate.get("is_submit")) for candidate in candidates)
+    state = history.setdefault("login_flow", {})
+    if not isinstance(state, dict):
+        state = {}
+        history["login_flow"] = state
+    state["has_email_or_text_input"] = bool(state.get("has_email_or_text_input") or has_email)
+    state["has_password_input"] = bool(state.get("has_password_input") or has_password)
+    state["has_submit_button"] = bool(state.get("has_submit_button") or has_submit)
+    state["has_login_form"] = bool(
+        state.get("has_login_form")
+        or (state["has_email_or_text_input"] and state["has_password_input"] and state["has_submit_button"])
+    )
+    if action:
+        action_type = str(action.get("action_type") or "")
+        index = int(action.get("candidate_index", 0) or 0)
+        candidate = candidates[index] if 0 <= index < len(candidates) and isinstance(candidates[index], Mapping) else {}
+        if action_type == "fill_input" and candidate:
+            if candidate.get("is_password"):
+                state["password_input_filled"] = True
+                history.setdefault("filled_password_element_keys", set()).add(_candidate_key(candidate))
+            elif _is_email_text_candidate(candidate):
+                state["email_input_filled"] = True
+                history.setdefault("filled_email_element_keys", set()).add(_candidate_key(candidate))
+            state["login_flow_attempted"] = True
+        if action_type == "click_submit" and candidate and candidate.get("is_submit"):
+            state["submit_clicked"] = True
+            state["login_flow_attempted"] = True
+            state["login_flow_status"] = "submitted"
+        if state.get("submit_clicked") and action_type in {"inspect_network", "inspect_console", "inspect_dom", "check_login_state"}:
+            state["submit_result_checked"] = True
+        if after_observation and state.get("submit_clicked"):
+            before_url = str((observation.get("page_state", {}) or {}).get("url") or "")
+            after_url = str((after_observation.get("page_state", {}) or {}).get("url") or "")
+            if before_url and after_url and before_url != after_url:
+                state["submit_result_checked"] = True
+            if _dom_state_hash(observation) != _dom_state_hash(after_observation):
+                state["submit_result_checked"] = True
+    if state.get("submit_clicked") and state.get("submit_result_checked"):
+        state["login_flow_completed"] = True
+        state["login_flow_status"] = "verified"
+    elif state.get("submit_clicked"):
+        state["login_flow_status"] = "submitted"
+    elif state.get("login_flow_attempted"):
+        state["login_flow_status"] = "in_progress"
+    elif state.get("has_login_form"):
+        state["login_flow_status"] = "not_started"
+    else:
+        state["login_flow_status"] = "not_applicable"
+    state["required_actions_remaining"] = _login_required_actions_remaining(state)
+    return state
+
+
+def _login_required_actions_remaining(state: Mapping[str, Any]) -> list[str]:
+    if not bool(state.get("has_login_form")):
+        return []
+    remaining: list[str] = []
+    if bool(state.get("has_email_or_text_input")) and not bool(state.get("email_input_filled")):
+        remaining.append("fill_email_or_text_input")
+    if bool(state.get("has_password_input")) and not bool(state.get("password_input_filled")):
+        remaining.append("fill_password_input")
+    if bool(state.get("has_submit_button")) and not bool(state.get("submit_clicked")):
+        remaining.append("click_submit")
+    if bool(state.get("submit_clicked")) and not bool(state.get("submit_result_checked")):
+        remaining.append("verify_submit_result")
+    return remaining
+
+
+def _is_email_text_candidate(candidate: Mapping[str, Any]) -> bool:
+    if not bool(candidate.get("fillable")):
+        return False
+    if bool(candidate.get("is_password")):
+        return False
+    input_type = str(candidate.get("type") or candidate.get("input_type") or "").lower()
+    role = str(candidate.get("role") or "").lower()
+    tag = str(candidate.get("tag") or "").lower()
+    text = " ".join(
+        str(candidate.get(key) or "")
+        for key in ("name", "text", "placeholder", "aria_label", "title", "id")
+    ).lower()
+    return bool(
+        input_type in {"", "text", "email", "search"}
+        or role in {"textbox", "searchbox"}
+        or tag == "textarea"
+        or any(token in text for token in ("email", "username", "user", "login"))
+    )
+
+
 def _enrich_action(action: Dict[str, Any], observation: Dict[str, Any]) -> None:
     candidate = None
-    if action.get("action_type") in {"click_element", "fill_input", "press_enter"}:
+    if action.get("action_type") in {"click_element", "click_submit", "fill_input", "press_enter"}:
         candidates = observation.get("candidate_elements", []) or []
         index = int(action.get("candidate_index", 0) or 0)
         if isinstance(candidates, list) and 0 <= index < len(candidates) and isinstance(candidates[index], dict):
@@ -780,6 +896,7 @@ def _enrich_action(action: Dict[str, Any], observation: Dict[str, Any]) -> None:
     action["functional_priority_candidate"] = bool(candidate and (candidate.get("functional_priority_candidate") or candidate.get("functional_priority")))
     action["semantic_action_type"] = str(candidate.get("semantic_action_type") or "") if candidate else ""
     action["action_semantic_type"] = action["semantic_action_type"]
+    action["target_selector"] = str(candidate.get("selector") or candidate.get("locator") or candidate.get("selector_hint") or "") if candidate else ""
     action["is_high_value_functional_candidate"] = bool(candidate and candidate.get("is_high_value_functional_candidate"))
     action["is_low_value_generic_candidate"] = bool(candidate and candidate.get("is_low_value_generic_candidate"))
     action["dom_state_hash"] = _dom_state_hash(observation)

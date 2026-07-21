@@ -60,6 +60,22 @@ def build_metric_counts(
     }
 
 
+def safe_visibility(candidate: Mapping[str, Any] | None) -> float:
+    candidate = candidate or {}
+    if "visibility" in candidate and candidate.get("visibility") is not None:
+        try:
+            value = float(candidate.get("visibility") or 0.0)
+        except (TypeError, ValueError):
+            value = 1.0
+    elif "visible" in candidate:
+        value = 1.0 if bool(candidate.get("visible")) else 0.0
+    else:
+        value = 1.0
+    if value != value:
+        return 1.0
+    return max(0.0, min(1.0, value))
+
+
 def build_per_site_metric(site_id: str, site_result: Mapping[str, Any]) -> dict[str, Any]:
     known_total = _known_bug_total(site_result)
     matched_count = int(site_result.get("known_bug_match_count") or len(site_result.get("matched_bug_ids", []) or []))
@@ -162,6 +178,14 @@ def build_per_site_metric(site_id: str, site_result: Mapping[str, Any]) -> dict[
         "repeated_action_rate_after_memory": site_result.get("repeated_action_rate_after_memory") if memory_enabled else None,
         "diversity_reward_total": float(site_result.get("diversity_reward_total") or 0.0),
         "repeated_action_penalty_total": float(site_result.get("repeated_action_penalty_total") or 0.0),
+        "login_form_coverage_reward_total": float(site_result.get("login_form_coverage_reward_total") or 0.0),
+        "login_flow_penalty_total": float(site_result.get("login_flow_penalty_total") or 0.0),
+        "reward_email_input_filled": float(site_result.get("reward_email_input_filled") or 0.0),
+        "reward_password_input_filled": float(site_result.get("reward_password_input_filled") or 0.0),
+        "reward_submit_clicked": float(site_result.get("reward_submit_clicked") or 0.0),
+        "reward_submit_result_checked": float(site_result.get("reward_submit_result_checked") or 0.0),
+        "penalty_login_flow_incomplete_early_stop": float(site_result.get("penalty_login_flow_incomplete_early_stop") or 0.0),
+        "penalty_targetless_action_success": float(site_result.get("penalty_targetless_action_success") or 0.0),
         "first_click_reward_count": int(site_result.get("first_click_reward_count") or 0),
         "new_action_type_reward_count": int(site_result.get("new_action_type_reward_count") or 0),
         "new_target_reward_count": int(site_result.get("new_target_reward_count") or 0),
@@ -402,6 +426,14 @@ def aggregate_site_metrics(per_site_metrics: Sequence[Mapping[str, Any]]) -> dic
         "repeated_action_rate_after_memory": _avg_float(item.get("repeated_action_rate_after_memory") for item in per_site_metrics) if memory_enabled else None,
         "diversity_reward_total": sum(float(item.get("diversity_reward_total") or 0.0) for item in per_site_metrics),
         "repeated_action_penalty_total": sum(float(item.get("repeated_action_penalty_total") or 0.0) for item in per_site_metrics),
+        "login_form_coverage_reward_total": sum(float(item.get("login_form_coverage_reward_total") or 0.0) for item in per_site_metrics),
+        "login_flow_penalty_total": sum(float(item.get("login_flow_penalty_total") or 0.0) for item in per_site_metrics),
+        "reward_email_input_filled": sum(float(item.get("reward_email_input_filled") or 0.0) for item in per_site_metrics),
+        "reward_password_input_filled": sum(float(item.get("reward_password_input_filled") or 0.0) for item in per_site_metrics),
+        "reward_submit_clicked": sum(float(item.get("reward_submit_clicked") or 0.0) for item in per_site_metrics),
+        "reward_submit_result_checked": sum(float(item.get("reward_submit_result_checked") or 0.0) for item in per_site_metrics),
+        "penalty_login_flow_incomplete_early_stop": sum(float(item.get("penalty_login_flow_incomplete_early_stop") or 0.0) for item in per_site_metrics),
+        "penalty_targetless_action_success": sum(float(item.get("penalty_targetless_action_success") or 0.0) for item in per_site_metrics),
         "first_click_reward_count": sum(int(item.get("first_click_reward_count") or 0) for item in per_site_metrics),
         "new_action_type_reward_count": sum(int(item.get("new_action_type_reward_count") or 0) for item in per_site_metrics),
         "new_target_reward_count": sum(int(item.get("new_target_reward_count") or 0) for item in per_site_metrics),

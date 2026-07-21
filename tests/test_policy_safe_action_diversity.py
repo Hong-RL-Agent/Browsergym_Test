@@ -158,7 +158,9 @@ class PolicySafeActionDiversityRewardTests(unittest.TestCase):
         )
         self.assertEqual(0.0, breakdown["functional_action_count"])
         self.assertEqual(0.0, breakdown["functional_action_signal_reward_total"])
-        self.assertGreater(breakdown["signal_delta_reward_total"], 0.0)
+        self.assertEqual(0.0, breakdown["signal_delta_reward_total"])
+        self.assertGreater(breakdown["raw_signal_reward_metric_total"], 0.0)
+        self.assertFalse(breakdown["direct_signal_reward_used_for_policy"])
 
     def test_same_action_signature_repeat_penalty(self) -> None:
         history = {

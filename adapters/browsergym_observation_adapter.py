@@ -387,6 +387,10 @@ class BrowserGymObservationAdapter:
             _add_candidate(candidates_by_key, dom_candidate)
             source_counts[dom_candidate["source"]] += 1
 
+        for playwright_candidate in _playwright_candidates(obs.get("playwright_candidates"), page_text, site_profile):
+            _add_candidate(candidates_by_key, playwright_candidate)
+            source_counts[playwright_candidate["source"]] += 1
+
         candidates = list(candidates_by_key.values())
         if _is_infra_observation(obs, page_text):
             for candidate in _infra_candidates(obs, page_text, site_profile):
@@ -662,11 +666,19 @@ def _make_candidate(
     title: str = "",
     element_id: str = "",
     class_name: str = "",
+    selector: str = "",
+    placeholder: str = "",
+    input_type: str = "",
+    href: str = "",
+    fillable: Optional[bool] = None,
+    is_password: Optional[bool] = None,
+    is_submit: Optional[bool] = None,
+    is_form_control: Optional[bool] = None,
     site_profile: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
-    selector_hint = f'[data-testid="{data_testid}"]' if data_testid else ""
+    selector_hint = selector or (f'[data-testid="{data_testid}"]' if data_testid else "")
     metadata_selector_hint = f'[data-bug-id="{data_bug_id}"]' if data_bug_id else selector_hint
-    keyword_text = " ".join([text, name, aria_label, title, element_id, class_name, data_testid])
+    keyword_text = " ".join([text, name, aria_label, title, element_id, class_name, data_testid, placeholder, input_type, href])
     initial_candidate = {
         "text": text,
         "name": name,
@@ -693,6 +705,7 @@ def _make_candidate(
     }
     role_norm = role.lower() if role else "generic"
     tag_norm = tag.lower() if tag else ""
+    input_type_norm = input_type.lower() if input_type else ""
     is_interactive = bool(
         clickable
         or role_norm in INTERACTIVE_ROLES
@@ -700,6 +713,16 @@ def _make_candidate(
         or _contains_keyword(keyword_text, ACTION_TEXT_KEYWORDS)
     )
     is_form_field = bool(tag_norm in {"input", "select", "textarea"} or role_norm in {"textbox", "searchbox", "combobox"})
+    resolved_fillable = bool(fillable) if fillable is not None else bool(
+        is_form_field and input_type_norm not in {"hidden", "button", "submit", "checkbox", "radio", "reset", "image", "file"}
+    )
+    resolved_is_password = bool(is_password) if is_password is not None else input_type_norm == "password"
+    resolved_is_submit = bool(is_submit) if is_submit is not None else bool(
+        input_type_norm == "submit" or (tag_norm == "button" and _contains_keyword(keyword_text, ("submit", "login", "sign in", "send")))
+    )
+    resolved_is_form_control = bool(is_form_control) if is_form_control is not None else bool(
+        is_form_field or resolved_is_submit or tag_norm in {"button", "select"}
+    )
     openended_keyword_matches = sorted(
         set(
             profile_keyword_matches(keyword_text, site_profile, "interaction_keywords")
@@ -812,13 +835,25 @@ def _make_candidate(
         "role": role_norm,
         "tag": tag_norm,
         "selector_hint": selector_hint,
+        "selector": selector_hint,
+        "locator": selector_hint,
         "visibility": max(0.0, min(1.0, visibility)),
         "visible": visibility > 0.0,
         "enabled": enabled,
         "clickable": clickable,
         "set_of_marks": set_of_marks,
         "bbox": bbox,
+        "bounding_box": bbox,
         "source": source,
+        "candidate_id": str(bid),
+        "type": input_type_norm,
+        "input_type": input_type_norm,
+        "placeholder": placeholder,
+        "href": href,
+        "fillable": resolved_fillable,
+        "is_password": resolved_is_password,
+        "is_submit": resolved_is_submit,
+        "is_form_control": resolved_is_form_control,
         "clickable_score": round(max(0.0, min(1.0, clickable_score)), 4),
         "is_purchase_action": is_purchase_action,
         "is_interactive": is_interactive,
@@ -1162,6 +1197,9 @@ def _dom_candidates(
                 continue
             bid = str(backend_ids[index]) if isinstance(backend_ids, list) and index < len(backend_ids) else f"dom-{index}"
             role = attr_map.get("role") or ("link" if tag == "a" else "button" if tag == "button" else tag or "generic")
+            input_type = attr_map.get("type", "")
+            is_fillable = tag in {"input", "textarea"} and input_type.lower() not in {"hidden", "button", "submit", "checkbox", "radio", "reset", "image", "file"}
+            is_submit = input_type.lower() == "submit" or tag == "button"
             score = 0.45 if tag in DOM_INTERACTIVE_TAGS else 0.25
             score += 0.2 if has_interactive_attr else 0.0
             score += 0.1 if text else 0.0
@@ -1173,8 +1211,8 @@ def _dom_candidates(
                     role=role,
                     tag=tag,
                     bbox=[0.0, 0.0, 0.0, 0.0],
-                    visibility=0.0,
-                    clickable=True,
+                    visibility=1.0,
+                    clickable=bool(tag in {"button", "a"} or is_submit or has_interactive_attr),
                     enabled=True,
                     source="dom",
                     page_text=page_text,
@@ -1185,9 +1223,70 @@ def _dom_candidates(
                     title=attr_map.get("title", ""),
                     element_id=attr_map.get("id", ""),
                     class_name=attr_map.get("class", ""),
+                    selector=_selector_from_attrs(tag, attr_map, fallback=f"{tag}:nth-of-type({index + 1})"),
+                    placeholder=attr_map.get("placeholder", ""),
+                    input_type=input_type,
+                    href=attr_map.get("href", ""),
+                    fillable=is_fillable,
+                    is_password=input_type.lower() == "password",
+                    is_submit=is_submit,
+                    is_form_control=tag in {"input", "textarea", "select", "button"},
                     site_profile=site_profile,
                 )
             )
+    return candidates
+
+
+def _playwright_candidates(
+    raw_candidates: Any,
+    page_text: str,
+    site_profile: Optional[Mapping[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    candidates: List[Dict[str, Any]] = []
+    if not isinstance(raw_candidates, list):
+        return candidates
+    for index, raw in enumerate(raw_candidates):
+        if not isinstance(raw, Mapping):
+            continue
+        tag = _as_str(raw.get("tag") or "generic").lower()
+        role = _as_str(raw.get("role") or ("link" if tag == "a" else "button" if tag == "button" else "textbox" if tag in {"input", "textarea"} else "generic")).lower()
+        input_type = _as_str(raw.get("type") or raw.get("input_type")).lower()
+        text = _as_str(raw.get("text") or raw.get("name") or raw.get("placeholder") or raw.get("aria_label") or raw.get("value") or tag)
+        bbox = _normalize_bbox(raw.get("bbox") or raw.get("bounding_box"))
+        selector = _as_str(raw.get("selector") or raw.get("locator") or "")
+        fillable = bool(raw.get("fillable"))
+        is_submit = bool(raw.get("is_submit"))
+        clickable = bool(raw.get("clickable") or is_submit or tag in {"button", "a"} or role in {"button", "link"})
+        candidates.append(
+            _make_candidate(
+                bid=_as_str(raw.get("bid") or raw.get("candidate_id") or f"pw-{index}"),
+                text=text,
+                name=_as_str(raw.get("name") or text),
+                role=role,
+                tag=tag,
+                bbox=bbox,
+                visibility=_as_float(raw.get("visibility"), 1.0 if bool(raw.get("visible", True)) else 0.0),
+                clickable=clickable,
+                enabled=bool(raw.get("enabled", True)),
+                source="playwright_dom",
+                page_text=page_text,
+                clickable_score=0.9 if clickable or fillable else 0.4,
+                data_testid=_as_str(raw.get("data_testid") or raw.get("data-testid")),
+                aria_label=_as_str(raw.get("aria_label") or raw.get("aria-label")),
+                title=_as_str(raw.get("title")),
+                element_id=_as_str(raw.get("id")),
+                class_name=_as_str(raw.get("class_name") or raw.get("class")),
+                selector=selector,
+                placeholder=_as_str(raw.get("placeholder")),
+                input_type=input_type,
+                href=_as_str(raw.get("href")),
+                fillable=fillable,
+                is_password=bool(raw.get("is_password") or input_type == "password"),
+                is_submit=is_submit,
+                is_form_control=bool(raw.get("is_form_control") or fillable or is_submit or tag in {"input", "textarea", "select", "button"}),
+                site_profile=site_profile,
+            )
+        )
     return candidates
 
 
@@ -1197,6 +1296,16 @@ def _active_page_value(obs: Mapping[str, Any], key: str) -> Any:
         return ""
     index = _as_int(obs.get("active_page_index"), default=0)
     return values[index] if 0 <= index < len(values) else values[0]
+
+
+def _selector_from_attrs(tag: str, attrs: Mapping[str, str], fallback: str = "") -> str:
+    tag = str(tag or "*").lower()
+    for attr in ("id", "name", "data-testid", "aria-label", "placeholder", "type", "href"):
+        value = str(attrs.get(attr) or "")
+        if value:
+            safe = value.replace("\\", "\\\\").replace('"', '\\"')
+            return f'{tag}[{attr}="{safe}"]'
+    return fallback
 
 
 def _raw_observation_keys(obs: Mapping[str, Any]) -> List[str]:
@@ -1987,15 +2096,18 @@ def _as_float(value: Any, default: float = 0.0) -> float:
 def _safe_visibility(mapping: Mapping[str, Any] | None, *, bbox: Any = None, default: float = 1.0) -> float:
     mapping = mapping or {}
     if "visibility" in mapping and mapping.get("visibility") is not None:
-        value = _as_float(mapping.get("visibility"), default=default)
+        try:
+            value = float(mapping.get("visibility") or 0.0)
+        except (TypeError, ValueError):
+            value = 1.0
     elif "visible" in mapping:
         value = 1.0 if _as_bool(mapping.get("visible"), True) else 0.0
     elif "is_visible" in mapping:
         value = 1.0 if _as_bool(mapping.get("is_visible"), True) else 0.0
-    elif bbox is not None and _has_bbox(bbox):
-        value = default
     else:
-        value = default
+        value = 1.0
+    if value != value:
+        return 1.0
     return max(0.0, min(1.0, value))
 
 

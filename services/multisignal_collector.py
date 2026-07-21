@@ -25,6 +25,8 @@ SIGNAL_COUNT_FIELDS = (
     "api_failure_ui_success_count",
     "stale_data_rendering_count",
     "auth_permission_anomaly_count",
+    "server_log_signal_count",
+    "database_signal_count",
     "sensitive_data_exposure_signal_count",
     "token_exposure_signal_count",
     "security_signal_count",
@@ -158,13 +160,29 @@ def _collect_single_observation_counts(
             counts["dom_anomaly_count"] += 1
         if anomaly_type in {"api-ui-mismatch", "network-error"}:
             counts["api_ui_mismatch_count"] += 1
+        if anomaly_type in {"api-4xx", "api-forbidden", "auth-permission-anomaly"}:
+            counts["api_4xx_count"] += 1
+        if anomaly_type in {"api-5xx", "backend-error", "database-error"}:
+            counts["api_5xx_count"] += 1
+        if anomaly_type.startswith("server-log"):
+            counts["server_log_signal_count"] += 1
+        if anomaly_type.startswith("database-") or anomaly_type == "server-log-database-error":
+            counts["database_signal_count"] += 1
+        if anomaly_type in {"api-timeout"}:
+            counts["api_timeout_count"] += 1
+        if anomaly_type in {"cors-error"}:
+            counts["cors_error_count"] += 1
+        if anomaly_type in {"console-error"}:
+            counts["console_error_count"] += 1
+        if anomaly_type in {"runtime-exception"}:
+            counts["runtime_exception_count"] += 1
         if anomaly_type == "api-success-ui-failure":
             counts["api_success_ui_failure_count"] += 1
         if anomaly_type == "api-failure-ui-success":
             counts["api_failure_ui_success_count"] += 1
         if anomaly_type in {"stale-data-rendering", "sparse-data-rendering"}:
             counts["stale_data_rendering_count"] += 1
-        if anomaly_type in {"auth-permission-anomaly", "api-forbidden"} or _int(evidence.get("network_status")) in {401, 403}:
+        if anomaly_type in {"auth-permission-anomaly", "auth-unauthorized-access", "api-forbidden"} or _int(evidence.get("network_status")) in {401, 403}:
             counts["auth_permission_anomaly_count"] += 1
         if anomaly_type == "sensitive-data-exposure":
             counts["sensitive_data_exposure_signal_count"] += 1

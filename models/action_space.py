@@ -90,7 +90,10 @@ class ActionSpace:
         infra_enabled = _is_infra_port(page_state, infra_signals)
 
         for action_type in self.action_types:
-            if site_id and site_id not in {"site001", "site9800"} and action_type == "inspect_cart":
+            # Cart inspection is a site-specific capability. An unknown site
+            # must not be treated as commerce just because this action exists
+            # in the global action space.
+            if action_type == "inspect_cart" and site_id not in {"site001", "site9800"}:
                 continue
             if self.is_infra_action(action_type) and not infra_enabled:
                 continue

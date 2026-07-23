@@ -13,10 +13,6 @@ def select_policy_action(action_space: ActionSpace, observation: Mapping[str, An
     if step == 0 and not history.get("desktop_inspected"):
         history["desktop_inspected"] = True
         return action_space.encode("inspect_layout", 0)
-    if not history.get("mobile_viewport_seen") and step >= 2:
-        return action_space.encode("change_viewport_mobile", 0)
-    if history.get("mobile_viewport_seen") and int(counts.get("inspect_layout", 0) or 0) < 2:
-        return action_space.encode("inspect_layout", 0)
     if int(counts.get("inspect_console", 0) or 0) == 0 and step >= 3:
         return action_space.encode("inspect_console", 0)
     if int(counts.get("inspect_network", 0) or 0) == 0 and step >= 4:
@@ -39,6 +35,12 @@ def select_policy_action(action_space: ActionSpace, observation: Mapping[str, An
     if ranked:
         _, index, action_type = max(ranked, key=lambda row: row[0])
         return action_space.encode(action_type, index)
+    # The live exploration view represents a normal desktop browser window.
+    # Do not allow a learned/fallback action to turn that preview into a
+    # mobile-sized viewport.
+    model_action = action_space.decode(model_action_id)
+    if str(model_action.get("action_type") or "") == "change_viewport_mobile":
+        return action_space.encode("inspect_layout", 0)
     return model_action_id
 
 def update_general_history(history: MutableMapping[str, Any], observation: Mapping[str, Any], action: Mapping[str, Any]) -> None:

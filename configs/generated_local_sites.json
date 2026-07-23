@@ -1,0 +1,725 @@
+{
+  "shared_model_path": "artifacts/models/jaws_browsergym_shared_rainbow_dqn.pt",
+  "sites": [
+    {
+      "site_id": "site001",
+      "base_url": "http://localhost:9220",
+      "has_bug_catalog": true,
+      "bug_catalog_path": "datasets/site001/bug_catalog.json",
+      "evaluation_mode": "catalog",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site002",
+      "base_url": "http://localhost:9221",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site002/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site003",
+      "base_url": "http://localhost:9222",
+      "has_bug_catalog": true,
+      "bug_catalog_path": "datasets/site003/bug_catalog.json",
+      "evaluation_mode": "catalog",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site004",
+      "base_url": "http://localhost:9223",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site004/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site005",
+      "base_url": "http://localhost:9224",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site005/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site006",
+      "base_url": "http://localhost:9225",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site006/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site007",
+      "base_url": "http://localhost:9226",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site007/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site008",
+      "base_url": "http://localhost:9227",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site008/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site009",
+      "base_url": "http://localhost:9228",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site009/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site010",
+      "base_url": "http://localhost:9229",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site010/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site011",
+      "base_url": "http://localhost:9230",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site011/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site012",
+      "base_url": "http://localhost:9231",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site012/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site013",
+      "base_url": "http://localhost:9232",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site013/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site014",
+      "base_url": "http://localhost:9233",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site014/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site015",
+      "base_url": "http://localhost:9234",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site015/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site016",
+      "base_url": "http://localhost:9235",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site016/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site017",
+      "base_url": "http://localhost:9236",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site017/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site018",
+      "base_url": "http://localhost:9237",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site018/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site019",
+      "base_url": "http://localhost:9238",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site019/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site020",
+      "base_url": "http://localhost:9239",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site020/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site021",
+      "base_url": "http://localhost:9240",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site021/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site022",
+      "base_url": "http://localhost:9241",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site022/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site023",
+      "base_url": "http://localhost:9242",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site023/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site024",
+      "base_url": "http://localhost:9243",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site024/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site025",
+      "base_url": "http://localhost:9244",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site025/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site026",
+      "base_url": "http://localhost:9245",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site026/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site027",
+      "base_url": "http://localhost:9246",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site027/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site028",
+      "base_url": "http://localhost:9247",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site028/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site029",
+      "base_url": "http://localhost:9248",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site029/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site030",
+      "base_url": "http://localhost:9249",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site030/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site031",
+      "base_url": "http://localhost:9250",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site031/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site032",
+      "base_url": "http://localhost:9251",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site032/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site033",
+      "base_url": "http://localhost:9252",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site033/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site034",
+      "base_url": "http://localhost:9253",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site034/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site035",
+      "base_url": "http://localhost:9254",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site035/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site036",
+      "base_url": "http://localhost:9255",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site036/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site037",
+      "base_url": "http://localhost:9256",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site037/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site038",
+      "base_url": "http://localhost:9257",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site038/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site039",
+      "base_url": "http://localhost:9258",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site039/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site040",
+      "base_url": "http://localhost:9259",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site040/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site041",
+      "base_url": "http://localhost:9260",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site041/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site042",
+      "base_url": "http://localhost:9261",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site042/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site043",
+      "base_url": "http://localhost:9262",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site043/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site044",
+      "base_url": "http://localhost:9263",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site044/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site045",
+      "base_url": "http://localhost:9264",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site045/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site046",
+      "base_url": "http://localhost:9265",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site046/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site047",
+      "base_url": "http://localhost:9266",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site047/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site048",
+      "base_url": "http://localhost:9267",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site048/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site049",
+      "base_url": "http://localhost:9268",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site049/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site050",
+      "base_url": "http://localhost:9269",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site050/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site051",
+      "base_url": "http://localhost:9270",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site051/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site052",
+      "base_url": "http://localhost:9271",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site052/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site053",
+      "base_url": "http://localhost:9272",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site053/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site054",
+      "base_url": "http://localhost:9273",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site054/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site055",
+      "base_url": "http://localhost:9274",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site055/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site056",
+      "base_url": "http://localhost:9275",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site056/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site057",
+      "base_url": "http://localhost:9276",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site057/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site058",
+      "base_url": "http://localhost:9277",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site058/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site059",
+      "base_url": "http://localhost:9278",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site059/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site060",
+      "base_url": "http://localhost:9279",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site060/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site061",
+      "base_url": "http://localhost:9280",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site061/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site062",
+      "base_url": "http://localhost:9281",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site062/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site063",
+      "base_url": "http://localhost:9282",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site063/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site064",
+      "base_url": "http://localhost:9283",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site064/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site065",
+      "base_url": "http://localhost:9284",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site065/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site066",
+      "base_url": "http://localhost:9285",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site066/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site067",
+      "base_url": "http://localhost:9286",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site067/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site068",
+      "base_url": "http://localhost:9287",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site068/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site069",
+      "base_url": "http://localhost:9288",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site069/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site070",
+      "base_url": "http://localhost:9289",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site070/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site071",
+      "base_url": "http://localhost:9290",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site071/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site072",
+      "base_url": "http://localhost:9291",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site072/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site073",
+      "base_url": "http://localhost:9292",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site073/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site074",
+      "base_url": "http://localhost:9293",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site074/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site075",
+      "base_url": "http://localhost:9294",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site075/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site076",
+      "base_url": "http://localhost:9295",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site076/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site077",
+      "base_url": "http://localhost:9296",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site077/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site078",
+      "base_url": "http://localhost:9297",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site078/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site079",
+      "base_url": "http://localhost:9298",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site079/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site080",
+      "base_url": "http://localhost:9299",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site080/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site081",
+      "base_url": "http://localhost:9300",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site081/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site082",
+      "base_url": "http://localhost:9301",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site082/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site083",
+      "base_url": "http://localhost:9302",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site083/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site084",
+      "base_url": "http://localhost:9303",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site084/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site085",
+      "base_url": "http://localhost:9304",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site085/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site086",
+      "base_url": "http://localhost:9305",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site086/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site087",
+      "base_url": "http://localhost:9306",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site087/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site088",
+      "base_url": "http://localhost:9307",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site088/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site089",
+      "base_url": "http://localhost:9308",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site089/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "site090",
+      "base_url": "http://localhost:9309",
+      "has_bug_catalog": false,
+      "bug_catalog_path": "datasets/site090/bug_catalog.json",
+      "evaluation_mode": "openended_anomaly_discovery",
+      "reward_scale": 1.0
+    }
+  ]
+}

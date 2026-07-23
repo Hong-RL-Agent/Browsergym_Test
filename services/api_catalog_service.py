@@ -27,6 +27,7 @@ class ApiEndpoint:
     required_params: List[str] = field(default_factory=list)
     enum_values: Dict[str, List[Any]] = field(default_factory=dict)
     latency_threshold_ms: int | None = None
+    test_safe: bool = False
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,7 @@ class ApiSite:
     health_check: str = "/"
     apis: List[ApiEndpoint] = field(default_factory=list)
     auth: Dict[str, Any] = field(default_factory=dict)
+    allow_mutating_requests: bool = False
 
 
 def load_api_catalog(path: str | Path, start_port: int | None = None, end_port: int | None = None) -> List[ApiSite]:
@@ -83,6 +85,7 @@ def endpoint_to_dict(endpoint: ApiEndpoint) -> Dict[str, Any]:
         "required_params": endpoint.required_params,
         "enum_values": endpoint.enum_values,
         "latency_threshold_ms": endpoint.latency_threshold_ms,
+        "test_safe": endpoint.test_safe,
     }
 
 
@@ -100,6 +103,7 @@ def _normalize_site(raw: Mapping[str, Any]) -> ApiSite:
         health_check=str(raw.get("health_check") or "/"),
         apis=[_normalize_endpoint(item) for item in raw_apis if isinstance(item, Mapping)],
         auth=dict(raw.get("auth", {})) if isinstance(raw.get("auth"), Mapping) else {},
+        allow_mutating_requests=bool(raw.get("allow_mutating_requests", False)),
     )
 
 
@@ -131,6 +135,7 @@ def _normalize_endpoint(raw: Mapping[str, Any]) -> ApiEndpoint:
             if isinstance(value, list)
         },
         latency_threshold_ms=_optional_int(raw.get("latency_threshold_ms")),
+        test_safe=bool(raw.get("test_safe", False)),
     )
 
 

@@ -1,0 +1,24 @@
+{
+  "policy_version": "owasp-safe-v1",
+  "default_mode": "non-destructive",
+  "tests": {
+    "send_valid_request": {"owasp": ["WSTG-APIT-01"], "risk": "read-only", "description": "Baseline response comparison"},
+    "missing_required_param": {"owasp": ["WSTG-INPV-04", "API3:2023"], "risk": "low", "description": "Required-field validation"},
+    "empty_param": {"owasp": ["WSTG-INPV-04"], "risk": "low", "description": "Empty input validation"},
+    "null_param": {"owasp": ["WSTG-INPV-04"], "risk": "low", "description": "Null input validation"},
+    "invalid_type_param": {"owasp": ["WSTG-APIT-02", "API3:2023"], "risk": "low", "description": "Schema type validation"},
+    "boundary_number_param": {"owasp": ["WSTG-BUSL-08", "API4:2023"], "risk": "low", "description": "Single boundary value, no load generation"},
+    "invalid_enum_param": {"owasp": ["WSTG-APIT-02"], "risk": "low", "description": "Enum validation"},
+    "missing_auth": {"owasp": ["WSTG-ATHZ-02", "API2:2023"], "risk": "low", "description": "Missing credential check"},
+    "invalid_auth": {"owasp": ["WSTG-ATHN-04", "API2:2023"], "risk": "low", "description": "Invalid credential check"},
+    "expired_auth": {"owasp": ["WSTG-SESS-08", "API2:2023"], "risk": "low", "description": "Expired credential check"},
+    "invalid_content_type": {"owasp": ["WSTG-APIT-02"], "risk": "low", "description": "Content type validation"},
+    "check_response_schema": {"owasp": ["WSTG-APIT-03", "API3:2023"], "risk": "read-only", "description": "Excessive data and schema review"},
+    "check_latency": {"owasp": ["API4:2023"], "risk": "read-only", "description": "Single-request latency observation"}
+  },
+  "disabled_by_default": {
+    "long_string_param": "May consume excessive parser or storage resources",
+    "repeat_request": "May duplicate state-changing operations",
+    "parallel_request": "May create load or race conditions"
+  }
+}

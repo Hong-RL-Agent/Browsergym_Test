@@ -17,6 +17,8 @@ artifacts/evaluations/
 artifacts/training/
 artifacts/preflight/
 artifacts/reports/
+artifacts/jobs/
+artifacts/*.log
 artifacts/final/
 
 # Generated configs
@@ -64,3 +66,4 @@ artifacts/tmp_*.json
 
 artifacts/logs/
 artifacts/tmp_*/
+artifacts/algorithm_ab/

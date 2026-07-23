@@ -8,6 +8,13 @@ import numpy as np
 
 
 class ActionSpace:
+    action_aliases = {
+        "click": "click_element",
+        "tap": "click_element",
+        "fill": "fill_input",
+        "type": "fill_input",
+        "enter": "press_enter",
+    }
     action_types = [
         "noop",
         "click_element",
@@ -35,6 +42,7 @@ class ActionSpace:
         self._type_to_id = {name: idx for idx, name in enumerate(self.action_types)}
 
     def encode(self, action_type: str, candidate_index: int = 0) -> int:
+        action_type = self.action_aliases.get(str(action_type).strip().lower(), action_type)
         if action_type not in self._type_to_id:
             raise ValueError(f"Unknown action_type: {action_type}")
         if not 0 <= candidate_index < self.max_candidates:
@@ -82,7 +90,10 @@ class ActionSpace:
         infra_enabled = _is_infra_port(page_state, infra_signals)
 
         for action_type in self.action_types:
-            if site_id and site_id not in {"site001", "site9800"} and action_type == "inspect_cart":
+            # Cart inspection is a site-specific capability. An unknown site
+            # must not be treated as commerce just because this action exists
+            # in the global action space.
+            if action_type == "inspect_cart" and site_id not in {"site001", "site9800"}:
                 continue
             if self.is_infra_action(action_type) and not infra_enabled:
                 continue

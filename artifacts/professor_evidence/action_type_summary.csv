@@ -1,0 +1,20 @@
+﻿action_type_id,action_type,allocated_action_ids,candidate_dependent,normally_usable_slots,category
+0,noop,32,False,slot 0 only,page/environment
+1,click_element,32,True,0..31 (visible candidates),element interaction
+2,scroll_down,32,False,slot 0 only,page/environment
+3,scroll_up,32,False,slot 0 only,page/environment
+4,inspect_dom,32,False,slot 0 only,page/environment
+5,inspect_layout,32,False,slot 0 only,page/environment
+6,inspect_network,32,False,slot 0 only,page/environment
+7,inspect_console,32,False,slot 0 only,page/environment
+8,inspect_cart,32,False,slot 0 only,page/environment
+9,inspect_server_health,32,False,slot 0 only,infra inspection
+10,inspect_port_status,32,False,slot 0 only,infra inspection
+11,inspect_latency,32,False,slot 0 only,infra inspection
+12,inspect_server_logs,32,False,slot 0 only,infra inspection
+13,inspect_runtime_metrics,32,False,slot 0 only,infra inspection
+14,fill_input,32,True,0..31 (visible candidates),element interaction
+15,press_enter,32,True,0..31 (visible candidates),element interaction
+16,change_viewport_mobile,32,False,slot 0 only,page/environment
+17,change_viewport_desktop,32,False,slot 0 only,page/environment
+18,finish_episode,32,False,slot 0 only,page/environment

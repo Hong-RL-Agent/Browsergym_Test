@@ -1,0 +1,26 @@
+{
+  "site_id": "site017",
+  "generated_by": "fleet-phase2-v1",
+  "bugs": [
+    {
+      "id": "site017-auto-01",
+      "bug_id": "site017-auto-01",
+      "site_id": "site017",
+      "type": "duplicated-rendering",
+      "selector": "",
+      "action_hints": [
+        "click_element",
+        "inspect_layout"
+      ],
+      "anomaly_evidence_keywords": [
+        "axtree_or_text_only",
+        "book_context",
+        "duplicated_titles",
+        "visible_duplicate_candidates"
+      ],
+      "discovery_confidence": 0.85,
+      "reproduction_count": 2,
+      "generated": true
+    }
+  ]
+}

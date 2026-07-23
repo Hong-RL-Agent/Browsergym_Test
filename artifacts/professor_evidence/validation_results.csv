@@ -1,0 +1,6 @@
+﻿check,expected,actual,result
+schema dimension count,667,667,PASS
+encoder get_obs_dim,667,667,PASS
+runtime encoded shape,"(667,)","(667,)",PASS
+dimension index continuity,0..666,0..666,PASS
+duplicate dimension index,0,0,PASS

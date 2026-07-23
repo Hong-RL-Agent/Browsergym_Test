@@ -16,6 +16,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from agents.ppo_agent import PPOAgent
+from agents.rainbow_dqn_agent import RainbowDQNAgent
 from envs.browsergym_jaws_env import BrowserGymJAWSEnv
 from models.action_space import ActionSpace
 from models.observation_encoder import ObservationEncoder
@@ -33,15 +34,21 @@ def main() -> int:
     parser.add_argument("--episodes", type=int, default=3)
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--headless", type=_parse_bool, default=True)
+    parser.add_argument("--algorithm", choices=["ppo", "rainbow-dqn"], default="ppo")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--guided-actions", type=_parse_bool, default=False,
+                        help="Apply heuristic action overrides during evaluation")
+    parser.add_argument("--output", default="")
     args = parser.parse_args()
 
-    random.seed(42)
-    np.random.seed(42)
-    torch.manual_seed(42)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
 
     encoder = ObservationEncoder()
     action_space = ActionSpace()
-    agent = PPOAgent(encoder.get_obs_dim(), action_space.get_action_dim())
+    agent = (PPOAgent(encoder.get_obs_dim(), action_space.get_action_dim())
+             if args.algorithm == "ppo" else RainbowDQNAgent(encoder.get_obs_dim(), action_space.get_action_dim()))
     agent.load(args.model_path)
     known_bugs = load_known_bugs(args.site_id)
     site_config = load_training_site_config(args.site_id)
@@ -56,6 +63,9 @@ def main() -> int:
     unique_candidates: Dict[tuple[str, str, str, str], Dict[str, Any]] = {}
     matched_by_bug_id: Dict[str, Dict[str, Any]] = {}
     possible_known_bug_count = len(known_bugs)
+    policy_action_count = 0
+    guided_action_count = 0
+    successful_episode_count = 0
 
     for episode_index in range(1, args.episodes + 1):
         env = BrowserGymJAWSEnv(
@@ -81,11 +91,19 @@ def main() -> int:
         }
         try:
             observation, _ = env.reset()
+            successful_episode_count += 1
             for _ in range(args.max_steps):
                 obs_vector = encoder.encode_observation(observation)
                 action_mask = action_space.build_action_mask(observation)
-                selected = agent.select_greedy_action(obs_vector, action_mask)
-                action_id = _guided_action_id(action_space, observation, history, selected["action_id"])
+                selected = (agent.select_greedy_action(obs_vector, action_mask) if args.algorithm == "ppo"
+                            else agent.select_action(obs_vector, action_mask, training=False))
+                policy_action_id = selected["action_id"]
+                guided_action_id = _guided_action_id(action_space, observation, history, policy_action_id)
+                action_id = guided_action_id if args.guided_actions else policy_action_id
+                if action_id == policy_action_id:
+                    policy_action_count += 1
+                else:
+                    guided_action_count += 1
                 action = action_space.decode(action_id)
                 action["action_id"] = action_id
                 action["site_id"] = args.site_id
@@ -128,6 +146,8 @@ def main() -> int:
         episode_rewards.append(reward_total)
 
     matched_bug_ids = sorted(matched_by_bug_id)
+    if successful_episode_count == 0:
+        raise RuntimeError(f"all evaluation episodes failed to open {args.base_url}")
     known_bug_ids = sorted(_known_bug_id(bug) for bug in known_bugs if _known_bug_id(bug))
     missed_bug_ids = [bug_id for bug_id in known_bug_ids if bug_id not in set(matched_bug_ids)]
     unique_detected_candidates = len(unique_candidates)
@@ -138,7 +158,10 @@ def main() -> int:
     recall_denominator = max(1, possible_known_bug_count)
     recall = min(1.0, known_bug_match_count / recall_denominator)
     result = {
+        "algorithm": args.algorithm,
+        "seed": args.seed,
         "episodes": args.episodes,
+        "successful_episode_count": successful_episode_count,
         "average_reward": float(np.mean(episode_rewards)) if episode_rewards else 0.0,
         "detected_bug_count": unique_detected_candidates,
         "total_detected_candidates": total_detected_candidates,
@@ -155,7 +178,15 @@ def main() -> int:
         "precision": precision,
         "recall": recall,
         "false_positive_count": false_positive_count,
+        "guided_actions_enabled": args.guided_actions,
+        "policy_action_count": policy_action_count,
+        "guided_action_count": guided_action_count,
     }
+    if args.output:
+        from pathlib import Path
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2))
     return 0
 

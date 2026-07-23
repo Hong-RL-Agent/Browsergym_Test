@@ -1,0 +1,668 @@
+﻿dimension_index,feature_group,candidate_slot,feature_name,source_field,encoding_rule,padding_rule,korean_description,why_used,value_meaning
+0,page,,viewport_width,page_state.viewport_width,clamp(value / 4096),,브라우저 화면의 가로 크기,현재 페이지의 전체적인 상태와 규모를 모델이 구분하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+1,page,,viewport_height,page_state.viewport_height,clamp(value / 4096),,브라우저 화면의 세로 크기,현재 페이지의 전체적인 상태와 규모를 모델이 구분하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+2,page,,page_text_length,page_state.page_text_length,clamp(value / 20000),,페이지에 존재하는 전체 텍스트 길이,현재 페이지의 전체적인 상태와 규모를 모델이 구분하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+3,page,,dom_node_count,page_state.dom_node_count,clamp(value / 5000),,페이지 DOM 노드 개수,현재 페이지의 전체적인 상태와 규모를 모델이 구분하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+4,page,,elapsed_time,page_state.elapsed_time,clamp(value / 300),,관측 또는 실행 후 경과 시간,현재 페이지의 전체적인 상태와 규모를 모델이 구분하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+5,page,,has_url,page_state.url,1 if non-empty else 0,,현재 페이지 URL의 존재 여부,현재 페이지의 전체적인 상태와 규모를 모델이 구분하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+6,page,,is_mobile,page_state.viewport_type,1 if mobile else 0,,모바일 화면 모드 여부,현재 페이지의 전체적인 상태와 규모를 모델이 구분하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+7,page,,cart_count_detected,page_state.cart_count_detected,boolean,,장바구니 수량을 화면에서 식별했는지 여부,현재 페이지의 전체적인 상태와 규모를 모델이 구분하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+8,page,,cart_count,page_state.cart_count,clamp(value / 100),,식별된 장바구니 상품 수,현재 페이지의 전체적인 상태와 규모를 모델이 구분하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+9,candidate,0,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 0번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+10,candidate,0,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 0번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+11,candidate,0,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 0번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+12,candidate,0,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 0번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+13,candidate,0,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 0번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+14,candidate,0,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 0번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+15,candidate,0,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 0번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+16,candidate,0,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 0번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+17,candidate,0,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 0번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+18,candidate,0,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 0번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+19,candidate,0,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 0번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+20,candidate,0,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 0번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+21,candidate,0,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 0번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+22,candidate,0,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 0번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+23,candidate,0,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 0번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+24,candidate,0,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 0번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+25,candidate,0,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 0번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+26,candidate,0,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 0번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+27,candidate,0,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 0번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+28,candidate,0,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 0번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+29,candidate,1,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 1번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+30,candidate,1,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 1번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+31,candidate,1,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 1번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+32,candidate,1,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 1번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+33,candidate,1,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 1번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+34,candidate,1,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 1번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+35,candidate,1,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 1번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+36,candidate,1,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 1번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+37,candidate,1,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 1번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+38,candidate,1,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 1번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+39,candidate,1,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 1번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+40,candidate,1,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 1번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+41,candidate,1,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 1번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+42,candidate,1,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 1번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+43,candidate,1,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 1번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+44,candidate,1,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 1번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+45,candidate,1,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 1번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+46,candidate,1,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 1번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+47,candidate,1,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 1번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+48,candidate,1,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 1번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+49,candidate,2,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 2번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+50,candidate,2,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 2번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+51,candidate,2,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 2번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+52,candidate,2,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 2번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+53,candidate,2,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 2번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+54,candidate,2,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 2번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+55,candidate,2,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 2번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+56,candidate,2,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 2번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+57,candidate,2,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 2번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+58,candidate,2,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 2번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+59,candidate,2,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 2번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+60,candidate,2,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 2번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+61,candidate,2,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 2번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+62,candidate,2,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 2번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+63,candidate,2,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 2번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+64,candidate,2,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 2번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+65,candidate,2,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 2번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+66,candidate,2,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 2번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+67,candidate,2,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 2번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+68,candidate,2,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 2번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+69,candidate,3,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 3번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+70,candidate,3,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 3번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+71,candidate,3,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 3번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+72,candidate,3,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 3번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+73,candidate,3,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 3번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+74,candidate,3,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 3번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+75,candidate,3,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 3번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+76,candidate,3,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 3번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+77,candidate,3,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 3번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+78,candidate,3,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 3번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+79,candidate,3,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 3번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+80,candidate,3,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 3번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+81,candidate,3,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 3번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+82,candidate,3,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 3번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+83,candidate,3,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 3번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+84,candidate,3,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 3번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+85,candidate,3,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 3번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+86,candidate,3,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 3번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+87,candidate,3,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 3번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+88,candidate,3,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 3번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+89,candidate,4,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 4번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+90,candidate,4,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 4번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+91,candidate,4,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 4번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+92,candidate,4,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 4번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+93,candidate,4,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 4번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+94,candidate,4,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 4번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+95,candidate,4,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 4번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+96,candidate,4,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 4번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+97,candidate,4,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 4번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+98,candidate,4,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 4번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+99,candidate,4,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 4번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+100,candidate,4,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 4번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+101,candidate,4,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 4번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+102,candidate,4,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 4번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+103,candidate,4,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 4번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+104,candidate,4,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 4번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+105,candidate,4,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 4번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+106,candidate,4,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 4번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+107,candidate,4,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 4번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+108,candidate,4,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 4번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+109,candidate,5,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 5번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+110,candidate,5,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 5번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+111,candidate,5,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 5번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+112,candidate,5,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 5번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+113,candidate,5,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 5번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+114,candidate,5,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 5번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+115,candidate,5,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 5번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+116,candidate,5,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 5번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+117,candidate,5,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 5번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+118,candidate,5,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 5번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+119,candidate,5,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 5번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+120,candidate,5,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 5번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+121,candidate,5,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 5번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+122,candidate,5,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 5번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+123,candidate,5,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 5번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+124,candidate,5,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 5번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+125,candidate,5,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 5번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+126,candidate,5,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 5번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+127,candidate,5,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 5번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+128,candidate,5,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 5번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+129,candidate,6,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 6번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+130,candidate,6,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 6번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+131,candidate,6,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 6번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+132,candidate,6,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 6번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+133,candidate,6,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 6번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+134,candidate,6,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 6번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+135,candidate,6,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 6번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+136,candidate,6,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 6번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+137,candidate,6,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 6번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+138,candidate,6,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 6번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+139,candidate,6,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 6번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+140,candidate,6,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 6번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+141,candidate,6,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 6번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+142,candidate,6,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 6번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+143,candidate,6,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 6번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+144,candidate,6,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 6번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+145,candidate,6,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 6번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+146,candidate,6,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 6번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+147,candidate,6,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 6번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+148,candidate,6,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 6번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+149,candidate,7,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 7번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+150,candidate,7,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 7번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+151,candidate,7,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 7번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+152,candidate,7,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 7번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+153,candidate,7,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 7번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+154,candidate,7,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 7번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+155,candidate,7,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 7번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+156,candidate,7,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 7번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+157,candidate,7,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 7번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+158,candidate,7,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 7번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+159,candidate,7,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 7번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+160,candidate,7,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 7번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+161,candidate,7,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 7번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+162,candidate,7,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 7번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+163,candidate,7,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 7번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+164,candidate,7,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 7번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+165,candidate,7,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 7번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+166,candidate,7,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 7번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+167,candidate,7,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 7번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+168,candidate,7,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 7번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+169,candidate,8,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 8번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+170,candidate,8,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 8번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+171,candidate,8,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 8번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+172,candidate,8,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 8번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+173,candidate,8,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 8번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+174,candidate,8,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 8번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+175,candidate,8,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 8번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+176,candidate,8,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 8번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+177,candidate,8,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 8번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+178,candidate,8,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 8번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+179,candidate,8,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 8번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+180,candidate,8,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 8번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+181,candidate,8,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 8번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+182,candidate,8,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 8번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+183,candidate,8,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 8번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+184,candidate,8,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 8번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+185,candidate,8,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 8번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+186,candidate,8,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 8번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+187,candidate,8,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 8번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+188,candidate,8,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 8번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+189,candidate,9,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 9번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+190,candidate,9,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 9번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+191,candidate,9,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 9번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+192,candidate,9,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 9번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+193,candidate,9,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 9번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+194,candidate,9,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 9번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+195,candidate,9,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 9번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+196,candidate,9,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 9번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+197,candidate,9,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 9번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+198,candidate,9,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 9번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+199,candidate,9,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 9번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+200,candidate,9,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 9번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+201,candidate,9,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 9번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+202,candidate,9,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 9번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+203,candidate,9,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 9번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+204,candidate,9,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 9번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+205,candidate,9,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 9번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+206,candidate,9,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 9번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+207,candidate,9,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 9번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+208,candidate,9,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 9번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+209,candidate,10,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 10번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+210,candidate,10,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 10번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+211,candidate,10,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 10번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+212,candidate,10,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 10번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+213,candidate,10,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 10번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+214,candidate,10,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 10번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+215,candidate,10,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 10번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+216,candidate,10,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 10번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+217,candidate,10,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 10번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+218,candidate,10,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 10번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+219,candidate,10,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 10번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+220,candidate,10,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 10번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+221,candidate,10,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 10번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+222,candidate,10,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 10번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+223,candidate,10,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 10번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+224,candidate,10,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 10번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+225,candidate,10,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 10번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+226,candidate,10,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 10번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+227,candidate,10,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 10번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+228,candidate,10,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 10번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+229,candidate,11,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 11번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+230,candidate,11,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 11번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+231,candidate,11,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 11번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+232,candidate,11,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 11번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+233,candidate,11,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 11번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+234,candidate,11,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 11번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+235,candidate,11,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 11번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+236,candidate,11,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 11번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+237,candidate,11,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 11번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+238,candidate,11,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 11번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+239,candidate,11,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 11번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+240,candidate,11,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 11번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+241,candidate,11,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 11번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+242,candidate,11,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 11번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+243,candidate,11,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 11번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+244,candidate,11,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 11번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+245,candidate,11,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 11번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+246,candidate,11,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 11번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+247,candidate,11,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 11번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+248,candidate,11,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 11번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+249,candidate,12,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 12번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+250,candidate,12,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 12번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+251,candidate,12,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 12번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+252,candidate,12,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 12번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+253,candidate,12,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 12번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+254,candidate,12,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 12번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+255,candidate,12,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 12번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+256,candidate,12,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 12번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+257,candidate,12,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 12번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+258,candidate,12,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 12번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+259,candidate,12,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 12번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+260,candidate,12,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 12번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+261,candidate,12,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 12번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+262,candidate,12,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 12번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+263,candidate,12,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 12번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+264,candidate,12,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 12번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+265,candidate,12,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 12번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+266,candidate,12,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 12번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+267,candidate,12,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 12번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+268,candidate,12,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 12번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+269,candidate,13,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 13번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+270,candidate,13,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 13번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+271,candidate,13,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 13번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+272,candidate,13,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 13번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+273,candidate,13,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 13번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+274,candidate,13,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 13번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+275,candidate,13,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 13번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+276,candidate,13,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 13번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+277,candidate,13,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 13번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+278,candidate,13,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 13번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+279,candidate,13,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 13번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+280,candidate,13,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 13번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+281,candidate,13,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 13번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+282,candidate,13,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 13번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+283,candidate,13,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 13번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+284,candidate,13,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 13번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+285,candidate,13,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 13번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+286,candidate,13,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 13번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+287,candidate,13,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 13번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+288,candidate,13,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 13번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+289,candidate,14,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 14번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+290,candidate,14,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 14번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+291,candidate,14,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 14번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+292,candidate,14,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 14번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+293,candidate,14,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 14번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+294,candidate,14,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 14번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+295,candidate,14,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 14번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+296,candidate,14,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 14번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+297,candidate,14,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 14번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+298,candidate,14,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 14번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+299,candidate,14,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 14번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+300,candidate,14,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 14번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+301,candidate,14,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 14번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+302,candidate,14,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 14번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+303,candidate,14,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 14번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+304,candidate,14,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 14번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+305,candidate,14,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 14번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+306,candidate,14,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 14번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+307,candidate,14,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 14번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+308,candidate,14,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 14번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+309,candidate,15,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 15번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+310,candidate,15,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 15번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+311,candidate,15,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 15번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+312,candidate,15,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 15번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+313,candidate,15,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 15번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+314,candidate,15,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 15번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+315,candidate,15,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 15번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+316,candidate,15,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 15번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+317,candidate,15,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 15번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+318,candidate,15,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 15번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+319,candidate,15,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 15번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+320,candidate,15,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 15번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+321,candidate,15,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 15번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+322,candidate,15,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 15번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+323,candidate,15,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 15번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+324,candidate,15,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 15번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+325,candidate,15,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 15번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+326,candidate,15,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 15번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+327,candidate,15,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 15번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+328,candidate,15,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 15번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+329,candidate,16,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 16번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+330,candidate,16,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 16번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+331,candidate,16,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 16번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+332,candidate,16,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 16번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+333,candidate,16,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 16번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+334,candidate,16,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 16번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+335,candidate,16,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 16번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+336,candidate,16,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 16번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+337,candidate,16,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 16번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+338,candidate,16,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 16번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+339,candidate,16,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 16번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+340,candidate,16,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 16번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+341,candidate,16,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 16번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+342,candidate,16,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 16번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+343,candidate,16,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 16번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+344,candidate,16,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 16번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+345,candidate,16,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 16번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+346,candidate,16,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 16번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+347,candidate,16,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 16번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+348,candidate,16,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 16번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+349,candidate,17,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 17번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+350,candidate,17,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 17번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+351,candidate,17,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 17번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+352,candidate,17,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 17번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+353,candidate,17,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 17번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+354,candidate,17,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 17번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+355,candidate,17,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 17번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+356,candidate,17,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 17번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+357,candidate,17,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 17번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+358,candidate,17,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 17번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+359,candidate,17,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 17번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+360,candidate,17,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 17번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+361,candidate,17,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 17번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+362,candidate,17,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 17번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+363,candidate,17,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 17번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+364,candidate,17,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 17번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+365,candidate,17,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 17번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+366,candidate,17,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 17번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+367,candidate,17,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 17번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+368,candidate,17,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 17번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+369,candidate,18,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 18번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+370,candidate,18,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 18번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+371,candidate,18,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 18번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+372,candidate,18,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 18번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+373,candidate,18,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 18번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+374,candidate,18,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 18번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+375,candidate,18,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 18번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+376,candidate,18,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 18번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+377,candidate,18,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 18번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+378,candidate,18,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 18번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+379,candidate,18,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 18번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+380,candidate,18,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 18번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+381,candidate,18,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 18번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+382,candidate,18,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 18번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+383,candidate,18,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 18번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+384,candidate,18,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 18번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+385,candidate,18,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 18번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+386,candidate,18,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 18번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+387,candidate,18,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 18번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+388,candidate,18,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 18번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+389,candidate,19,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 19번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+390,candidate,19,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 19번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+391,candidate,19,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 19번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+392,candidate,19,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 19번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+393,candidate,19,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 19번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+394,candidate,19,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 19번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+395,candidate,19,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 19번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+396,candidate,19,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 19번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+397,candidate,19,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 19번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+398,candidate,19,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 19번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+399,candidate,19,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 19번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+400,candidate,19,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 19번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+401,candidate,19,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 19번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+402,candidate,19,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 19번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+403,candidate,19,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 19번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+404,candidate,19,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 19번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+405,candidate,19,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 19번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+406,candidate,19,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 19번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+407,candidate,19,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 19번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+408,candidate,19,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 19번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+409,candidate,20,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 20번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+410,candidate,20,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 20번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+411,candidate,20,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 20번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+412,candidate,20,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 20번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+413,candidate,20,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 20번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+414,candidate,20,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 20번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+415,candidate,20,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 20번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+416,candidate,20,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 20번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+417,candidate,20,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 20번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+418,candidate,20,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 20번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+419,candidate,20,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 20번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+420,candidate,20,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 20번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+421,candidate,20,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 20번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+422,candidate,20,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 20번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+423,candidate,20,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 20번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+424,candidate,20,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 20번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+425,candidate,20,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 20번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+426,candidate,20,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 20번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+427,candidate,20,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 20번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+428,candidate,20,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 20번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+429,candidate,21,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 21번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+430,candidate,21,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 21번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+431,candidate,21,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 21번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+432,candidate,21,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 21번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+433,candidate,21,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 21번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+434,candidate,21,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 21번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+435,candidate,21,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 21번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+436,candidate,21,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 21번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+437,candidate,21,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 21번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+438,candidate,21,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 21번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+439,candidate,21,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 21번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+440,candidate,21,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 21번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+441,candidate,21,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 21번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+442,candidate,21,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 21번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+443,candidate,21,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 21번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+444,candidate,21,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 21번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+445,candidate,21,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 21번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+446,candidate,21,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 21번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+447,candidate,21,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 21번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+448,candidate,21,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 21번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+449,candidate,22,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 22번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+450,candidate,22,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 22번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+451,candidate,22,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 22번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+452,candidate,22,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 22번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+453,candidate,22,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 22번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+454,candidate,22,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 22번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+455,candidate,22,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 22번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+456,candidate,22,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 22번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+457,candidate,22,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 22번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+458,candidate,22,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 22번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+459,candidate,22,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 22번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+460,candidate,22,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 22번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+461,candidate,22,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 22번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+462,candidate,22,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 22번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+463,candidate,22,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 22번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+464,candidate,22,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 22번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+465,candidate,22,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 22번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+466,candidate,22,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 22번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+467,candidate,22,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 22번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+468,candidate,22,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 22번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+469,candidate,23,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 23번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+470,candidate,23,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 23번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+471,candidate,23,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 23번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+472,candidate,23,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 23번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+473,candidate,23,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 23번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+474,candidate,23,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 23번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+475,candidate,23,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 23번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+476,candidate,23,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 23번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+477,candidate,23,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 23번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+478,candidate,23,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 23번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+479,candidate,23,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 23번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+480,candidate,23,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 23번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+481,candidate,23,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 23번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+482,candidate,23,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 23번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+483,candidate,23,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 23번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+484,candidate,23,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 23번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+485,candidate,23,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 23번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+486,candidate,23,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 23번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+487,candidate,23,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 23번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+488,candidate,23,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 23번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+489,candidate,24,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 24번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+490,candidate,24,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 24번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+491,candidate,24,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 24번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+492,candidate,24,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 24번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+493,candidate,24,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 24번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+494,candidate,24,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 24번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+495,candidate,24,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 24번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+496,candidate,24,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 24번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+497,candidate,24,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 24번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+498,candidate,24,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 24번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+499,candidate,24,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 24번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+500,candidate,24,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 24번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+501,candidate,24,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 24번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+502,candidate,24,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 24번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+503,candidate,24,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 24번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+504,candidate,24,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 24번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+505,candidate,24,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 24번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+506,candidate,24,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 24번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+507,candidate,24,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 24번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+508,candidate,24,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 24번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+509,candidate,25,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 25번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+510,candidate,25,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 25번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+511,candidate,25,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 25번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+512,candidate,25,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 25번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+513,candidate,25,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 25번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+514,candidate,25,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 25번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+515,candidate,25,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 25번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+516,candidate,25,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 25번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+517,candidate,25,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 25번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+518,candidate,25,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 25번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+519,candidate,25,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 25번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+520,candidate,25,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 25번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+521,candidate,25,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 25번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+522,candidate,25,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 25번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+523,candidate,25,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 25번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+524,candidate,25,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 25번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+525,candidate,25,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 25번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+526,candidate,25,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 25번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+527,candidate,25,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 25번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+528,candidate,25,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 25번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+529,candidate,26,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 26번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+530,candidate,26,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 26번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+531,candidate,26,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 26번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+532,candidate,26,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 26번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+533,candidate,26,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 26번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+534,candidate,26,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 26번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+535,candidate,26,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 26번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+536,candidate,26,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 26번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+537,candidate,26,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 26번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+538,candidate,26,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 26번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+539,candidate,26,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 26번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+540,candidate,26,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 26번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+541,candidate,26,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 26번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+542,candidate,26,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 26번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+543,candidate,26,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 26번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+544,candidate,26,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 26번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+545,candidate,26,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 26번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+546,candidate,26,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 26번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+547,candidate,26,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 26번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+548,candidate,26,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 26번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+549,candidate,27,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 27번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+550,candidate,27,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 27번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+551,candidate,27,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 27번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+552,candidate,27,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 27번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+553,candidate,27,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 27번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+554,candidate,27,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 27번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+555,candidate,27,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 27번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+556,candidate,27,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 27번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+557,candidate,27,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 27번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+558,candidate,27,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 27번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+559,candidate,27,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 27번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+560,candidate,27,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 27번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+561,candidate,27,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 27번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+562,candidate,27,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 27번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+563,candidate,27,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 27번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+564,candidate,27,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 27번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+565,candidate,27,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 27번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+566,candidate,27,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 27번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+567,candidate,27,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 27번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+568,candidate,27,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 27번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+569,candidate,28,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 28번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+570,candidate,28,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 28번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+571,candidate,28,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 28번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+572,candidate,28,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 28번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+573,candidate,28,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 28번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+574,candidate,28,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 28번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+575,candidate,28,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 28번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+576,candidate,28,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 28번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+577,candidate,28,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 28번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+578,candidate,28,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 28번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+579,candidate,28,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 28번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+580,candidate,28,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 28번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+581,candidate,28,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 28번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+582,candidate,28,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 28번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+583,candidate,28,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 28번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+584,candidate,28,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 28번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+585,candidate,28,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 28번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+586,candidate,28,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 28번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+587,candidate,28,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 28번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+588,candidate,28,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 28번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+589,candidate,29,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 29번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+590,candidate,29,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 29번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+591,candidate,29,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 29번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+592,candidate,29,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 29번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+593,candidate,29,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 29번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+594,candidate,29,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 29번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+595,candidate,29,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 29번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+596,candidate,29,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 29번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+597,candidate,29,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 29번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+598,candidate,29,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 29번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+599,candidate,29,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 29번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+600,candidate,29,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 29번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+601,candidate,29,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 29번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+602,candidate,29,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 29번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+603,candidate,29,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 29번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+604,candidate,29,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 29번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+605,candidate,29,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 29번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+606,candidate,29,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 29번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+607,candidate,29,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 29번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+608,candidate,29,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 29번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+609,candidate,30,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 30번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+610,candidate,30,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 30번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+611,candidate,30,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 30번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+612,candidate,30,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 30번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+613,candidate,30,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 30번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+614,candidate,30,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 30번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+615,candidate,30,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 30번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+616,candidate,30,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 30번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+617,candidate,30,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 30번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+618,candidate,30,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 30번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+619,candidate,30,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 30번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+620,candidate,30,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 30번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+621,candidate,30,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 30번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+622,candidate,30,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 30번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+623,candidate,30,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 30번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+624,candidate,30,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 30번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+625,candidate,30,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 30번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+626,candidate,30,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 30번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+627,candidate,30,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 30번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+628,candidate,30,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 30번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+629,candidate,31,role_button,candidate.role,1 if role == button else 0,0 when candidate slot is absent,후보 요소 31번의 역할이 'button'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 button 역할, 0이면 다른 역할"
+630,candidate,31,role_link,candidate.role,1 if role == link else 0,0 when candidate slot is absent,후보 요소 31번의 역할이 'link'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 link 역할, 0이면 다른 역할"
+631,candidate,31,role_textbox,candidate.role,1 if role == textbox else 0,0 when candidate slot is absent,후보 요소 31번의 역할이 'textbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 textbox 역할, 0이면 다른 역할"
+632,candidate,31,role_combobox,candidate.role,1 if role == combobox else 0,0 when candidate slot is absent,후보 요소 31번의 역할이 'combobox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 combobox 역할, 0이면 다른 역할"
+633,candidate,31,role_checkbox,candidate.role,1 if role == checkbox else 0,0 when candidate slot is absent,후보 요소 31번의 역할이 'checkbox'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 checkbox 역할, 0이면 다른 역할"
+634,candidate,31,role_radio,candidate.role,1 if role == radio else 0,0 when candidate slot is absent,후보 요소 31번의 역할이 'radio'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 radio 역할, 0이면 다른 역할"
+635,candidate,31,role_menuitem,candidate.role,1 if role == menuitem else 0,0 when candidate slot is absent,후보 요소 31번의 역할이 'menuitem'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 menuitem 역할, 0이면 다른 역할"
+636,candidate,31,role_tab,candidate.role,1 if role == tab else 0,0 when candidate slot is absent,후보 요소 31번의 역할이 'tab'인지 표시,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 tab 역할, 0이면 다른 역할"
+637,candidate,31,visible,candidate.visible,boolean,0 when candidate slot is absent,후보 요소 31번의 후보 요소가 화면에 보이는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+638,candidate,31,enabled,candidate.enabled,boolean,0 when candidate slot is absent,후보 요소 31번의 후보 요소가 활성화되어 조작 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+639,candidate,31,clickable,candidate.clickable,boolean,0 when candidate slot is absent,후보 요소 31번의 후보 요소가 클릭 가능한지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+640,candidate,31,visibility,candidate.visibility,clamp(value),0 when candidate slot is absent,후보 요소 31번의 후보 요소의 가시성 정도,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치
+641,candidate,31,bbox_x,candidate.bbox[0],clamp(value / 4096),0 when candidate slot is absent,후보 요소 31번의 후보 요소 왼쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+642,candidate,31,bbox_y,candidate.bbox[1],clamp(value / 4096),0 when candidate slot is absent,후보 요소 31번의 후보 요소 위쪽 시작 위치,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+643,candidate,31,bbox_width,candidate.bbox[2],clamp(value / 4096),0 when candidate slot is absent,후보 요소 31번의 후보 요소의 너비,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+644,candidate,31,bbox_height,candidate.bbox[3],clamp(value / 4096),0 when candidate slot is absent,후보 요소 31번의 후보 요소의 높이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+645,candidate,31,has_text,candidate.has_text,boolean,0 when candidate slot is absent,후보 요소 31번의 후보 요소에 읽을 수 있는 텍스트가 있는지 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+646,candidate,31,text_length,candidate.text_length,clamp(value / 512),0 when candidate slot is absent,후보 요소 31번의 후보 요소 텍스트의 길이,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+647,candidate,31,has_data_bug_id,candidate.has_data_bug_id,boolean,0 when candidate slot is absent,후보 요소 31번의 오류 정답 식별자인 data-bug-id 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+648,candidate,31,has_data_testid,candidate.has_data_testid,boolean,0 when candidate slot is absent,후보 요소 31번의 테스트용 식별자인 data-testid 보유 여부,에이전트가 클릭·입력할 수 있는 화면 요소의 성격과 위치를 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+649,runtime,,url_changed,runtime_signals.url_changed,boolean,,직전 행위 이후 URL이 변경됐는지 여부,직전 행위가 페이지에 실제 변화를 만들었는지 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+650,runtime,,last_action_error,runtime_signals.last_action_error,boolean,,직전 행위 실행 중 오류가 발생했는지 여부,직전 행위가 페이지에 실제 변화를 만들었는지 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+651,runtime,,elapsed_time,runtime_signals.elapsed_time,clamp(value / 300),,관측 또는 실행 후 경과 시간,직전 행위가 페이지에 실제 변화를 만들었는지 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+652,layout,,layout_overlap_count,layout_signals.layout_overlap_count,clamp(value / 128),,서로 겹친 것으로 관측된 화면 요소 수,화면 요소 겹침과 같은 시각적 오류 가능성을 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+653,infra,,port_open,infra_signals.port_open,boolean,,대상 서버 포트가 열려 있는지 여부,프론트 화면 밖의 서버·네트워크 장애 신호를 함께 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+654,infra,,health_check_ok,infra_signals.health_check_ok,boolean,,서버 상태 확인 요청이 정상인지 여부,프론트 화면 밖의 서버·네트워크 장애 신호를 함께 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+655,infra,,response_status,infra_signals.response_status,clamp(value / 1000),,서버가 반환한 HTTP 상태 코드,프론트 화면 밖의 서버·네트워크 장애 신호를 함께 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+656,infra,,response_latency_ms,infra_signals.response_latency_ms,clamp(value / 10000),,서버 응답 지연시간(ms),프론트 화면 밖의 서버·네트워크 장애 신호를 함께 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+657,infra,,timeout_occurred,infra_signals.timeout_occurred,boolean,,요청 시간 초과 발생 여부,프론트 화면 밖의 서버·네트워크 장애 신호를 함께 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+658,infra,,server_5xx_count,infra_signals.server_5xx_count,clamp(value / 20),,서버 오류(HTTP 5xx) 발생 횟수,프론트 화면 밖의 서버·네트워크 장애 신호를 함께 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+659,infra,,server_4xx_count,infra_signals.server_4xx_count,clamp(value / 20),,클라이언트 오류(HTTP 4xx) 발생 횟수,프론트 화면 밖의 서버·네트워크 장애 신호를 함께 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+660,infra,,server_log_exception_count,infra_signals.server_log_exception_count,clamp(value / 50),,서버 로그에서 발견한 예외 횟수,프론트 화면 밖의 서버·네트워크 장애 신호를 함께 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+661,infra,,process_alive,infra_signals.process_alive,boolean,,대상 서버 프로세스 실행 여부,프론트 화면 밖의 서버·네트워크 장애 신호를 함께 판단하기 위해 사용,"1이면 해당 조건이 참, 0이면 거짓"
+662,infra,,cpu_usage_percent,infra_signals.cpu_usage_percent,clamp(value / 100),,대상 서버 CPU 사용률,프론트 화면 밖의 서버·네트워크 장애 신호를 함께 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+663,infra,,memory_usage_mb,infra_signals.memory_usage_mb,clamp(value / 4096),,대상 서버 메모리 사용량(MB),프론트 화면 밖의 서버·네트워크 장애 신호를 함께 판단하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+664,history,,step_index,history.step_index,clamp(value / 1000),,현재 에피소드에서 진행된 Tick 번호,같은 행위를 반복하거나 상태 변화 없이 정체되는 탐색을 구분하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+665,history,,no_change_steps,history.no_change_steps,clamp(value / 100),,행위 후 상태 변화가 없었던 연속 횟수,같은 행위를 반복하거나 상태 변화 없이 정체되는 탐색을 구분하기 위해 사용,원본 수치를 정해진 최대 기준으로 나누고 0~1 범위로 제한한 값
+666,history,,previous_action_hash,history.previous_action_type,stable_hash(value) / 997,,직전 행위 종류를 숫자로 변환한 값,같은 행위를 반복하거나 상태 변화 없이 정체되는 탐색을 구분하기 위해 사용,모델 입력을 위해 0~1 범위로 변환한 수치

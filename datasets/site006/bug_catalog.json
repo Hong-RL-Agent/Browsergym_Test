@@ -1,0 +1,28 @@
+{
+  "site_id": "site006",
+  "generated_by": "fleet-phase2-v1",
+  "bugs": [
+    {
+      "id": "site006-auto-01",
+      "bug_id": "site006-auto-01",
+      "site_id": "site006",
+      "type": "layout-overlap",
+      "selector": "",
+      "action_hints": [
+        "change_viewport_mobile",
+        "inspect_layout"
+      ],
+      "anomaly_evidence_keywords": [
+        "action_type",
+        "layout_overlap_count",
+        "mobile_viewport",
+        "viewport_height",
+        "viewport_type",
+        "viewport_width"
+      ],
+      "discovery_confidence": 0.9,
+      "reproduction_count": 18,
+      "generated": true
+    }
+  ]
+}

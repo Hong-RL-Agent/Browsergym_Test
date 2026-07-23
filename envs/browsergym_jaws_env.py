@@ -60,6 +60,20 @@ class BrowserGymJAWSEnv:
             headless=self.headless,
         )
         browser_obs, info = self.env.reset()
+        # Live monitoring is presented as a regular desktop browser window.
+        # BrowserGym's default viewport can vary by runtime, so normalize it
+        # before producing the first observation or screenshot.
+        page = _active_page(self.env)
+        if page is not None:
+            try:
+                page.set_viewport_size({"width": 1440, "height": 900})
+                browser_obs, _, _, _, viewport_info = _normalize_step_result(self.env.step("noop()"))
+                info = dict(info or {})
+                info.update(viewport_info or {})
+                info.update({"viewport_width": 1440, "viewport_height": 900})
+            except Exception as exc:
+                info = dict(info or {})
+                info["viewport_normalization_warning"] = str(exc)
         login_info: Dict[str, Any] = {
             "login_required": self.requires_login,
             "login_attempted": False,
@@ -226,6 +240,49 @@ class BrowserGymJAWSEnv:
         except Exception as exc:
             info["viewport_error"] = str(exc)
         return info
+
+    def capture_screenshot_info(self, path: str, *, full_page: bool = False) -> Dict[str, Any]:
+        """Capture a stable frame and return dimensions used by live monitoring."""
+        page = _active_page(self.env)
+        if page is None:
+            return {"captured": False, "error": "active page not found"}
+        try:
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=1_000)
+            except Exception:
+                pass
+            page.wait_for_timeout(100)
+            dimensions = page.evaluate(
+                """() => ({
+                    viewportWidth: window.innerWidth,
+                    viewportHeight: window.innerHeight,
+                    documentWidth: Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth || 0),
+                    documentHeight: Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0)
+                })"""
+            )
+            page.screenshot(
+                path=path,
+                full_page=full_page,
+                animations="disabled",
+                caret="hide",
+                scale="css",
+            )
+            width_key = "documentWidth" if full_page else "viewportWidth"
+            height_key = "documentHeight" if full_page else "viewportHeight"
+            return {
+                "captured": True,
+                "capture_mode": "full_page" if full_page else "viewport",
+                "screenshot_width": int(dimensions.get(width_key) or 0),
+                "screenshot_height": int(dimensions.get(height_key) or 0),
+                "viewport_width": int(dimensions.get("viewportWidth") or 0),
+                "viewport_height": int(dimensions.get("viewportHeight") or 0),
+            }
+        except Exception as exc:
+            return {"captured": False, "error": str(exc)}
+
+    def capture_screenshot(self, path: str, *, full_page: bool = False) -> bool:
+        """Backward-compatible boolean screenshot API."""
+        return bool(self.capture_screenshot_info(path, full_page=full_page).get("captured"))
 
     def _perform_login(self, browser_obs: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         info: Dict[str, Any] = {

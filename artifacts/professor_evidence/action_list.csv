@@ -1,0 +1,609 @@
+﻿action_id,action_type_id,action_type,candidate_index,uses_candidate,is_infra_action,execution_target
+0,0,noop,0,False,False,page/environment
+1,0,noop,1,False,False,page/environment
+2,0,noop,2,False,False,page/environment
+3,0,noop,3,False,False,page/environment
+4,0,noop,4,False,False,page/environment
+5,0,noop,5,False,False,page/environment
+6,0,noop,6,False,False,page/environment
+7,0,noop,7,False,False,page/environment
+8,0,noop,8,False,False,page/environment
+9,0,noop,9,False,False,page/environment
+10,0,noop,10,False,False,page/environment
+11,0,noop,11,False,False,page/environment
+12,0,noop,12,False,False,page/environment
+13,0,noop,13,False,False,page/environment
+14,0,noop,14,False,False,page/environment
+15,0,noop,15,False,False,page/environment
+16,0,noop,16,False,False,page/environment
+17,0,noop,17,False,False,page/environment
+18,0,noop,18,False,False,page/environment
+19,0,noop,19,False,False,page/environment
+20,0,noop,20,False,False,page/environment
+21,0,noop,21,False,False,page/environment
+22,0,noop,22,False,False,page/environment
+23,0,noop,23,False,False,page/environment
+24,0,noop,24,False,False,page/environment
+25,0,noop,25,False,False,page/environment
+26,0,noop,26,False,False,page/environment
+27,0,noop,27,False,False,page/environment
+28,0,noop,28,False,False,page/environment
+29,0,noop,29,False,False,page/environment
+30,0,noop,30,False,False,page/environment
+31,0,noop,31,False,False,page/environment
+32,1,click_element,0,True,False,candidate element
+33,1,click_element,1,True,False,candidate element
+34,1,click_element,2,True,False,candidate element
+35,1,click_element,3,True,False,candidate element
+36,1,click_element,4,True,False,candidate element
+37,1,click_element,5,True,False,candidate element
+38,1,click_element,6,True,False,candidate element
+39,1,click_element,7,True,False,candidate element
+40,1,click_element,8,True,False,candidate element
+41,1,click_element,9,True,False,candidate element
+42,1,click_element,10,True,False,candidate element
+43,1,click_element,11,True,False,candidate element
+44,1,click_element,12,True,False,candidate element
+45,1,click_element,13,True,False,candidate element
+46,1,click_element,14,True,False,candidate element
+47,1,click_element,15,True,False,candidate element
+48,1,click_element,16,True,False,candidate element
+49,1,click_element,17,True,False,candidate element
+50,1,click_element,18,True,False,candidate element
+51,1,click_element,19,True,False,candidate element
+52,1,click_element,20,True,False,candidate element
+53,1,click_element,21,True,False,candidate element
+54,1,click_element,22,True,False,candidate element
+55,1,click_element,23,True,False,candidate element
+56,1,click_element,24,True,False,candidate element
+57,1,click_element,25,True,False,candidate element
+58,1,click_element,26,True,False,candidate element
+59,1,click_element,27,True,False,candidate element
+60,1,click_element,28,True,False,candidate element
+61,1,click_element,29,True,False,candidate element
+62,1,click_element,30,True,False,candidate element
+63,1,click_element,31,True,False,candidate element
+64,2,scroll_down,0,False,False,page/environment
+65,2,scroll_down,1,False,False,page/environment
+66,2,scroll_down,2,False,False,page/environment
+67,2,scroll_down,3,False,False,page/environment
+68,2,scroll_down,4,False,False,page/environment
+69,2,scroll_down,5,False,False,page/environment
+70,2,scroll_down,6,False,False,page/environment
+71,2,scroll_down,7,False,False,page/environment
+72,2,scroll_down,8,False,False,page/environment
+73,2,scroll_down,9,False,False,page/environment
+74,2,scroll_down,10,False,False,page/environment
+75,2,scroll_down,11,False,False,page/environment
+76,2,scroll_down,12,False,False,page/environment
+77,2,scroll_down,13,False,False,page/environment
+78,2,scroll_down,14,False,False,page/environment
+79,2,scroll_down,15,False,False,page/environment
+80,2,scroll_down,16,False,False,page/environment
+81,2,scroll_down,17,False,False,page/environment
+82,2,scroll_down,18,False,False,page/environment
+83,2,scroll_down,19,False,False,page/environment
+84,2,scroll_down,20,False,False,page/environment
+85,2,scroll_down,21,False,False,page/environment
+86,2,scroll_down,22,False,False,page/environment
+87,2,scroll_down,23,False,False,page/environment
+88,2,scroll_down,24,False,False,page/environment
+89,2,scroll_down,25,False,False,page/environment
+90,2,scroll_down,26,False,False,page/environment
+91,2,scroll_down,27,False,False,page/environment
+92,2,scroll_down,28,False,False,page/environment
+93,2,scroll_down,29,False,False,page/environment
+94,2,scroll_down,30,False,False,page/environment
+95,2,scroll_down,31,False,False,page/environment
+96,3,scroll_up,0,False,False,page/environment
+97,3,scroll_up,1,False,False,page/environment
+98,3,scroll_up,2,False,False,page/environment
+99,3,scroll_up,3,False,False,page/environment
+100,3,scroll_up,4,False,False,page/environment
+101,3,scroll_up,5,False,False,page/environment
+102,3,scroll_up,6,False,False,page/environment
+103,3,scroll_up,7,False,False,page/environment
+104,3,scroll_up,8,False,False,page/environment
+105,3,scroll_up,9,False,False,page/environment
+106,3,scroll_up,10,False,False,page/environment
+107,3,scroll_up,11,False,False,page/environment
+108,3,scroll_up,12,False,False,page/environment
+109,3,scroll_up,13,False,False,page/environment
+110,3,scroll_up,14,False,False,page/environment
+111,3,scroll_up,15,False,False,page/environment
+112,3,scroll_up,16,False,False,page/environment
+113,3,scroll_up,17,False,False,page/environment
+114,3,scroll_up,18,False,False,page/environment
+115,3,scroll_up,19,False,False,page/environment
+116,3,scroll_up,20,False,False,page/environment
+117,3,scroll_up,21,False,False,page/environment
+118,3,scroll_up,22,False,False,page/environment
+119,3,scroll_up,23,False,False,page/environment
+120,3,scroll_up,24,False,False,page/environment
+121,3,scroll_up,25,False,False,page/environment
+122,3,scroll_up,26,False,False,page/environment
+123,3,scroll_up,27,False,False,page/environment
+124,3,scroll_up,28,False,False,page/environment
+125,3,scroll_up,29,False,False,page/environment
+126,3,scroll_up,30,False,False,page/environment
+127,3,scroll_up,31,False,False,page/environment
+128,4,inspect_dom,0,False,False,page/environment
+129,4,inspect_dom,1,False,False,page/environment
+130,4,inspect_dom,2,False,False,page/environment
+131,4,inspect_dom,3,False,False,page/environment
+132,4,inspect_dom,4,False,False,page/environment
+133,4,inspect_dom,5,False,False,page/environment
+134,4,inspect_dom,6,False,False,page/environment
+135,4,inspect_dom,7,False,False,page/environment
+136,4,inspect_dom,8,False,False,page/environment
+137,4,inspect_dom,9,False,False,page/environment
+138,4,inspect_dom,10,False,False,page/environment
+139,4,inspect_dom,11,False,False,page/environment
+140,4,inspect_dom,12,False,False,page/environment
+141,4,inspect_dom,13,False,False,page/environment
+142,4,inspect_dom,14,False,False,page/environment
+143,4,inspect_dom,15,False,False,page/environment
+144,4,inspect_dom,16,False,False,page/environment
+145,4,inspect_dom,17,False,False,page/environment
+146,4,inspect_dom,18,False,False,page/environment
+147,4,inspect_dom,19,False,False,page/environment
+148,4,inspect_dom,20,False,False,page/environment
+149,4,inspect_dom,21,False,False,page/environment
+150,4,inspect_dom,22,False,False,page/environment
+151,4,inspect_dom,23,False,False,page/environment
+152,4,inspect_dom,24,False,False,page/environment
+153,4,inspect_dom,25,False,False,page/environment
+154,4,inspect_dom,26,False,False,page/environment
+155,4,inspect_dom,27,False,False,page/environment
+156,4,inspect_dom,28,False,False,page/environment
+157,4,inspect_dom,29,False,False,page/environment
+158,4,inspect_dom,30,False,False,page/environment
+159,4,inspect_dom,31,False,False,page/environment
+160,5,inspect_layout,0,False,False,page/environment
+161,5,inspect_layout,1,False,False,page/environment
+162,5,inspect_layout,2,False,False,page/environment
+163,5,inspect_layout,3,False,False,page/environment
+164,5,inspect_layout,4,False,False,page/environment
+165,5,inspect_layout,5,False,False,page/environment
+166,5,inspect_layout,6,False,False,page/environment
+167,5,inspect_layout,7,False,False,page/environment
+168,5,inspect_layout,8,False,False,page/environment
+169,5,inspect_layout,9,False,False,page/environment
+170,5,inspect_layout,10,False,False,page/environment
+171,5,inspect_layout,11,False,False,page/environment
+172,5,inspect_layout,12,False,False,page/environment
+173,5,inspect_layout,13,False,False,page/environment
+174,5,inspect_layout,14,False,False,page/environment
+175,5,inspect_layout,15,False,False,page/environment
+176,5,inspect_layout,16,False,False,page/environment
+177,5,inspect_layout,17,False,False,page/environment
+178,5,inspect_layout,18,False,False,page/environment
+179,5,inspect_layout,19,False,False,page/environment
+180,5,inspect_layout,20,False,False,page/environment
+181,5,inspect_layout,21,False,False,page/environment
+182,5,inspect_layout,22,False,False,page/environment
+183,5,inspect_layout,23,False,False,page/environment
+184,5,inspect_layout,24,False,False,page/environment
+185,5,inspect_layout,25,False,False,page/environment
+186,5,inspect_layout,26,False,False,page/environment
+187,5,inspect_layout,27,False,False,page/environment
+188,5,inspect_layout,28,False,False,page/environment
+189,5,inspect_layout,29,False,False,page/environment
+190,5,inspect_layout,30,False,False,page/environment
+191,5,inspect_layout,31,False,False,page/environment
+192,6,inspect_network,0,False,False,page/environment
+193,6,inspect_network,1,False,False,page/environment
+194,6,inspect_network,2,False,False,page/environment
+195,6,inspect_network,3,False,False,page/environment
+196,6,inspect_network,4,False,False,page/environment
+197,6,inspect_network,5,False,False,page/environment
+198,6,inspect_network,6,False,False,page/environment
+199,6,inspect_network,7,False,False,page/environment
+200,6,inspect_network,8,False,False,page/environment
+201,6,inspect_network,9,False,False,page/environment
+202,6,inspect_network,10,False,False,page/environment
+203,6,inspect_network,11,False,False,page/environment
+204,6,inspect_network,12,False,False,page/environment
+205,6,inspect_network,13,False,False,page/environment
+206,6,inspect_network,14,False,False,page/environment
+207,6,inspect_network,15,False,False,page/environment
+208,6,inspect_network,16,False,False,page/environment
+209,6,inspect_network,17,False,False,page/environment
+210,6,inspect_network,18,False,False,page/environment
+211,6,inspect_network,19,False,False,page/environment
+212,6,inspect_network,20,False,False,page/environment
+213,6,inspect_network,21,False,False,page/environment
+214,6,inspect_network,22,False,False,page/environment
+215,6,inspect_network,23,False,False,page/environment
+216,6,inspect_network,24,False,False,page/environment
+217,6,inspect_network,25,False,False,page/environment
+218,6,inspect_network,26,False,False,page/environment
+219,6,inspect_network,27,False,False,page/environment
+220,6,inspect_network,28,False,False,page/environment
+221,6,inspect_network,29,False,False,page/environment
+222,6,inspect_network,30,False,False,page/environment
+223,6,inspect_network,31,False,False,page/environment
+224,7,inspect_console,0,False,False,page/environment
+225,7,inspect_console,1,False,False,page/environment
+226,7,inspect_console,2,False,False,page/environment
+227,7,inspect_console,3,False,False,page/environment
+228,7,inspect_console,4,False,False,page/environment
+229,7,inspect_console,5,False,False,page/environment
+230,7,inspect_console,6,False,False,page/environment
+231,7,inspect_console,7,False,False,page/environment
+232,7,inspect_console,8,False,False,page/environment
+233,7,inspect_console,9,False,False,page/environment
+234,7,inspect_console,10,False,False,page/environment
+235,7,inspect_console,11,False,False,page/environment
+236,7,inspect_console,12,False,False,page/environment
+237,7,inspect_console,13,False,False,page/environment
+238,7,inspect_console,14,False,False,page/environment
+239,7,inspect_console,15,False,False,page/environment
+240,7,inspect_console,16,False,False,page/environment
+241,7,inspect_console,17,False,False,page/environment
+242,7,inspect_console,18,False,False,page/environment
+243,7,inspect_console,19,False,False,page/environment
+244,7,inspect_console,20,False,False,page/environment
+245,7,inspect_console,21,False,False,page/environment
+246,7,inspect_console,22,False,False,page/environment
+247,7,inspect_console,23,False,False,page/environment
+248,7,inspect_console,24,False,False,page/environment
+249,7,inspect_console,25,False,False,page/environment
+250,7,inspect_console,26,False,False,page/environment
+251,7,inspect_console,27,False,False,page/environment
+252,7,inspect_console,28,False,False,page/environment
+253,7,inspect_console,29,False,False,page/environment
+254,7,inspect_console,30,False,False,page/environment
+255,7,inspect_console,31,False,False,page/environment
+256,8,inspect_cart,0,False,False,page/environment
+257,8,inspect_cart,1,False,False,page/environment
+258,8,inspect_cart,2,False,False,page/environment
+259,8,inspect_cart,3,False,False,page/environment
+260,8,inspect_cart,4,False,False,page/environment
+261,8,inspect_cart,5,False,False,page/environment
+262,8,inspect_cart,6,False,False,page/environment
+263,8,inspect_cart,7,False,False,page/environment
+264,8,inspect_cart,8,False,False,page/environment
+265,8,inspect_cart,9,False,False,page/environment
+266,8,inspect_cart,10,False,False,page/environment
+267,8,inspect_cart,11,False,False,page/environment
+268,8,inspect_cart,12,False,False,page/environment
+269,8,inspect_cart,13,False,False,page/environment
+270,8,inspect_cart,14,False,False,page/environment
+271,8,inspect_cart,15,False,False,page/environment
+272,8,inspect_cart,16,False,False,page/environment
+273,8,inspect_cart,17,False,False,page/environment
+274,8,inspect_cart,18,False,False,page/environment
+275,8,inspect_cart,19,False,False,page/environment
+276,8,inspect_cart,20,False,False,page/environment
+277,8,inspect_cart,21,False,False,page/environment
+278,8,inspect_cart,22,False,False,page/environment
+279,8,inspect_cart,23,False,False,page/environment
+280,8,inspect_cart,24,False,False,page/environment
+281,8,inspect_cart,25,False,False,page/environment
+282,8,inspect_cart,26,False,False,page/environment
+283,8,inspect_cart,27,False,False,page/environment
+284,8,inspect_cart,28,False,False,page/environment
+285,8,inspect_cart,29,False,False,page/environment
+286,8,inspect_cart,30,False,False,page/environment
+287,8,inspect_cart,31,False,False,page/environment
+288,9,inspect_server_health,0,False,True,page/environment
+289,9,inspect_server_health,1,False,True,page/environment
+290,9,inspect_server_health,2,False,True,page/environment
+291,9,inspect_server_health,3,False,True,page/environment
+292,9,inspect_server_health,4,False,True,page/environment
+293,9,inspect_server_health,5,False,True,page/environment
+294,9,inspect_server_health,6,False,True,page/environment
+295,9,inspect_server_health,7,False,True,page/environment
+296,9,inspect_server_health,8,False,True,page/environment
+297,9,inspect_server_health,9,False,True,page/environment
+298,9,inspect_server_health,10,False,True,page/environment
+299,9,inspect_server_health,11,False,True,page/environment
+300,9,inspect_server_health,12,False,True,page/environment
+301,9,inspect_server_health,13,False,True,page/environment
+302,9,inspect_server_health,14,False,True,page/environment
+303,9,inspect_server_health,15,False,True,page/environment
+304,9,inspect_server_health,16,False,True,page/environment
+305,9,inspect_server_health,17,False,True,page/environment
+306,9,inspect_server_health,18,False,True,page/environment
+307,9,inspect_server_health,19,False,True,page/environment
+308,9,inspect_server_health,20,False,True,page/environment
+309,9,inspect_server_health,21,False,True,page/environment
+310,9,inspect_server_health,22,False,True,page/environment
+311,9,inspect_server_health,23,False,True,page/environment
+312,9,inspect_server_health,24,False,True,page/environment
+313,9,inspect_server_health,25,False,True,page/environment
+314,9,inspect_server_health,26,False,True,page/environment
+315,9,inspect_server_health,27,False,True,page/environment
+316,9,inspect_server_health,28,False,True,page/environment
+317,9,inspect_server_health,29,False,True,page/environment
+318,9,inspect_server_health,30,False,True,page/environment
+319,9,inspect_server_health,31,False,True,page/environment
+320,10,inspect_port_status,0,False,True,page/environment
+321,10,inspect_port_status,1,False,True,page/environment
+322,10,inspect_port_status,2,False,True,page/environment
+323,10,inspect_port_status,3,False,True,page/environment
+324,10,inspect_port_status,4,False,True,page/environment
+325,10,inspect_port_status,5,False,True,page/environment
+326,10,inspect_port_status,6,False,True,page/environment
+327,10,inspect_port_status,7,False,True,page/environment
+328,10,inspect_port_status,8,False,True,page/environment
+329,10,inspect_port_status,9,False,True,page/environment
+330,10,inspect_port_status,10,False,True,page/environment
+331,10,inspect_port_status,11,False,True,page/environment
+332,10,inspect_port_status,12,False,True,page/environment
+333,10,inspect_port_status,13,False,True,page/environment
+334,10,inspect_port_status,14,False,True,page/environment
+335,10,inspect_port_status,15,False,True,page/environment
+336,10,inspect_port_status,16,False,True,page/environment
+337,10,inspect_port_status,17,False,True,page/environment
+338,10,inspect_port_status,18,False,True,page/environment
+339,10,inspect_port_status,19,False,True,page/environment
+340,10,inspect_port_status,20,False,True,page/environment
+341,10,inspect_port_status,21,False,True,page/environment
+342,10,inspect_port_status,22,False,True,page/environment
+343,10,inspect_port_status,23,False,True,page/environment
+344,10,inspect_port_status,24,False,True,page/environment
+345,10,inspect_port_status,25,False,True,page/environment
+346,10,inspect_port_status,26,False,True,page/environment
+347,10,inspect_port_status,27,False,True,page/environment
+348,10,inspect_port_status,28,False,True,page/environment
+349,10,inspect_port_status,29,False,True,page/environment
+350,10,inspect_port_status,30,False,True,page/environment
+351,10,inspect_port_status,31,False,True,page/environment
+352,11,inspect_latency,0,False,True,page/environment
+353,11,inspect_latency,1,False,True,page/environment
+354,11,inspect_latency,2,False,True,page/environment
+355,11,inspect_latency,3,False,True,page/environment
+356,11,inspect_latency,4,False,True,page/environment
+357,11,inspect_latency,5,False,True,page/environment
+358,11,inspect_latency,6,False,True,page/environment
+359,11,inspect_latency,7,False,True,page/environment
+360,11,inspect_latency,8,False,True,page/environment
+361,11,inspect_latency,9,False,True,page/environment
+362,11,inspect_latency,10,False,True,page/environment
+363,11,inspect_latency,11,False,True,page/environment
+364,11,inspect_latency,12,False,True,page/environment
+365,11,inspect_latency,13,False,True,page/environment
+366,11,inspect_latency,14,False,True,page/environment
+367,11,inspect_latency,15,False,True,page/environment
+368,11,inspect_latency,16,False,True,page/environment
+369,11,inspect_latency,17,False,True,page/environment
+370,11,inspect_latency,18,False,True,page/environment
+371,11,inspect_latency,19,False,True,page/environment
+372,11,inspect_latency,20,False,True,page/environment
+373,11,inspect_latency,21,False,True,page/environment
+374,11,inspect_latency,22,False,True,page/environment
+375,11,inspect_latency,23,False,True,page/environment
+376,11,inspect_latency,24,False,True,page/environment
+377,11,inspect_latency,25,False,True,page/environment
+378,11,inspect_latency,26,False,True,page/environment
+379,11,inspect_latency,27,False,True,page/environment
+380,11,inspect_latency,28,False,True,page/environment
+381,11,inspect_latency,29,False,True,page/environment
+382,11,inspect_latency,30,False,True,page/environment
+383,11,inspect_latency,31,False,True,page/environment
+384,12,inspect_server_logs,0,False,True,page/environment
+385,12,inspect_server_logs,1,False,True,page/environment
+386,12,inspect_server_logs,2,False,True,page/environment
+387,12,inspect_server_logs,3,False,True,page/environment
+388,12,inspect_server_logs,4,False,True,page/environment
+389,12,inspect_server_logs,5,False,True,page/environment
+390,12,inspect_server_logs,6,False,True,page/environment
+391,12,inspect_server_logs,7,False,True,page/environment
+392,12,inspect_server_logs,8,False,True,page/environment
+393,12,inspect_server_logs,9,False,True,page/environment
+394,12,inspect_server_logs,10,False,True,page/environment
+395,12,inspect_server_logs,11,False,True,page/environment
+396,12,inspect_server_logs,12,False,True,page/environment
+397,12,inspect_server_logs,13,False,True,page/environment
+398,12,inspect_server_logs,14,False,True,page/environment
+399,12,inspect_server_logs,15,False,True,page/environment
+400,12,inspect_server_logs,16,False,True,page/environment
+401,12,inspect_server_logs,17,False,True,page/environment
+402,12,inspect_server_logs,18,False,True,page/environment
+403,12,inspect_server_logs,19,False,True,page/environment
+404,12,inspect_server_logs,20,False,True,page/environment
+405,12,inspect_server_logs,21,False,True,page/environment
+406,12,inspect_server_logs,22,False,True,page/environment
+407,12,inspect_server_logs,23,False,True,page/environment
+408,12,inspect_server_logs,24,False,True,page/environment
+409,12,inspect_server_logs,25,False,True,page/environment
+410,12,inspect_server_logs,26,False,True,page/environment
+411,12,inspect_server_logs,27,False,True,page/environment
+412,12,inspect_server_logs,28,False,True,page/environment
+413,12,inspect_server_logs,29,False,True,page/environment
+414,12,inspect_server_logs,30,False,True,page/environment
+415,12,inspect_server_logs,31,False,True,page/environment
+416,13,inspect_runtime_metrics,0,False,True,page/environment
+417,13,inspect_runtime_metrics,1,False,True,page/environment
+418,13,inspect_runtime_metrics,2,False,True,page/environment
+419,13,inspect_runtime_metrics,3,False,True,page/environment
+420,13,inspect_runtime_metrics,4,False,True,page/environment
+421,13,inspect_runtime_metrics,5,False,True,page/environment
+422,13,inspect_runtime_metrics,6,False,True,page/environment
+423,13,inspect_runtime_metrics,7,False,True,page/environment
+424,13,inspect_runtime_metrics,8,False,True,page/environment
+425,13,inspect_runtime_metrics,9,False,True,page/environment
+426,13,inspect_runtime_metrics,10,False,True,page/environment
+427,13,inspect_runtime_metrics,11,False,True,page/environment
+428,13,inspect_runtime_metrics,12,False,True,page/environment
+429,13,inspect_runtime_metrics,13,False,True,page/environment
+430,13,inspect_runtime_metrics,14,False,True,page/environment
+431,13,inspect_runtime_metrics,15,False,True,page/environment
+432,13,inspect_runtime_metrics,16,False,True,page/environment
+433,13,inspect_runtime_metrics,17,False,True,page/environment
+434,13,inspect_runtime_metrics,18,False,True,page/environment
+435,13,inspect_runtime_metrics,19,False,True,page/environment
+436,13,inspect_runtime_metrics,20,False,True,page/environment
+437,13,inspect_runtime_metrics,21,False,True,page/environment
+438,13,inspect_runtime_metrics,22,False,True,page/environment
+439,13,inspect_runtime_metrics,23,False,True,page/environment
+440,13,inspect_runtime_metrics,24,False,True,page/environment
+441,13,inspect_runtime_metrics,25,False,True,page/environment
+442,13,inspect_runtime_metrics,26,False,True,page/environment
+443,13,inspect_runtime_metrics,27,False,True,page/environment
+444,13,inspect_runtime_metrics,28,False,True,page/environment
+445,13,inspect_runtime_metrics,29,False,True,page/environment
+446,13,inspect_runtime_metrics,30,False,True,page/environment
+447,13,inspect_runtime_metrics,31,False,True,page/environment
+448,14,fill_input,0,True,False,candidate element
+449,14,fill_input,1,True,False,candidate element
+450,14,fill_input,2,True,False,candidate element
+451,14,fill_input,3,True,False,candidate element
+452,14,fill_input,4,True,False,candidate element
+453,14,fill_input,5,True,False,candidate element
+454,14,fill_input,6,True,False,candidate element
+455,14,fill_input,7,True,False,candidate element
+456,14,fill_input,8,True,False,candidate element
+457,14,fill_input,9,True,False,candidate element
+458,14,fill_input,10,True,False,candidate element
+459,14,fill_input,11,True,False,candidate element
+460,14,fill_input,12,True,False,candidate element
+461,14,fill_input,13,True,False,candidate element
+462,14,fill_input,14,True,False,candidate element
+463,14,fill_input,15,True,False,candidate element
+464,14,fill_input,16,True,False,candidate element
+465,14,fill_input,17,True,False,candidate element
+466,14,fill_input,18,True,False,candidate element
+467,14,fill_input,19,True,False,candidate element
+468,14,fill_input,20,True,False,candidate element
+469,14,fill_input,21,True,False,candidate element
+470,14,fill_input,22,True,False,candidate element
+471,14,fill_input,23,True,False,candidate element
+472,14,fill_input,24,True,False,candidate element
+473,14,fill_input,25,True,False,candidate element
+474,14,fill_input,26,True,False,candidate element
+475,14,fill_input,27,True,False,candidate element
+476,14,fill_input,28,True,False,candidate element
+477,14,fill_input,29,True,False,candidate element
+478,14,fill_input,30,True,False,candidate element
+479,14,fill_input,31,True,False,candidate element
+480,15,press_enter,0,True,False,candidate element
+481,15,press_enter,1,True,False,candidate element
+482,15,press_enter,2,True,False,candidate element
+483,15,press_enter,3,True,False,candidate element
+484,15,press_enter,4,True,False,candidate element
+485,15,press_enter,5,True,False,candidate element
+486,15,press_enter,6,True,False,candidate element
+487,15,press_enter,7,True,False,candidate element
+488,15,press_enter,8,True,False,candidate element
+489,15,press_enter,9,True,False,candidate element
+490,15,press_enter,10,True,False,candidate element
+491,15,press_enter,11,True,False,candidate element
+492,15,press_enter,12,True,False,candidate element
+493,15,press_enter,13,True,False,candidate element
+494,15,press_enter,14,True,False,candidate element
+495,15,press_enter,15,True,False,candidate element
+496,15,press_enter,16,True,False,candidate element
+497,15,press_enter,17,True,False,candidate element
+498,15,press_enter,18,True,False,candidate element
+499,15,press_enter,19,True,False,candidate element
+500,15,press_enter,20,True,False,candidate element
+501,15,press_enter,21,True,False,candidate element
+502,15,press_enter,22,True,False,candidate element
+503,15,press_enter,23,True,False,candidate element
+504,15,press_enter,24,True,False,candidate element
+505,15,press_enter,25,True,False,candidate element
+506,15,press_enter,26,True,False,candidate element
+507,15,press_enter,27,True,False,candidate element
+508,15,press_enter,28,True,False,candidate element
+509,15,press_enter,29,True,False,candidate element
+510,15,press_enter,30,True,False,candidate element
+511,15,press_enter,31,True,False,candidate element
+512,16,change_viewport_mobile,0,False,False,page/environment
+513,16,change_viewport_mobile,1,False,False,page/environment
+514,16,change_viewport_mobile,2,False,False,page/environment
+515,16,change_viewport_mobile,3,False,False,page/environment
+516,16,change_viewport_mobile,4,False,False,page/environment
+517,16,change_viewport_mobile,5,False,False,page/environment
+518,16,change_viewport_mobile,6,False,False,page/environment
+519,16,change_viewport_mobile,7,False,False,page/environment
+520,16,change_viewport_mobile,8,False,False,page/environment
+521,16,change_viewport_mobile,9,False,False,page/environment
+522,16,change_viewport_mobile,10,False,False,page/environment
+523,16,change_viewport_mobile,11,False,False,page/environment
+524,16,change_viewport_mobile,12,False,False,page/environment
+525,16,change_viewport_mobile,13,False,False,page/environment
+526,16,change_viewport_mobile,14,False,False,page/environment
+527,16,change_viewport_mobile,15,False,False,page/environment
+528,16,change_viewport_mobile,16,False,False,page/environment
+529,16,change_viewport_mobile,17,False,False,page/environment
+530,16,change_viewport_mobile,18,False,False,page/environment
+531,16,change_viewport_mobile,19,False,False,page/environment
+532,16,change_viewport_mobile,20,False,False,page/environment
+533,16,change_viewport_mobile,21,False,False,page/environment
+534,16,change_viewport_mobile,22,False,False,page/environment
+535,16,change_viewport_mobile,23,False,False,page/environment
+536,16,change_viewport_mobile,24,False,False,page/environment
+537,16,change_viewport_mobile,25,False,False,page/environment
+538,16,change_viewport_mobile,26,False,False,page/environment
+539,16,change_viewport_mobile,27,False,False,page/environment
+540,16,change_viewport_mobile,28,False,False,page/environment
+541,16,change_viewport_mobile,29,False,False,page/environment
+542,16,change_viewport_mobile,30,False,False,page/environment
+543,16,change_viewport_mobile,31,False,False,page/environment
+544,17,change_viewport_desktop,0,False,False,page/environment
+545,17,change_viewport_desktop,1,False,False,page/environment
+546,17,change_viewport_desktop,2,False,False,page/environment
+547,17,change_viewport_desktop,3,False,False,page/environment
+548,17,change_viewport_desktop,4,False,False,page/environment
+549,17,change_viewport_desktop,5,False,False,page/environment
+550,17,change_viewport_desktop,6,False,False,page/environment
+551,17,change_viewport_desktop,7,False,False,page/environment
+552,17,change_viewport_desktop,8,False,False,page/environment
+553,17,change_viewport_desktop,9,False,False,page/environment
+554,17,change_viewport_desktop,10,False,False,page/environment
+555,17,change_viewport_desktop,11,False,False,page/environment
+556,17,change_viewport_desktop,12,False,False,page/environment
+557,17,change_viewport_desktop,13,False,False,page/environment
+558,17,change_viewport_desktop,14,False,False,page/environment
+559,17,change_viewport_desktop,15,False,False,page/environment
+560,17,change_viewport_desktop,16,False,False,page/environment
+561,17,change_viewport_desktop,17,False,False,page/environment
+562,17,change_viewport_desktop,18,False,False,page/environment
+563,17,change_viewport_desktop,19,False,False,page/environment
+564,17,change_viewport_desktop,20,False,False,page/environment
+565,17,change_viewport_desktop,21,False,False,page/environment
+566,17,change_viewport_desktop,22,False,False,page/environment
+567,17,change_viewport_desktop,23,False,False,page/environment
+568,17,change_viewport_desktop,24,False,False,page/environment
+569,17,change_viewport_desktop,25,False,False,page/environment
+570,17,change_viewport_desktop,26,False,False,page/environment
+571,17,change_viewport_desktop,27,False,False,page/environment
+572,17,change_viewport_desktop,28,False,False,page/environment
+573,17,change_viewport_desktop,29,False,False,page/environment
+574,17,change_viewport_desktop,30,False,False,page/environment
+575,17,change_viewport_desktop,31,False,False,page/environment
+576,18,finish_episode,0,False,False,page/environment
+577,18,finish_episode,1,False,False,page/environment
+578,18,finish_episode,2,False,False,page/environment
+579,18,finish_episode,3,False,False,page/environment
+580,18,finish_episode,4,False,False,page/environment
+581,18,finish_episode,5,False,False,page/environment
+582,18,finish_episode,6,False,False,page/environment
+583,18,finish_episode,7,False,False,page/environment
+584,18,finish_episode,8,False,False,page/environment
+585,18,finish_episode,9,False,False,page/environment
+586,18,finish_episode,10,False,False,page/environment
+587,18,finish_episode,11,False,False,page/environment
+588,18,finish_episode,12,False,False,page/environment
+589,18,finish_episode,13,False,False,page/environment
+590,18,finish_episode,14,False,False,page/environment
+591,18,finish_episode,15,False,False,page/environment
+592,18,finish_episode,16,False,False,page/environment
+593,18,finish_episode,17,False,False,page/environment
+594,18,finish_episode,18,False,False,page/environment
+595,18,finish_episode,19,False,False,page/environment
+596,18,finish_episode,20,False,False,page/environment
+597,18,finish_episode,21,False,False,page/environment
+598,18,finish_episode,22,False,False,page/environment
+599,18,finish_episode,23,False,False,page/environment
+600,18,finish_episode,24,False,False,page/environment
+601,18,finish_episode,25,False,False,page/environment
+602,18,finish_episode,26,False,False,page/environment
+603,18,finish_episode,27,False,False,page/environment
+604,18,finish_episode,28,False,False,page/environment
+605,18,finish_episode,29,False,False,page/environment
+606,18,finish_episode,30,False,False,page/environment
+607,18,finish_episode,31,False,False,page/environment

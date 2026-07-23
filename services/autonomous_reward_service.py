@@ -332,6 +332,70 @@ def calculate_autonomous_reward(
     }
 
 
+def calculate_security_reward(
+    before_observation: Mapping[str, Any],
+    after_observation: Mapping[str, Any],
+    action: Mapping[str, Any],
+    anomalies: List[Dict[str, Any]],
+    known_matches: Optional[List[Dict[str, Any]]] = None,
+    history: Optional[Mapping[str, Any]] = None,
+    site_profile: Optional[Mapping[str, Any]] = None,
+) -> Tuple[float, Dict[str, float]]:
+    """Security-focused reward for explicitly opted-in, safe test catalogs.
+
+    The base exploration reward remains available as a small shaping signal; security
+    credit requires observable evidence or a known, reproducible match.
+    """
+    history = history or {}
+    known_matches = known_matches or []
+    base_reward, base = calculate_autonomous_reward(
+        before_observation, after_observation, action, anomalies, known_matches, history, site_profile
+    )
+    action_type = str(action.get("action_type") or "")
+    state_changed = _state_signature(before_observation) != _state_signature(after_observation)
+    new_state = 1.0 if state_changed and not history.get("last_state_signature") == _state_signature(after_observation) else 0.0
+    security_types = {
+        "api-forbidden", "api-ui-mismatch", "action-error", "broken-navigation",
+        "network-error", "console-error", "async-hang", "timeout-no-feedback",
+        "layout-overlap", "layout-overflow",
+    }
+    security_anomalies = [item for item in anomalies if str(item.get("type") or "") in security_types]
+    has_evidence = any(bool(item.get("evidence")) for item in security_anomalies)
+    previous_matches = {str(value) for value in history.get("matched_bug_ids", set()) or set()}
+    confirmed_ids = {
+        str(match.get("matched_bug_id"))
+        for match in known_matches
+        if match.get("matched_bug_id")
+    }
+    new_confirmed_ids = confirmed_ids - previous_matches
+    confirmed = len(new_confirmed_ids)
+    new_surface = 1.0 if action_type in {
+        "inspect_network", "inspect_console", "inspect_dom", "inspect_layout",
+        "fill_input", "press_enter", "login"
+    } and state_changed else 0.0
+    repeated = 1.0 if action_type and action_type == history.get("last_action_type") else 0.0
+    no_change_streak = min(1.0, float((after_observation.get("history", {}) or {}).get("no_change_steps", 0) or 0.0) / 2.0)
+    execution_failed = 1.0 if action.get("failed") else 0.0
+    false_positive = 1.0 if any(item.get("human_review_status") == "likely_false_positive" for item in anomalies) and not confirmed else 0.0
+    severity = max((float(item.get("severity") or 0.0) for item in security_anomalies), default=0.0) / 5.0
+    components = {
+        # Keep individual rewards below the cap so one repeated finding cannot
+        # make every subsequent transition look equally valuable.
+        "base_exploration_shaping": 0.10 * max(-1.0, min(1.5, base_reward)),
+        "new_state": 0.20 * new_state,
+        "new_security_surface": 0.30 * new_surface,
+        "evidence_complete": 0.60 if has_evidence and confirmed > 0 else 0.0,
+        "confirmed_reproducible_finding": 1.00 * min(1.0, float(confirmed)),
+        "severity_weight": 0.20 * severity if confirmed > 0 else 0.0,
+        "repeated_action": -0.20 * repeated,
+        "no_state_change_streak": -0.40 * no_change_streak,
+        "action_execution_failed": -0.60 * execution_failed,
+        "false_positive": -1.00 * false_positive,
+    }
+    final_reward = max(-1.0, min(1.5, sum(components.values())))
+    return final_reward, {"reward_profile": "security_v1", **components, "final_reward": final_reward}
+
+
 def _is_new_interactive_click(
     before_observation: Mapping[str, Any],
     action: Mapping[str, Any],

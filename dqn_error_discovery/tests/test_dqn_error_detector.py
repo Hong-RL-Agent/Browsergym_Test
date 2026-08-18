@@ -1,5 +1,5 @@
 from models.action_space import ActionSpace
-from runners.train_dqn_error_detector import EXCLUDED_ACTIONS, anomaly_reward, safe_action_mask
+from dqn_error_discovery.runners.train_dqn_error_detector import EXCLUDED_ACTIONS, anomaly_reward, safe_action_mask
 
 
 def test_safe_mask_excludes_infrastructure_actions():

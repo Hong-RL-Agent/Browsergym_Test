@@ -9,7 +9,7 @@ issues, and duplicated rendering. It does not perform security testing or
 vulnerability reproduction.
 
 ```powershell
-python -m runners.train_dqn_error_detector `
+python -m dqn_error_discovery.runners.train_dqn_error_detector `
   --base-url http://127.0.0.1:9220 `
   --site-id site001 `
   --episodes 20 `

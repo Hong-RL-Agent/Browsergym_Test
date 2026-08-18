@@ -17,7 +17,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from agents.dqn_agent import QNetwork, ReplayBuffer, Transition, masked_argmax
+from dqn_error_discovery.agents.dqn_agent import QNetwork, ReplayBuffer, Transition, masked_argmax
 from envs.browsergym_jaws_env import BrowserGymJAWSEnv
 from models.action_space import ActionSpace
 from services.anomaly_detection_service import detect_anomalies

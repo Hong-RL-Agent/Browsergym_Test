@@ -10,30 +10,47 @@ from services.site_profile_service import bug_id_of, data_bug_id_from_selector, 
 
 TYPE_ALIASES = {
     "button-no-response": {"button-no-response", "timeout-no-feedback", "cart-quantity-mismatch"},
-    "form-no-feedback": {"form-no-feedback", "button-no-response", "async-hang", "async-no-feedback", "timeout-no-feedback"},
+    "form-no-feedback": {"form-no-feedback", "button-no-response", "async-hang", "async-no-feedback", "timeout-no-feedback", "forum-save-feedback-missing"},
     "component-rendering": {"component-rendering", "duplicated-rendering", "empty-state-rendering"},
-    "duplicated-rendering": {"component-rendering", "duplicated-rendering"},
+    "duplicated-rendering": {"component-rendering", "duplicated-rendering", "forum-comment-duplicated"},
     "empty-state-rendering": {"component-rendering", "empty-state-rendering", "sparse-data-rendering", "data-missing"},
-    "css-layout": {"css-layout", "layout-overlap", "layout-overflow"},
-    "layout-overlap": {"css-layout", "layout-overlap", "layout-overflow"},
-    "layout-overflow": {"css-layout", "layout-overflow", "layout-overlap"},
-    "broken-navigation": {"broken-navigation"},
+    "css-layout": {"css-layout", "layout-overflow"},
+    "layout-overlap": {"layout-overlap"},
+    "layout-overflow": {"css-layout", "layout-overflow"},
+    "broken-navigation": {"broken-navigation", "forum-post-detail-not-opened"},
+    "product-detail-mismatch": {"product-detail-mismatch", "broken-navigation"},
+    "forum-post-detail-not-opened": {"broken-navigation", "forum-post-detail-not-opened"},
+    "forum-comment-duplicated": {"duplicated-rendering", "forum-comment-duplicated"},
+    "forum-comment-delete-failed": {"button-no-response", "forum-comment-delete-failed"},
+    "forum-save-feedback-missing": {"form-no-feedback", "forum-save-feedback-missing"},
+    "forum-empty-post-validation-missing": {"form-no-feedback", "forum-empty-post-validation-missing"},
     "api-forbidden": {"api-forbidden", "api-ui-mismatch", "network-error"},
     "api-ui-mismatch": {"api-ui-mismatch", "api-forbidden", "cart-quantity-mismatch", "sparse-data-rendering"},
     "async-hang": {"async-hang", "async-no-feedback", "timeout-no-feedback", "form-no-feedback"},
     "async-no-feedback": {"async-no-feedback", "async-hang", "timeout-no-feedback", "form-no-feedback"},
     "timeout-no-feedback": {"timeout-no-feedback", "async-hang", "form-no-feedback", "button-no-response"},
     "cart-quantity-mismatch": {"cart-quantity-mismatch", "cart-state-mismatch", "api-ui-mismatch", "button-no-response"},
+    "cart-total-mismatch": {"cart-total-mismatch", "cart-quantity-mismatch", "api-ui-mismatch"},
     "cart-state-mismatch": {"cart-state-mismatch", "cart-quantity-mismatch", "api-ui-mismatch"},
     "sparse-data-rendering": {"sparse-data-rendering", "data-missing", "api-ui-mismatch", "empty-state-rendering", "component-rendering"},
     "data-missing": {"data-missing", "sparse-data-rendering", "empty-state-rendering"},
     "network-error": {"network-error", "api-forbidden", "api-ui-mismatch"},
+    "api-5xx": {"api-5xx", "network-error", "api-ui-mismatch"},
 }
 
 SITE001_FALLBACK_BUGS = [
     {"id": "site001-bug01", "type": "button-no-response", "selector_text": "구매하기"},
     {"id": "site001-bug02", "type": "component-rendering"},
     {"id": "site001-bug03", "type": "css-layout"},
+]
+
+SITE001_FALLBACK_BUGS = [
+    {"id": "SHOP-E01", "type": "button-no-response", "selector_text": "add to cart"},
+    {"id": "SHOP-E02", "type": "cart-quantity-mismatch", "selector_text": "quantity"},
+    {"id": "SHOP-E03", "type": "product-detail-mismatch", "selector_text": "wireless headphones"},
+    {"id": "SHOP-E04", "type": "api-5xx", "selector_text": "/api/order"},
+    {"id": "SHOP-E05", "type": "cart-total-mismatch", "selector_text": "cart total"},
+    {"id": "SHOP-E06", "type": "layout-overlap", "selector_text": "mobile product card"},
 ]
 
 
@@ -212,9 +229,18 @@ def _catalog_score(anomaly_type: str, evidence: Mapping[str, Any], bug: Mapping[
     if type_matched and (evidence.get("network_status") == 403 or int(evidence.get("api_403_count", 0) or 0) > 0):
         score += 0.4
         reasons.append("network-status-match")
+    if type_matched and anomaly_type == "api-5xx" and int(evidence.get("status", 0) or 0) >= 500:
+        score += 0.4
+        reasons.append("network-status-match")
     if type_matched and bool(evidence.get("cart_quantity_evidence")):
         score += 0.4
         reasons.append("cart-quantity-evidence")
+    if type_matched and anomaly_type == "cart-total-mismatch" and evidence.get("displayed_total") is not None and evidence.get("expected_total_from_visible_amounts") is not None:
+        score += 0.4
+        reasons.append("cart-total-evidence")
+    if type_matched and anomaly_type == "product-detail-mismatch" and evidence.get("detail_content_mismatch"):
+        score += 0.4
+        reasons.append("detail-content-mismatch")
     if type_matched and anomaly_type in {"layout-overflow", "layout-overlap", "css-layout"} and not evidence.get("child_bbox"):
         reasons.append("bbox-fallback")
 
@@ -241,17 +267,29 @@ def _site001_compat_score(
     if (
         site_id == "site001"
         and anomaly_type == "button-no-response"
-        and bug_id == "site001-bug01"
+        and bug_id in {"site001-bug01", "SHOP-E01"}
         and anomaly_confidence >= 0.8
         and same_cart_count
     ):
         return 0.99, "site001-cart-button-no-response"
     if anomaly_type == "duplicated-rendering" and bug_id == "site001-bug02":
         return 0.85, "site001-duplicated-rendering"
-    if anomaly_type in {"layout-overlap", "layout-overflow", "css-layout"} and bug_id == "site001-bug03":
+    if anomaly_type in {"layout-overlap", "layout-overflow", "css-layout"} and bug_id in {"site001-bug03", "SHOP-E06"}:
         if "mobile" in evidence_text and anomaly_confidence >= 0.8:
             return 0.98, "site001-mobile-layout"
         return 0.85, "site001-layout"
+    if site_id == "site001" and anomaly_type == "cart-quantity-mismatch" and bug_id == "SHOP-E02":
+        if evidence.get("quantity_after") is not None or evidence.get("invalid_quantity_visible"):
+            return 0.95, "site001-cart-invalid-quantity"
+    if site_id == "site001" and anomaly_type == "product-detail-mismatch" and bug_id == "SHOP-E03":
+        if evidence.get("detail_content_mismatch"):
+            return 0.95, "site001-product-detail-mismatch"
+    if site_id == "site001" and anomaly_type == "api-5xx" and bug_id == "SHOP-E04":
+        if int(evidence.get("status", 0) or 0) >= 500:
+            return 0.95, "site001-order-api-5xx"
+    if site_id == "site001" and anomaly_type == "cart-total-mismatch" and bug_id == "SHOP-E05":
+        if evidence.get("displayed_total") is not None and evidence.get("expected_total_from_visible_amounts") is not None:
+            return 0.95, "site001-cart-total-mismatch"
     return 0.0, ""
 
 

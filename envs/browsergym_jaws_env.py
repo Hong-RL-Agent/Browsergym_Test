@@ -270,6 +270,8 @@ class BrowserGymJAWSEnv:
 
         if browser_action.action_type == "finish_episode":
             done = True
+            info["action_success"] = True
+            info["success_reason"] = "episode finished by policy"
         elif browser_action.action_type == "inspect_network":
             info = self._inspect_network()
         elif browser_action.action_type == "inspect_console":
@@ -338,6 +340,8 @@ class BrowserGymJAWSEnv:
             info = self._press_enter(decoded_action)
         elif browser_action.action_type == "change_viewport_mobile":
             info = self._set_viewport(375, 812, browser_action.action_type)
+            if not info.get("action_success"):
+                action_error = True
             try:
                 browser_obs, _, terminated, truncated, refresh_info = _normalize_step_result(self.env.step("noop()"))
                 done = bool(terminated or truncated)
@@ -346,6 +350,8 @@ class BrowserGymJAWSEnv:
                 info["viewport_refresh_error"] = str(exc)
         elif browser_action.action_type == "change_viewport_desktop":
             info = self._set_viewport(1440, 900, browser_action.action_type)
+            if not info.get("action_success"):
+                action_error = True
             try:
                 browser_obs, _, terminated, truncated, refresh_info = _normalize_step_result(self.env.step("noop()"))
                 done = bool(terminated or truncated)
@@ -399,7 +405,7 @@ class BrowserGymJAWSEnv:
                 )
 
         self.step_index += 1
-        if self.step_index >= self.max_steps:
+        if _action_count_limit_reached(self.step_index, self.max_steps):
             done = True
 
         previous_jaws_obs = self._jaws_obs
@@ -790,17 +796,44 @@ class BrowserGymJAWSEnv:
         info: Dict[str, Any] = {
             "internal_action": action_type,
             "viewport_changed": False,
+            "action_success": False,
+            "attempted_viewport_width": width,
+            "attempted_viewport_height": height,
+            "viewport_change_supported": True,
         }
         page = _active_page(self.env)
         if page is None:
             info["viewport_error"] = "active page not found"
+            info["failure_reason"] = "active page not found"
+            info["exception_type"] = "NoActivePage"
+            info["exception_message"] = "active page not found"
+            info["retryable"] = True
             return info
         try:
+            current_viewport = getattr(page, "viewport_size", None) or {}
+            if isinstance(current_viewport, Mapping):
+                info["current_viewport_width"] = current_viewport.get("width")
+                info["current_viewport_height"] = current_viewport.get("height")
             page.set_viewport_size({"width": width, "height": height})
             page.wait_for_timeout(250)
-            info.update({"viewport_changed": True, "viewport_width": width, "viewport_height": height})
+            info.update(
+                {
+                    "viewport_changed": True,
+                    "action_success": True,
+                    "success_reason": "viewport changed",
+                    "viewport_width": width,
+                    "viewport_height": height,
+                    "current_viewport_width": width,
+                    "current_viewport_height": height,
+                    "retryable": False,
+                }
+            )
         except Exception as exc:
             info["viewport_error"] = str(exc)
+            info["failure_reason"] = "viewport change failed"
+            info["exception_type"] = type(exc).__name__
+            info["exception_message"] = str(exc)
+            info["retryable"] = True
         return info
 
     def _perform_login(self, browser_obs: Optional[Dict[str, Any]], role: str = "user") -> Dict[str, Any]:
@@ -939,10 +972,20 @@ class BrowserGymJAWSEnv:
         return ""
 
     def _inspect_network(self) -> Dict[str, Any]:
-        info: Dict[str, Any] = {"internal_action": "inspect_network", "network_inspected": True}
+        info: Dict[str, Any] = {
+            "internal_action": "inspect_network",
+            "network_inspected": True,
+            "network_capture_enabled": True,
+            "network_log_available": False,
+            "network_events_count": 0,
+            "action_success": False,
+        }
         page = _active_page(self.env)
         if page is None:
             info["network_error"] = "active page not found"
+            info["failure_reason"] = "active page not found"
+            info["exception_type"] = "ActivePageNotFound"
+            info["retryable"] = True
             return info
         try:
             entries = page.evaluate(
@@ -954,11 +997,20 @@ class BrowserGymJAWSEnv:
                 }))"""
             )
             info["network_entries"] = entries if isinstance(entries, list) else []
+            info["network_events_count"] = len(info["network_entries"])
+            info["network_log_available"] = bool(info["network_entries"])
             text = " ".join(str(item.get("name", "")) for item in info["network_entries"] if isinstance(item, dict)).lower()
             info["api_403_count"] = text.count("403") + text.count("forbidden")
             info["network_activity"] = bool(info["network_entries"])
+            info["action_success"] = True
+            info["success_reason"] = "network log inspected"
         except Exception as exc:
             info["network_error"] = str(exc)
+            info["failure_reason"] = str(exc) or "network inspection failed"
+            info["exception_type"] = exc.__class__.__name__
+            info["exception_message"] = str(exc)
+            info["playwright_error"] = str(exc)
+            info["retryable"] = True
         return info
 
     def _inspect_last_api_response(self) -> Dict[str, Any]:
@@ -1210,10 +1262,18 @@ class BrowserGymJAWSEnv:
         return None
 
     def _inspect_console(self) -> Dict[str, Any]:
-        info: Dict[str, Any] = {"internal_action": "inspect_console", "console_inspected": True}
+        info: Dict[str, Any] = {
+            "internal_action": "inspect_console",
+            "console_inspected": True,
+            "console_verification_performed": True,
+            "action_success": False,
+        }
         page = _active_page(self.env)
         if page is None:
             info["console_error"] = "active page not found"
+            info["failure_reason"] = "active page not found"
+            info["exception_type"] = "ActivePageNotFound"
+            info["retryable"] = True
             return info
         try:
             info["console_error_count"] = page.evaluate(
@@ -1222,8 +1282,16 @@ class BrowserGymJAWSEnv:
                     return (text.match(/error|forbidden|timeout|failed/g) || []).length;
                 }"""
             )
+            info["action_success"] = True
+            info["success_reason"] = "console state inspected"
+            info["console_verification_success"] = True
         except Exception as exc:
             info["console_error"] = str(exc)
+            info["failure_reason"] = str(exc) or "console inspection failed"
+            info["exception_type"] = exc.__class__.__name__
+            info["exception_message"] = str(exc)
+            info["playwright_error"] = str(exc)
+            info["retryable"] = True
         return info
 
     def _inspect_infra(self, action_type: str) -> Dict[str, Any]:
@@ -1507,6 +1575,11 @@ def _normalize_step_result(result: Any) -> tuple[Any, float, bool, bool, Dict[st
     raise ValueError(f"Unsupported env.step() result length: {len(result)}")
 
 
+def _action_count_limit_reached(step_index: int, max_steps: int | None) -> bool:
+    limit = int(max_steps or 0)
+    return bool(limit > 0 and int(step_index or 0) >= limit)
+
+
 def _active_page(env: Any) -> Any:
     for candidate in _walk_page_candidates(env):
         page = _page_from_candidate(candidate)
@@ -1622,7 +1695,7 @@ def _is_api_like_url(url: str) -> bool:
     lowered = str(url or "").lower()
     if not lowered:
         return False
-    return any(token in lowered for token in ("/api/", "/api?", ".json", "/graphql", "/rest/"))
+    return any(token in lowered for token in ("/api/", "/api?", ".json", "/graphql", "/rest/", "typicode", "my-json-server"))
 
 
 def _safe_int(value: Any) -> int:

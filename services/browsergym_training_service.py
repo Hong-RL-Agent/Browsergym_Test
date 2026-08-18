@@ -18,6 +18,7 @@ from envs.browsergym_jaws_env import BrowserGymJAWSEnv
 from models.action_space import ActionSpace
 from models.observation_encoder import ObservationEncoder
 from services.anomaly_detection_service import detect_anomalies
+from services.action_opportunity_service import build_action_opportunities, update_opportunity_history
 from services.autonomous_reward_service import calculate_autonomous_reward
 from services.known_bug_matcher import load_known_bugs, match_anomalies_to_known_bugs
 from services.site_profile_service import build_site_profile, load_training_site_config, validate_site_identity
@@ -72,7 +73,7 @@ class BrowserGymTrainingService:
         self.site_config = load_training_site_config(site_id)
         self.site_profile = build_site_profile(
             site_id,
-            self.known_bugs,
+            [],
             exploration_profile=self.site_config.get("exploration_profile"),
         )
         self.site_profile.update(
@@ -145,6 +146,8 @@ class BrowserGymTrainingService:
                     print(warning)
                 done = False
                 for step in range(1, self.max_steps + 1):
+                    history["step_index"] = step
+                    history["min_steps"] = int(self.site_profile.get("min_steps") or 0)
                     _attach_action_history_to_observation(observation, history)
                     obs_vector = self.encoder.encode_observation(observation)
                     action_mask = self.action_space.build_action_mask(observation)
@@ -154,7 +157,7 @@ class BrowserGymTrainingService:
                     action = self.action_space.decode(action_id)
                     action["action_id"] = action_id
                     action["site_id"] = self.site_id
-                    _enrich_action(action, observation)
+                    _enrich_action(action, observation, history)
 
                     next_observation, _, done, step_info = env.step(action_id)
                     action["failed"] = bool(step_info.get("last_action_error"))
@@ -163,6 +166,7 @@ class BrowserGymTrainingService:
                         next_observation,
                         {"action": action, "site_profile": self.site_profile, **step_info},
                         site_profile=self.site_profile,
+                        history=history,
                     )
                     known_matches = (
                         match_anomalies_to_known_bugs(anomalies, self.known_bugs, site_id=self.site_id)
@@ -217,6 +221,18 @@ class BrowserGymTrainingService:
                         "no_functional_action_episode_count",
                         "functional_action_signal_delta_count",
                         "functional_action_network_delta_count",
+                        "reward_required_opportunity_executed",
+                        "reward_required_opportunity_verified",
+                        "reward_action_coverage_increase",
+                        "reward_anomaly_verification_executed",
+                        "reward_finish_episode_when_allowed",
+                        "opportunity_shaping_reward_total",
+                        "penalty_finish_required_opportunity_remaining",
+                        "penalty_finish_blocked_repeat",
+                        "penalty_repeated_opportunity_selected",
+                        "penalty_verified_opportunity_repeated",
+                        "penalty_failed_action_missing_reason",
+                        "opportunity_shaping_penalty_total",
                     ):
                         reward_signal_totals[key] += float(reward_breakdown.get(key, 0.0) or 0.0)
 
@@ -247,8 +263,7 @@ class BrowserGymTrainingService:
                         1 for anomaly in anomalies if anomaly.get("type") == "button-no-response"
                     )
 
-                    if bool(self.site_profile.get("use_known_bug_for_evaluation", False)):
-                        self._record_detected_bugs(episode_id, step, anomalies, known_matches)
+                    self._record_detected_bugs(episode_id, step, anomalies, known_matches)
                     self._append_transition(
                         {
                             "site_id": self.site_id,
@@ -384,6 +399,18 @@ class BrowserGymTrainingService:
             "cross_layer_signal_reward_total": float(reward_signal_totals.get("cross_layer_signal_reward_total", 0.0)),
             "security_signal_reward_total": float(reward_signal_totals.get("security_signal_reward_total", 0.0)),
             "repeated_penalty_total": float(reward_signal_totals.get("repeated_penalty_total", 0.0)),
+            "reward_required_opportunity_executed": float(reward_signal_totals.get("reward_required_opportunity_executed", 0.0)),
+            "reward_required_opportunity_verified": float(reward_signal_totals.get("reward_required_opportunity_verified", 0.0)),
+            "reward_action_coverage_increase": float(reward_signal_totals.get("reward_action_coverage_increase", 0.0)),
+            "reward_anomaly_verification_executed": float(reward_signal_totals.get("reward_anomaly_verification_executed", 0.0)),
+            "reward_finish_episode_when_allowed": float(reward_signal_totals.get("reward_finish_episode_when_allowed", 0.0)),
+            "opportunity_shaping_reward_total": float(reward_signal_totals.get("opportunity_shaping_reward_total", 0.0)),
+            "penalty_finish_required_opportunity_remaining": float(reward_signal_totals.get("penalty_finish_required_opportunity_remaining", 0.0)),
+            "penalty_finish_blocked_repeat": float(reward_signal_totals.get("penalty_finish_blocked_repeat", 0.0)),
+            "penalty_repeated_opportunity_selected": float(reward_signal_totals.get("penalty_repeated_opportunity_selected", 0.0)),
+            "penalty_verified_opportunity_repeated": float(reward_signal_totals.get("penalty_verified_opportunity_repeated", 0.0)),
+            "penalty_failed_action_missing_reason": float(reward_signal_totals.get("penalty_failed_action_missing_reason", 0.0)),
+            "opportunity_shaping_penalty_total": float(reward_signal_totals.get("opportunity_shaping_penalty_total", 0.0)),
             "multi_signal_anomaly_count": int(reward_signal_totals.get("multi_signal_anomaly_count", 0.0)),
             "console_error_count": int(reward_signal_totals.get("console_error_count", 0.0)),
             "runtime_exception_count": int(reward_signal_totals.get("runtime_exception_count", 0.0)),
@@ -428,7 +455,7 @@ class BrowserGymTrainingService:
         match_by_type = {match.get("type"): match for match in known_matches}
         for anomaly in anomalies:
             confidence = float(anomaly.get("confidence", 0.0) or 0.0)
-            if confidence < 0.6 and not anomaly.get("matched_bug_id"):
+            if not _is_reportable_training_anomaly(anomaly):
                 continue
             match = match_by_type.get(anomaly.get("type"), {})
             matched_bug_id = anomaly.get("matched_bug_id") or match.get("matched_bug_id")
@@ -467,6 +494,15 @@ def _update_history(
     after_observation: Optional[Mapping[str, Any]] = None,
 ) -> None:
     _update_login_flow_state(history, observation=observation, action=action, after_observation=after_observation)
+    _update_page_verification_state(history, observation=observation, action=action, after_observation=after_observation)
+    update_opportunity_history(
+        history,
+        observation,
+        action,
+        step=int(history.get("step_index", 0) or 0),
+        success=not bool(action.get("failed") or action.get("invalid")),
+        anomalies=anomalies,
+    )
     if action.get("action_type") in {"click_element", "click_submit", "fill_input", "press_enter"}:
         candidates = observation.get("candidate_elements", []) or []
         index = int(action.get("candidate_index", 0) or 0)
@@ -474,10 +510,21 @@ def _update_history(
             candidate = candidates[index]
             bid = candidate.get("bid")
             key = _candidate_key(candidate)
+            if key and bool(action.get("failed") or action.get("invalid")):
+                # A structural resolution failure (target not found / not attached /
+                # click raised an exception) means this exact element is not
+                # reliably actionable right now. Remember it so the mask stops
+                # offering the same broken target again -- without this, PPO can
+                # burn its whole step budget retrying one dead candidate.
+                history.setdefault("failed_target_element_keys", set()).add(key)
             if key:
                 target_counts = history.setdefault("click_target_counts", {})
                 if action.get("action_type") in {"click_element", "click_submit"} and isinstance(target_counts, dict):
                     target_counts[key] = int(target_counts.get(key, 0) or 0) + 1
+                    if action.get("action_type") == "click_submit" and target_counts[key] > 1:
+                        history["repeated_submit_action_count"] = int(history.get("repeated_submit_action_count", 0) or 0) + 1
+                    if action.get("action_type") == "click_submit":
+                        history.setdefault("submitted_element_keys", set()).add(str(key))
                     history.setdefault("visited_targets", set()).add(key)
                     history.setdefault("visited_element_keys", set()).add(key)
                     element_counts = history.setdefault("element_key_click_counts", {})
@@ -552,9 +599,11 @@ def _update_history(
     consecutive = history.setdefault("consecutive_action_type_counts", {})
     if previous_action_type == action_type:
         consecutive[action_type] = int(consecutive.get(action_type, 0) or 0) + 1
+        history["consecutive_same_strategy_count"] = int(history.get("consecutive_same_strategy_count", 0) or 0) + 1
     else:
         consecutive[action_type] = 1
     history["last_action_type"] = action.get("action_type")
+    history["last_action_failed"] = bool(action.get("failed") or action.get("invalid") or action.get("action_success") is False)
     counts = history.setdefault("action_type_counts", {})
     counts[action_type] = int(counts.get(action_type, 0) or 0) + 1
     target_signature = _policy_safe_target_signature(observation, action)
@@ -770,6 +819,7 @@ def _attach_action_history_to_observation(observation: Mapping[str, Any], histor
     if not isinstance(observation, dict):
         return
     _update_login_flow_state(history, observation=observation, action=None, after_observation=None)
+    _update_page_verification_state(history, observation=observation, action=None, after_observation=None)
     obs_history = observation.setdefault("history", {})
     if not isinstance(obs_history, dict):
         obs_history = {}
@@ -777,6 +827,192 @@ def _attach_action_history_to_observation(observation: Mapping[str, Any], histor
     counts = history.get("action_type_counts", {})
     obs_history["action_type_counts"] = dict(counts) if isinstance(counts, Mapping) else {}
     obs_history["login_flow"] = dict(history.get("login_flow", {}) or {})
+    obs_history["page_verification"] = dict(history.get("page_verification", {}) or {})
+    obs_history["step_index"] = int(history.get("step_index", 0) or 0)
+    obs_history["min_steps"] = int(history.get("min_steps", 0) or 0)
+    _copy_policy_safe_action_history(obs_history, history)
+    opportunity_state = build_action_opportunities(observation, history)
+    obs_history["action_opportunities"] = opportunity_state["opportunities"]
+    obs_history["opportunity_summary"] = opportunity_state["summary"]
+
+
+def _copy_policy_safe_action_history(obs_history: Dict[str, Any], history: Mapping[str, Any]) -> None:
+    for key in (
+        "click_target_counts",
+        "element_key_click_counts",
+        "action_signature_counts",
+        "consecutive_action_type_counts",
+        "opportunity_failure_reasons",
+        "opportunity_skip_reasons",
+        "opportunity_selected_steps",
+        "opportunity_execution_steps",
+        "opportunity_verified_steps",
+        "repeated_inspect_dom_count",
+        "repeated_inspect_dom_penalty_applied",
+        "repeated_inspect_dom_blocked",
+        "consecutive_same_strategy_count",
+    ):
+        value = history.get(key)
+        obs_history[key] = dict(value) if isinstance(value, Mapping) else int(value or 0) if key.startswith("repeated_inspect_dom") else {}
+    for key in (
+        "submitted_element_keys",
+        "visited_targets",
+        "visited_element_keys",
+        "executed_opportunity_ids",
+        "verified_opportunity_ids",
+        "failed_opportunity_ids",
+        "selected_opportunity_ids",
+        "skipped_opportunity_ids",
+        "inspect_dom_contexts_inspected",
+        "failed_target_element_keys",
+    ):
+        value = history.get(key)
+        if isinstance(value, set):
+            obs_history[key] = set(value)
+        elif isinstance(value, (list, tuple)):
+            obs_history[key] = {str(item) for item in value}
+        else:
+            obs_history[key] = set()
+    obs_history["last_action_failed"] = bool(history.get("last_action_failed", False))
+    obs_history["last_action_signature"] = str(history.get("last_action_signature") or "")
+    unverified = history.get("unverified_anomalies")
+    obs_history["unverified_anomalies"] = [dict(item) for item in unverified if isinstance(item, Mapping)] if isinstance(unverified, list) else []
+
+
+def _update_page_verification_state(
+    history: Dict[str, Any],
+    *,
+    observation: Mapping[str, Any],
+    action: Mapping[str, Any] | None,
+    after_observation: Mapping[str, Any] | None = None,
+) -> Dict[str, Any]:
+    state = history.setdefault("page_verification", {})
+    if not isinstance(state, dict):
+        state = {}
+        history["page_verification"] = state
+    page_type = str(state.get("page_type") or _classify_page_type(observation))
+    state["page_type"] = page_type
+    is_api_page = page_type in {"api_json_page", "data_endpoint_page"}
+    state["has_json_response"] = bool(state.get("has_json_response") or is_api_page or _looks_like_json_observation(observation))
+    if action:
+        action_type = str(action.get("action_type") or "")
+        if action_type in {"inspect_network", "inspect_last_api_response", "inspect_api_response"}:
+            state["api_response_checked"] = True
+            state["network_checked"] = True
+        if action_type in {"inspect_console", "inspect_console_errors"}:
+            state["console_checked"] = True
+        if action_type in {
+            "validate_last_api_schema",
+            "validate_response_contract",
+            "compare_openapi_schema",
+            "check_required_fields",
+            "check_response_type_consistency",
+            "check_unexpected_fields",
+            "check_status_code_contract",
+            "check_error_response_format",
+        }:
+            state["schema_contract_checked"] = True
+            state["json_parse_checked"] = True
+        if action_type in {"call_collected_endpoint", "replay_last_api_request", "check_api_ui_match"}:
+            state["related_links_checked"] = True
+        if action_type == "inspect_layout":
+            key = _layout_context_key(observation)
+            inspected = history.setdefault("inspect_layout_contexts", set())
+            if isinstance(inspected, set):
+                if key in inspected:
+                    history["repeated_inspect_layout_same_context_count"] = int(
+                        history.get("repeated_inspect_layout_same_context_count", 0) or 0
+                    ) + 1
+                inspected.add(key)
+    runtime = observation.get("runtime_signals", {}) if isinstance(observation, Mapping) else {}
+    if isinstance(runtime, Mapping):
+        if runtime.get("api_probe_status") is not None or runtime.get("last_api_entry") or runtime.get("network_entries"):
+            state["api_response_available"] = True
+        if runtime.get("schema_valid") is not None or runtime.get("contract_violation_count") is not None:
+            state["schema_contract_checked"] = True
+        if int(runtime.get("console_error_count", 0) or 0) > 0 or int(runtime.get("playwright_console_error_count", 0) or 0) > 0:
+            state["console_signal_available"] = True
+    if after_observation and _looks_like_json_observation(after_observation):
+        state["has_json_response"] = True
+    state["required_verifications_remaining"] = _required_verifications_remaining(state)
+    state["required_verifications_completed"] = not bool(state["required_verifications_remaining"])
+    return state
+
+
+def _classify_page_type(observation: Mapping[str, Any]) -> str:
+    page_state = observation.get("page_state", {}) if isinstance(observation, Mapping) else {}
+    url = str(page_state.get("url") or "").lower() if isinstance(page_state, Mapping) else ""
+    candidates = observation.get("candidate_elements", []) if isinstance(observation, Mapping) else []
+    if _looks_like_json_observation(observation) or _looks_like_api_url(url):
+        return "api_json_page" if _looks_like_json_observation(observation) else "data_endpoint_page"
+    if isinstance(candidates, list):
+        has_password = any(isinstance(candidate, Mapping) and candidate.get("is_password") for candidate in candidates)
+        has_input = any(isinstance(candidate, Mapping) and candidate.get("fillable") for candidate in candidates)
+        has_submit = any(isinstance(candidate, Mapping) and candidate.get("is_submit") for candidate in candidates)
+        if has_password and has_submit:
+            return "login_page"
+        if has_input or has_submit:
+            return "form_page"
+    if any(token in url for token in ("docs", "documentation", "swagger", "api-docs")):
+        return "documentation_page"
+    return "ui_page"
+
+
+def _looks_like_api_url(url: str) -> bool:
+    if not url:
+        return False
+    return bool(
+        "/api/" in url
+        or "json" in url
+        or "typicode" in url
+        or "my-json-server" in url
+        or any(url.rstrip("/").endswith(suffix) for suffix in ("/posts", "/comments", "/profile", ".json"))
+    )
+
+
+def _looks_like_json_observation(observation: Mapping[str, Any]) -> bool:
+    page_state = observation.get("page_state", {}) if isinstance(observation, Mapping) else {}
+    runtime = observation.get("runtime_signals", {}) if isinstance(observation, Mapping) else {}
+    if isinstance(runtime, Mapping):
+        content_type = str(runtime.get("content_type") or runtime.get("response_content_type") or "").lower()
+        if "json" in content_type:
+            return True
+    text = ""
+    if isinstance(page_state, Mapping):
+        text = str(page_state.get("page_text") or page_state.get("text") or "").strip()
+    compact = text[:80].lstrip()
+    return compact.startswith("{") or compact.startswith("[")
+
+
+def _required_verifications_remaining(state: Mapping[str, Any]) -> list[str]:
+    page_type = str(state.get("page_type") or "")
+    if page_type not in {"api_json_page", "data_endpoint_page"}:
+        return []
+    remaining: list[str] = []
+    if not bool(state.get("api_response_checked")):
+        remaining.append("api_response_check")
+    if bool(state.get("has_json_response")) and not bool(state.get("json_parse_checked")):
+        remaining.append("json_parse_check")
+    if not bool(state.get("schema_contract_checked")):
+        remaining.append("schema_contract_check")
+    if not bool(state.get("network_checked")):
+        remaining.append("network_check")
+    if not bool(state.get("console_checked")):
+        remaining.append("console_check")
+    return remaining
+
+
+def _layout_context_key(observation: Mapping[str, Any]) -> str:
+    page_state = observation.get("page_state", {}) if isinstance(observation, Mapping) else {}
+    if not isinstance(page_state, Mapping):
+        return ""
+    payload = {
+        "url": str(page_state.get("url") or ""),
+        "viewport_type": str(page_state.get("viewport_type") or ""),
+        "viewport_width": int(page_state.get("viewport_width", 0) or 0),
+        "dom": _dom_state_hash(observation),
+    }
+    return hashlib.sha1(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:12]
 
 
 def _update_login_flow_state(
@@ -796,8 +1032,10 @@ def _update_login_flow_state(
         state = {}
         history["login_flow"] = state
     state["has_email_or_text_input"] = bool(state.get("has_email_or_text_input") or has_email)
+    state["has_username_or_email_input"] = bool(state.get("has_username_or_email_input") or has_email)
     state["has_password_input"] = bool(state.get("has_password_input") or has_password)
     state["has_submit_button"] = bool(state.get("has_submit_button") or has_submit)
+    state["has_login_submit"] = bool(state.get("has_login_submit") or has_submit)
     state["has_login_form"] = bool(
         state.get("has_login_form")
         or (state["has_email_or_text_input"] and state["has_password_input"] and state["has_submit_button"])
@@ -809,33 +1047,41 @@ def _update_login_flow_state(
         if action_type == "fill_input" and candidate:
             if candidate.get("is_password"):
                 state["password_input_filled"] = True
+                state["password_filled"] = True
                 history.setdefault("filled_password_element_keys", set()).add(_candidate_key(candidate))
             elif _is_email_text_candidate(candidate):
                 state["email_input_filled"] = True
+                state["username_or_email_filled"] = True
                 history.setdefault("filled_email_element_keys", set()).add(_candidate_key(candidate))
             state["login_flow_attempted"] = True
         if action_type == "click_submit" and candidate and candidate.get("is_submit"):
             state["submit_clicked"] = True
+            state["login_submit_clicked"] = True
             state["login_flow_attempted"] = True
             state["login_flow_status"] = "submitted"
         if state.get("submit_clicked") and action_type in {"inspect_network", "inspect_console", "inspect_dom", "check_login_state"}:
             state["submit_result_checked"] = True
+            state["login_result_checked"] = True
         if after_observation and state.get("submit_clicked"):
             before_url = str((observation.get("page_state", {}) or {}).get("url") or "")
             after_url = str((after_observation.get("page_state", {}) or {}).get("url") or "")
             if before_url and after_url and before_url != after_url:
                 state["submit_result_checked"] = True
+                state["login_result_checked"] = True
             if _dom_state_hash(observation) != _dom_state_hash(after_observation):
                 state["submit_result_checked"] = True
+                state["login_result_checked"] = True
     if state.get("submit_clicked") and state.get("submit_result_checked"):
         state["login_flow_completed"] = True
         state["login_flow_status"] = "verified"
     elif state.get("submit_clicked"):
         state["login_flow_status"] = "submitted"
+    elif state.get("email_input_filled") and state.get("password_input_filled"):
+        state["login_flow_status"] = "credentials_filled"
     elif state.get("login_flow_attempted"):
-        state["login_flow_status"] = "in_progress"
+        state["login_flow_status"] = "incomplete"
     elif state.get("has_login_form"):
-        state["login_flow_status"] = "not_started"
+        state["login_flow_status"] = "input_detected"
     else:
         state["login_flow_status"] = "not_applicable"
     state["required_actions_remaining"] = _login_required_actions_remaining(state)
@@ -846,14 +1092,14 @@ def _login_required_actions_remaining(state: Mapping[str, Any]) -> list[str]:
     if not bool(state.get("has_login_form")):
         return []
     remaining: list[str] = []
-    if bool(state.get("has_email_or_text_input")) and not bool(state.get("email_input_filled")):
-        remaining.append("fill_email_or_text_input")
-    if bool(state.get("has_password_input")) and not bool(state.get("password_input_filled")):
-        remaining.append("fill_password_input")
-    if bool(state.get("has_submit_button")) and not bool(state.get("submit_clicked")):
-        remaining.append("click_submit")
-    if bool(state.get("submit_clicked")) and not bool(state.get("submit_result_checked")):
-        remaining.append("verify_submit_result")
+    if bool(state.get("has_username_or_email_input") or state.get("has_email_or_text_input")) and not bool(state.get("username_or_email_filled") or state.get("email_input_filled")):
+        remaining.append("fill_username_or_email")
+    if bool(state.get("has_password_input")) and not bool(state.get("password_filled") or state.get("password_input_filled")):
+        remaining.append("fill_password")
+    if bool(state.get("has_login_submit") or state.get("has_submit_button")) and not bool(state.get("login_submit_clicked") or state.get("submit_clicked")):
+        remaining.append("click_login_submit")
+    if bool(state.get("login_submit_clicked") or state.get("submit_clicked")) and not bool(state.get("login_result_checked") or state.get("submit_result_checked")):
+        remaining.append("verify_login_result")
     return remaining
 
 
@@ -877,7 +1123,7 @@ def _is_email_text_candidate(candidate: Mapping[str, Any]) -> bool:
     )
 
 
-def _enrich_action(action: Dict[str, Any], observation: Dict[str, Any]) -> None:
+def _enrich_action(action: Dict[str, Any], observation: Dict[str, Any], history: Optional[Mapping[str, Any]] = None) -> None:
     candidate = None
     if action.get("action_type") in {"click_element", "click_submit", "fill_input", "press_enter"}:
         candidates = observation.get("candidate_elements", []) or []
@@ -885,7 +1131,22 @@ def _enrich_action(action: Dict[str, Any], observation: Dict[str, Any]) -> None:
         if isinstance(candidates, list) and 0 <= index < len(candidates) and isinstance(candidates[index], dict):
             candidate = candidates[index]
     if action.get("action_type") == "fill_input":
-        action["input_text"] = _input_text_for_candidate(candidate, int(action.get("candidate_index", 0) or 0))
+        # A field that was already filled once this episode gets cleared (empty
+        # string) instead of re-filled with another guessed probe value. Without
+        # this, a live client-side filter/search field that doesn't match the
+        # generic probe text (e.g. "test") stays permanently emptied for the rest
+        # of the episode -- confirmed on a real scan where a Korean product
+        # search box got probed with "test", zeroed the product grid via its
+        # client-side filter, and never recovered because every later fill_input
+        # on the same box just retried the same non-matching guess.
+        already_filled = False
+        if history is not None and candidate is not None:
+            filled_keys = history.get("filled_input_element_keys")
+            key = _candidate_key(candidate)
+            already_filled = bool(key) and isinstance(filled_keys, (set, frozenset)) and key in filled_keys
+        action["input_text"] = (
+            "" if already_filled else _input_text_for_candidate(candidate, int(action.get("candidate_index", 0) or 0))
+        )
     action["clicked_text"] = candidate.get("text") if candidate else ""
     action["clicked_bid"] = candidate.get("bid") if candidate else ""
     action["action_bid"] = candidate.get("bid") if candidate else ""
@@ -897,6 +1158,12 @@ def _enrich_action(action: Dict[str, Any], observation: Dict[str, Any]) -> None:
     action["semantic_action_type"] = str(candidate.get("semantic_action_type") or "") if candidate else ""
     action["action_semantic_type"] = action["semantic_action_type"]
     action["target_selector"] = str(candidate.get("selector") or candidate.get("locator") or candidate.get("selector_hint") or "") if candidate else ""
+    action["target_role"] = str(candidate.get("role") or "") if candidate else ""
+    action["target_tag"] = str(candidate.get("tag") or "") if candidate else ""
+    action["target_enabled"] = bool(candidate.get("enabled", True)) if candidate else False
+    action["target_visible"] = bool(candidate.get("visible", _safe_visibility(candidate) > 0.0)) if candidate else False
+    action["target_clickable"] = bool(candidate.get("clickable", False)) if candidate else False
+    action["target_attached"] = bool(candidate) if candidate else False
     action["is_high_value_functional_candidate"] = bool(candidate and candidate.get("is_high_value_functional_candidate"))
     action["is_low_value_generic_candidate"] = bool(candidate and candidate.get("is_low_value_generic_candidate"))
     action["dom_state_hash"] = _dom_state_hash(observation)
@@ -1034,6 +1301,69 @@ def _canonical_detected_key(record: Mapping[str, Any]) -> tuple[str, str, str, s
     selector = str(evidence.get("selector_hint") or evidence.get("selector") or evidence.get("data_bug_id") or "")
     text = _normalize_text(str(evidence.get("candidate_text") or evidence.get("clicked_text") or _target_bid(evidence)))[:80]
     return (anomaly_type, primary_catalog, selector or text, "")
+
+
+def _is_reportable_training_anomaly(anomaly: Mapping[str, Any]) -> bool:
+    confidence = float(anomaly.get("confidence", 0.0) or 0.0)
+    anomaly_type = str(anomaly.get("type") or "")
+    status = str(anomaly.get("human_review_status") or "")
+    evidence = anomaly.get("evidence", {}) if isinstance(anomaly.get("evidence"), Mapping) else {}
+    if anomaly.get("matched_bug_id"):
+        return confidence >= 0.4
+    if status == "likely_false_positive":
+        return False
+    if status == "likely_true_positive" and confidence >= 0.65:
+        return True
+    if anomaly_type in {"api-5xx", "api-4xx", "network-error", "runtime-exception", "console-error", "security-token-leak", "sensitive-data-exposure"}:
+        return confidence >= 0.5
+    if anomaly_type == "button-no-response":
+        target = evidence.get("target") if isinstance(evidence.get("target"), Mapping) else {}
+        semantic = str(target.get("semantic_action_type") or evidence.get("semantic_action_type") or "").lower()
+        target_text = " ".join(
+            str(value or "")
+            for value in (
+                evidence.get("clicked_text"),
+                evidence.get("clicked_name"),
+                target.get("text") if isinstance(target, Mapping) else "",
+                target.get("name") if isinstance(target, Mapping) else "",
+            )
+        ).lower()
+        has_target = bool(evidence.get("clicked_text") or evidence.get("clicked_name") or evidence.get("target"))
+        has_state_check = bool(
+            evidence.get("semantic_no_effect_click")
+            or evidence.get("functional_no_effect_anomaly")
+            or evidence.get("cart_count_before") is not None
+            or evidence.get("cart_text_before") is not None
+        )
+        meaningful_target = semantic in {"add", "cart", "checkout", "submit", "save", "detail", "details"} or any(
+            token in target_text for token in ("add", "cart", "checkout", "submit", "save", "order", "buy", "detail")
+        )
+        return confidence >= 0.7 and has_target and (has_state_check or meaningful_target)
+    if anomaly_type == "cart-total-mismatch":
+        amounts = evidence.get("line_item_amounts") if isinstance(evidence.get("line_item_amounts"), list) else []
+        if len(amounts) > 8 or (not evidence.get("cart_text") and str(evidence.get("action_type") or "") not in {"inspect_cart", "inspect_dom"}):
+            return False
+        return confidence >= 0.65
+    if anomaly_type in {"cart-quantity-mismatch", "product-detail-mismatch", "api-ui-mismatch"}:
+        return confidence >= 0.65
+    if anomaly_type in {"form-no-feedback", "async-hang", "timeout-no-feedback"}:
+        return confidence >= 0.7 and bool(evidence.get("target") or evidence.get("clicked_text") or evidence.get("action_type"))
+    if anomaly_type in {"layout-overlap", "layout-overflow"}:
+        if not bool(evidence.get("specific_element_identified") or evidence.get("child_bbox") or evidence.get("overlapping_elements_identified")):
+            return False
+        if str(evidence.get("viewport_type") or "") == "desktop" and confidence < 0.75:
+            return False
+        return confidence >= 0.65
+    if anomaly_type == "duplicated-rendering":
+        return confidence >= 0.8 and bool(evidence.get("visible_duplicate_candidates"))
+    if anomaly_type == "filter-no-effect":
+        target = evidence.get("target") if isinstance(evidence.get("target"), Mapping) else {}
+        if str(target.get("semantic_action_type") or "") == "search_input" and str(evidence.get("action_type") or "") == "click_element":
+            return False
+        return confidence >= 0.7
+    if anomaly_type in {"broken-navigation", "stale-data-rendering", "duplicate-submission", "weak-password-validation"}:
+        return confidence >= 0.7
+    return confidence >= 0.8 and status in {"needs_review", "needs_verification", "likely_true_positive"}
 
 
 def _normalize_text(value: str) -> str:

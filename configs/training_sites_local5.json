@@ -1,0 +1,36 @@
+{
+  "shared_model_path": "artifacts/models/jaws_ppo_v4_blind_gru_memory_retrain2.pt",
+  "output_dir": "artifacts/multisite/local5_focused",
+  "sites": [
+    {
+      "site_id": "local_shop",
+      "base_url": "http://localhost:5175",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "local_forum",
+      "base_url": "http://localhost:5176",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "local_membership",
+      "base_url": "http://127.0.0.1:5177",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "local_admin",
+      "base_url": "http://localhost:5178",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "local_studyhub",
+      "base_url": "http://localhost:5179",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    }
+  ]
+}

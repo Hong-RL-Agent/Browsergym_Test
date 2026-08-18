@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
 
 from models.action_space import ActionSpace
 from models.observation_encoder import ObservationEncoder
+from services.site_profile_service import build_site_profile
 
 
 FORBIDDEN_POLICY_KEYWORDS = (
@@ -166,6 +167,24 @@ class PolicyLabelLeakageTests(unittest.TestCase):
                     hits.append(f"{source_name}: {keyword}")
 
         self.assertEqual([], hits)
+
+    def test_exploration_profile_does_not_include_ground_truth_bug_catalog(self) -> None:
+        known_bugs = [
+            {
+                "bug_id": "SHOP-E01",
+                "type": "button-no-response",
+                "selector": "[data-bug-id=\"SHOP-E01\"]",
+                "target_keywords": ["add to cart"],
+            }
+        ]
+
+        profile = build_site_profile("site001", [], exploration_profile="openended_commerce")
+
+        self.assertEqual([], profile["bugs"])
+        self.assertEqual([], profile["data_bug_ids"])
+        self.assertEqual([], profile["bug_types"])
+        self.assertNotIn("SHOP-E01", str(profile))
+        self.assertNotEqual(known_bugs, profile["bugs"])
 
 
 def _guided_action_source() -> str:

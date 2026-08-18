@@ -12,7 +12,13 @@ if str(ROOT) not in sys.path:
 from adapters.browsergym_action_adapter import BrowserGymActionAdapter
 from adapters.browsergym_observation_adapter import BrowserGymObservationAdapter
 from models.action_space import ActionSpace
-from runners.evaluate_multisite_browsergym_agent import _login_form_unprocessed, _required_observation_work_pending
+from runners.evaluate_multisite_browsergym_agent import (
+    _action_budget_status,
+    _login_form_unprocessed,
+    _required_observation_work_pending,
+    _scan_completed_reason,
+    _valid_scan_run,
+)
 from services.browsergym_training_service import _attach_action_history_to_observation, _update_login_flow_state
 from services.autonomous_reward_service import calculate_autonomous_reward
 
@@ -159,23 +165,55 @@ class LoginPageCandidateFlowTests(unittest.TestCase):
 
         self.assertEqual(0, action_space._valid_count_for_type(mask, "finish_episode"))
 
+    def test_completed_invalid_when_login_flow_incomplete(self) -> None:
+        summary = {
+            "has_login_form": True,
+            "login_flow_completed": False,
+            "remaining_required_opportunity_count": 3,
+            "required_opportunity_completion_rate": 0.0,
+            "unverified_anomaly_count": 0,
+            "failed_opportunity_count": 0,
+            "action_opportunity_coverage_rate": 0.2,
+            "coverage_threshold": 0.7,
+            "finish_allowed": False,
+        }
+
+        reason = _scan_completed_reason(
+            site_failed=False,
+            early_stop_reasons={},
+            max_steps_reached=False,
+            opportunity_summary=summary,
+        )
+
+        self.assertEqual("invalid_completed_with_login_flow_incomplete", reason)
+        self.assertEqual(
+            "insufficient_login_flow",
+            _action_budget_status(max_steps_reached=False, completed_reason=reason, opportunity_summary=summary),
+        )
+        self.assertFalse(_valid_scan_run(summary, completed_reason=reason, site_failed=False))
+
     def test_login_form_tracks_email_password_submit_state(self) -> None:
         observation = _login_observation()
         history = {}
 
         state = _update_login_flow_state(history, observation=observation, action=None)
-        self.assertEqual("not_started", state["login_flow_status"])
-        self.assertIn("fill_email_or_text_input", state["required_actions_remaining"])
+        self.assertEqual("input_detected", state["login_flow_status"])
+        self.assertIn("fill_username_or_email", state["required_actions_remaining"])
+        self.assertTrue(state["has_username_or_email_input"])
+        self.assertTrue(state["has_login_submit"])
 
         _update_login_flow_state(history, observation=observation, action={"action_type": "fill_input", "candidate_index": _first_index(observation, "name", "username")})
         _update_login_flow_state(history, observation=observation, action={"action_type": "fill_input", "candidate_index": _first_index(observation, "is_password")})
         state = _update_login_flow_state(history, observation=observation, action={"action_type": "click_submit", "candidate_index": _first_index(observation, "is_submit")})
 
         self.assertTrue(state["email_input_filled"])
+        self.assertTrue(state["username_or_email_filled"])
         self.assertTrue(state["password_input_filled"])
+        self.assertTrue(state["password_filled"])
         self.assertTrue(state["submit_clicked"])
+        self.assertTrue(state["login_submit_clicked"])
         self.assertFalse(state.get("login_flow_completed", False))
-        self.assertEqual(["verify_submit_result"], state["required_actions_remaining"])
+        self.assertEqual(["verify_login_result"], state["required_actions_remaining"])
 
     def test_login_flow_completed_only_after_result_verification(self) -> None:
         observation = _login_observation()
@@ -187,6 +225,7 @@ class LoginPageCandidateFlowTests(unittest.TestCase):
         state = _update_login_flow_state(history, observation=observation, action={"action_type": "inspect_network", "candidate_index": 0})
 
         self.assertTrue(state["submit_result_checked"])
+        self.assertTrue(state["login_result_checked"])
         self.assertTrue(state["login_flow_completed"])
         self.assertEqual("verified", state["login_flow_status"])
 

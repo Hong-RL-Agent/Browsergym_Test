@@ -265,6 +265,10 @@ def _runtime_findings(
 
 
 def _backend_text_findings(after_observation: Mapping[str, Any], action_info: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    # These are single-pass substring matches against arbitrary page text, not a
+    # structured signal (status code, thrown exception, etc.), so they classify as
+    # exploratory rather than verified_browser_signal -- a lucky/incidental text
+    # match must not pay out the same large one-shot reward as a corroborated finding.
     text = _combined_text(after_observation, action_info)
     findings: List[Dict[str, Any]] = []
     matched = [pattern for pattern in BACKEND_ERROR_PATTERNS if pattern in text.lower()]
@@ -280,12 +284,15 @@ def _backend_text_findings(after_observation: Mapping[str, Any], action_info: Ma
                     "matched_backend_error_patterns": matched[:5],
                     "action_signature": _action_signature(action_info),
                 },
+                classification="exploratory_anomaly",
             )
         )
     return findings
 
 
 def _security_text_findings(after_observation: Mapping[str, Any], action_info: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    # Same reasoning as _backend_text_findings: plain regex matches on visible text
+    # are candidates, not verified signals, until corroborated.
     text = _combined_text(after_observation, action_info)
     findings: List[Dict[str, Any]] = []
     if any(pattern.search(text) for pattern in TOKEN_PATTERNS):
@@ -295,6 +302,7 @@ def _security_text_findings(after_observation: Mapping[str, Any], action_info: M
                 "high",
                 0.9,
                 {"message": "token-like secret exposed in browser-visible text", "action_signature": _action_signature(action_info)},
+                classification="exploratory_anomaly",
             )
         )
     if any(pattern.search(text) for pattern in SENSITIVE_PATTERNS):
@@ -304,6 +312,7 @@ def _security_text_findings(after_observation: Mapping[str, Any], action_info: M
                 "high",
                 0.85,
                 {"message": "sensitive value exposed in browser-visible text", "action_signature": _action_signature(action_info)},
+                classification="exploratory_anomaly",
             )
         )
     lowered = text.lower()
@@ -314,17 +323,25 @@ def _security_text_findings(after_observation: Mapping[str, Any], action_info: M
                 "medium",
                 0.75,
                 {"message": "CORS policy error visible to browser", "action_signature": _action_signature(action_info)},
+                classification="exploratory_anomaly",
             )
         )
     return findings
 
 
-def _finding(finding_type: str, severity: str, confidence: float, evidence: Mapping[str, Any]) -> Dict[str, Any]:
+def _finding(
+    finding_type: str,
+    severity: str,
+    confidence: float,
+    evidence: Mapping[str, Any],
+    *,
+    classification: str = "verified_browser_signal",
+) -> Dict[str, Any]:
     finding = {
         "type": finding_type,
         "severity": severity,
         "confidence": float(confidence),
-        "classification": "verified_browser_signal",
+        "classification": classification,
         "evidence": dict(evidence),
     }
     finding["signature"] = finding_signature(finding)

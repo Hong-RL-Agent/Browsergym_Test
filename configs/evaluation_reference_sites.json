@@ -1,5 +1,44 @@
 {
-  "description": "Offline evaluation metadata only. This file must never be loaded by training reward/action/observation path.",
+  "description": "Fixed evaluation site set. Never add sites here for training coverage -- this set is deliberately held constant so policy-quality trends (reward, anomaly counts, entropy) are comparable update-to-update. New sites go in the training_sites_* configs instead.",
   "used_for_training": false,
-  "sites": []
+  "shared_model_path": "artifacts/models/jaws_ppo_v4_blind_gru_memory_retrain.pt",
+  "output_dir": "artifacts/multisite/eval_reference",
+  "sites": [
+    {
+      "site_id": "saucedemo",
+      "base_url": "https://www.saucedemo.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "demoqa",
+      "base_url": "https://demoqa.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "parabank",
+      "base_url": "https://parabank.parasoft.com/parabank",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "nopcommerce",
+      "base_url": "https://demo.nopcommerce.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "contactlistapp",
+      "base_url": "https://thinking-tester-contact-list.herokuapp.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "restfulbooker",
+      "base_url": "https://automationintesting.online/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    }
+  ]
 }

@@ -1,0 +1,66 @@
+{
+  "shared_model_path": "artifacts/models/jaws_ppo_v4_blind_gru_memory.pt",
+  "output_dir": "artifacts/multisite/real_qa_practice",
+  "sites": [
+    {
+      "site_id": "juiceshop",
+      "base_url": "https://demo.owasp-juice.shop/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "parabank",
+      "base_url": "https://parabank.parasoft.com/parabank",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "saucedemo",
+      "base_url": "https://www.saucedemo.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "demoblaze",
+      "base_url": "https://www.demoblaze.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "practicesoftwaretesting",
+      "base_url": "https://practicesoftwaretesting.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "theinternet",
+      "base_url": "https://the-internet.herokuapp.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "automationexercise",
+      "base_url": "https://automationexercise.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "demoqa",
+      "base_url": "https://demoqa.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "nopcommerce",
+      "base_url": "https://demo.nopcommerce.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "restfulbooker",
+      "base_url": "https://automationintesting.online/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    }
+  ]
+}

@@ -9,6 +9,7 @@ import shutil
 import sys
 import textwrap
 import time
+import traceback
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,13 +35,16 @@ from envs.browsergym_jaws_env import BrowserGymJAWSEnv, _active_page
 from models.action_space import ActionSpace
 from models.observation_encoder import ObservationEncoder
 from services.anomaly_detection_service import detect_anomalies
+from services.action_opportunity_service import action_ids_for_opportunities, build_action_opportunities
 from services.autonomous_reward_service import apply_fallback_reward_policy, calculate_autonomous_reward
 from services.browsergym_training_service import (
     _enrich_action,
     _update_login_flow_state,
+    _update_page_verification_state,
     _has_openended_interactive_candidate,
     _target_bid,
     _update_history,
+    _copy_policy_safe_action_history,
 )
 from services.episode_csv_logger import EpisodeCsvLogger, infer_run_id
 from services.infra_anomaly_detection_service import detect_infra_anomalies
@@ -116,6 +120,7 @@ def main() -> int:
     parser.add_argument("--config", default="configs/training_sites.json")
     parser.add_argument("--model-path", default="")
     parser.add_argument("--episodes", type=int, default=None)
+    parser.add_argument("--min-steps", type=int, default=None)
     parser.add_argument("--max-steps", type=int, default=None)
     parser.add_argument("--headless", type=_parse_bool, default=True)
     parser.add_argument("--seed", type=int, default=42)
@@ -136,7 +141,7 @@ def main() -> int:
     parser.add_argument("--navigation-timeout-ms", type=int, default=15000)
     parser.add_argument("--env-reset-timeout-ms", "--reset-timeout-ms", dest="env_reset_timeout_ms", type=int, default=None)
     parser.add_argument("--reset-retry-count", type=int, default=None)
-    parser.add_argument("--step-timeout-ms", type=int, default=10000)
+    parser.add_argument("--step-timeout-ms", type=int, default=45000)
     parser.add_argument("--step-timeout-seconds", type=int, default=None)
     parser.add_argument("--use-memory-encoder", type=_parse_bool, default=None)
     parser.add_argument("--memory-encoder-type", default="")
@@ -172,7 +177,8 @@ def main() -> int:
         args.model_path = args.model_path or str(config.get("shared_model_path") or "artifacts/models/jaws_browsergym_shared_ppo_v3_policy_safe.pt")
         args.run_id = args.run_id or config_run_id
         args.episodes = _eval_episodes_arg(args.episodes, config, 3)
-        args.max_steps = _int_arg(args.max_steps, config, "max_steps", 30)
+        args.min_steps = _int_arg(args.min_steps, config, "min_steps", 0)
+        args.max_steps = _int_arg(args.max_steps, config, "max_steps", 60)
         args.site_timeout_seconds = _int_arg(args.site_timeout_seconds, config, "site_timeout_seconds", 60)
         args.episode_timeout_seconds = _int_arg(args.episode_timeout_seconds, config, "episode_timeout_seconds", 0)
         args.no_progress_patience = _int_arg(args.no_progress_patience, config, "no_progress_patience", 0)
@@ -267,6 +273,7 @@ def main() -> int:
                     args.episodes,
                     args.max_steps,
                     args.headless,
+                    args.min_steps,
                     args.strict_site_validation,
                     csv_logger=csv_logger,
                     site_timeout_seconds=args.site_timeout_seconds,
@@ -389,7 +396,15 @@ def main() -> int:
         "training_uses_site_specific_bug_catalog": bool(config.get("training_uses_site_specific_bug_catalog", False)),
         "policy_uses_bug_labels": False,
         "episodes": args.episodes,
+        "min_steps": args.min_steps,
+        "min_steps_configured": args.min_steps,
         "max_steps": args.max_steps,
+        "max_steps_configured": args.max_steps,
+        "actual_steps_executed": sum(int(result.get("actual_steps_executed", 0) or 0) for result in site_results.values()),
+        "executed_action_count": sum(sum(int(value or 0) for value in (result.get("action_counts") or {}).values()) for result in site_results.values()),
+        "successful_action_count": sum(int(result.get("successful_action_count", 0) or 0) for result in site_results.values()),
+        "failed_action_count": sum(int(result.get("failed_action_count", 0) or 0) for result in site_results.values()),
+        "completed_reason": _first_result_completed_reason(site_results.values()),
         "memory_encoder_enabled": use_memory_encoder,
         "use_memory_encoder": use_memory_encoder,
         "memory_encoder_type": memory_encoder_type if use_memory_encoder else "",
@@ -870,6 +885,7 @@ def _append_partial_transition(
         path.parent.mkdir(parents=True, exist_ok=True)
         elapsed_ms = int((time.monotonic() - _PROCESS_STARTED_AT) * 1000)
         row = {
+            "log_type": "action",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "elapsedMs": elapsed_ms,
             "site_id": site_id,
@@ -877,6 +893,7 @@ def _append_partial_transition(
             "baseUrl": base_url,
             "episode": episode,
             "step": step,
+            "step_index": step,
             "action": action.get("action_type"),
             "target": target,
             "reward": reward,
@@ -892,17 +909,80 @@ def _append_partial_transition(
                     "submit_count": mask_stats.get("submit_count"),
                     "password_input_count": mask_stats.get("password_input_count"),
                     "selected_action": mask_stats.get("selected_action_type"),
+                    "selected_action_type": mask_stats.get("selected_action_type"),
                     "selected_target_element_key": mask_stats.get("selected_target_element_key"),
                     "selected_target_text": mask_stats.get("selected_target_text"),
                     "selected_target_name": mask_stats.get("selected_target_name"),
                     "selected_target_role": mask_stats.get("selected_target_role"),
+                    "selected_target_tag": mask_stats.get("selected_target_tag"),
                     "selected_target_type": mask_stats.get("selected_target_type"),
                     "selected_target_semantic_type": mask_stats.get("selected_target_semantic_type"),
                     "action_mask_enabled_actions": mask_stats.get("action_mask_enabled_actions"),
                     "high_priority_candidate_count": mask_stats.get("high_priority_candidate_count"),
                     "action_priority_reason": mask_stats.get("action_priority_reason"),
                     "login_flow_status": mask_stats.get("login_flow_status"),
+                    "login_flow_status_after_step": mask_stats.get("login_flow_status_after_step", mask_stats.get("login_flow_status")),
+                    "has_login_form": mask_stats.get("has_login_form"),
+                    "has_username_or_email_input": mask_stats.get("has_username_or_email_input"),
+                    "has_password_input": mask_stats.get("has_password_input"),
+                    "has_login_submit": mask_stats.get("has_login_submit"),
+                    "username_or_email_filled": mask_stats.get("username_or_email_filled"),
+                    "password_filled": mask_stats.get("password_filled"),
+                    "login_submit_clicked": mask_stats.get("login_submit_clicked"),
+                    "login_result_checked": mask_stats.get("login_result_checked"),
+                    "login_flow_attempted": mask_stats.get("login_flow_attempted"),
+                    "login_flow_completed": mask_stats.get("login_flow_completed"),
                     "required_actions_remaining": mask_stats.get("required_actions_remaining"),
+                    "page_type": mask_stats.get("page_type"),
+                    "required_verifications_remaining": mask_stats.get("required_verifications_remaining"),
+                    "required_verifications_completed": mask_stats.get("required_verifications_completed"),
+                    "api_response_checked": mask_stats.get("api_response_checked"),
+                    "json_parse_checked": mask_stats.get("json_parse_checked"),
+                    "schema_contract_checked": mask_stats.get("schema_contract_checked"),
+                    "network_checked": mask_stats.get("network_checked"),
+                    "console_checked": mask_stats.get("console_checked"),
+                    "detected_candidate_count": mask_stats.get("detected_candidate_count"),
+                    "generated_opportunity_count": mask_stats.get("generated_opportunity_count"),
+                    "required_opportunity_count": mask_stats.get("required_opportunity_count"),
+                    "optional_opportunity_count": mask_stats.get("optional_opportunity_count"),
+                    "executed_opportunity_count": mask_stats.get("executed_opportunity_count"),
+                    "verified_opportunity_count": mask_stats.get("verified_opportunity_count"),
+                    "skipped_opportunity_count": mask_stats.get("skipped_opportunity_count"),
+                    "failed_opportunity_count": mask_stats.get("failed_opportunity_count"),
+                    "remaining_opportunity_count": mask_stats.get("remaining_opportunity_count"),
+                    "pending_opportunity_count": mask_stats.get("pending_opportunity_count", mask_stats.get("remaining_opportunity_count")),
+                    "remaining_blocking_opportunity_count": mask_stats.get("remaining_blocking_opportunity_count"),
+                    "pending_blocking_opportunity_count": mask_stats.get("pending_blocking_opportunity_count"),
+                    "remaining_required_opportunity_count": mask_stats.get("remaining_required_opportunity_count"),
+                    "pending_required_opportunity_count": mask_stats.get("pending_required_opportunity_count", mask_stats.get("remaining_required_opportunity_count")),
+                    "required_opportunity_remaining": mask_stats.get("remaining_required_opportunity_count"),
+                    "action_opportunity_coverage_rate": mask_stats.get("action_opportunity_coverage_rate"),
+                    "action_coverage_rate": mask_stats.get("action_coverage_rate", mask_stats.get("action_opportunity_coverage_rate")),
+                    "action_coverage_rate_after_step": mask_stats.get("action_opportunity_coverage_rate"),
+                    "required_opportunity_completion_rate": mask_stats.get("required_opportunity_completion_rate"),
+                    "required_completion_rate_after_step": mask_stats.get("required_opportunity_completion_rate"),
+                    "optional_opportunity_coverage_rate": mask_stats.get("optional_opportunity_coverage_rate"),
+                    "unverified_anomaly_count": mask_stats.get("unverified_anomaly_count"),
+                    "verified_finding_count": mask_stats.get("verified_finding_count"),
+                    "anomaly_verification_required": mask_stats.get("anomaly_verification_required"),
+                    "anomaly_verification_completed": mask_stats.get("anomaly_verification_completed"),
+                    "finish_allowed": mask_stats.get("finish_allowed"),
+                    "finish_allowed_after_step": mask_stats.get("finish_allowed"),
+                    "finish_blocked_reason": mask_stats.get("finish_blocked_reason"),
+                    "finish_blocked_reason_after_step": mask_stats.get("finish_blocked_reason"),
+                    "opportunity_diagnostics": mask_stats.get("opportunity_diagnostics"),
+                    "dom_exhaustive_action_mode": mask_stats.get("dom_exhaustive_action_mode"),
+                    "selected_opportunity_id": mask_stats.get("selected_opportunity_id"),
+                    "selected_opportunity_type": mask_stats.get("selected_opportunity_type"),
+                    "opportunity_required": mask_stats.get("opportunity_required"),
+                    "opportunity_status_before": mask_stats.get("opportunity_status_before"),
+                    "opportunity_status_after_action": mask_stats.get("opportunity_status_after_action"),
+                    "opportunity_status_after": mask_stats.get("opportunity_status_after_action"),
+                    "next_recommended_verification_action": mask_stats.get("next_recommended_verification_action"),
+                    "next_recommended_action": mask_stats.get("next_recommended_verification_action"),
+                    "repeated_inspect_dom_count": mask_stats.get("repeated_inspect_dom_count"),
+                    "repeated_inspect_dom_penalty_applied": mask_stats.get("repeated_inspect_dom_penalty_applied"),
+                    "repeated_inspect_dom_blocked": mask_stats.get("repeated_inspect_dom_blocked"),
                 }
             )
         if isinstance(step_info, Mapping):
@@ -914,13 +994,33 @@ def _append_partial_transition(
                     "failure_reason": str(step_info.get("failure_reason") or step_info.get("invalid_action_reason") or step_info.get("action_error") or ""),
                     "invalid_action_reason": str(step_info.get("invalid_action_reason") or ""),
                     "failed_action_type": str(action.get("action_type") or "") if not bool(step_info.get("action_success") or step_info.get("clicked") or step_info.get("filled") or step_info.get("pressed")) else "",
+                    "failed_action_signature": str(action.get("action_signature") or ""),
                     "exception_type": str(step_info.get("exception_type") or ""),
                     "exception_message": str(step_info.get("exception_message") or step_info.get("click_error") or step_info.get("fill_error") or step_info.get("press_error") or step_info.get("action_error") or ""),
+                    "playwright_error": str(step_info.get("playwright_error") or step_info.get("click_error") or step_info.get("fill_error") or step_info.get("press_error") or step_info.get("action_error") or ""),
+                    "network_log_available": bool(step_info.get("network_log_available", False)),
+                    "network_capture_enabled": bool(step_info.get("network_capture_enabled", False)),
+                    "network_events_count": int(step_info.get("network_events_count", 0) or 0),
+                    "infra_failure_possible": bool(step_info.get("last_action_error") or step_info.get("action_error") or step_info.get("playwright_error")),
+                    "user_visible_failure_possible": bool(step_info.get("dom_changed") or step_info.get("new_url") or step_info.get("network_request_count") or step_info.get("console_error_count")),
                     "target_element_key": str(action.get("action_element_key") or ""),
                     "target_selector": str(action.get("target_selector") or ""),
+                    "target_text": str(action.get("action_text") or action.get("clicked_text") or ""),
+                    "target_role": str(action.get("target_role") or action.get("selected_target_role") or ""),
+                    "target_tag": str(action.get("target_tag") or ""),
+                    "target_enabled": bool(action.get("target_enabled", step_info.get("target_enabled", True))),
+                    "target_visible": bool(action.get("target_visible", step_info.get("target_visible", True))),
+                    "target_attached": bool(step_info.get("target_attached", not bool(step_info.get("invalid_action_reason")))),
+                    "target_clickable": bool(action.get("target_clickable", step_info.get("target_clickable", False))),
                     "retryable": bool(step_info.get("retryable", False)),
+                    "alternative_verification_action": str(mask_stats.get("next_recommended_verification_action") if isinstance(mask_stats, Mapping) else ""),
                     "fallback_applied": bool(action.get("fallback_applied", False)),
                     "fallback_reason": str(action.get("fallback_reason") or ""),
+                    "attempted_viewport_width": step_info.get("attempted_viewport_width"),
+                    "attempted_viewport_height": step_info.get("attempted_viewport_height"),
+                    "current_viewport_width": step_info.get("current_viewport_width"),
+                    "current_viewport_height": step_info.get("current_viewport_height"),
+                    "viewport_change_supported": bool(step_info.get("viewport_change_supported", False)),
                     "new_url": str(step_info.get("new_url") or url or ""),
                     "network_request_count": int(step_info.get("network_request_count", step_info.get("playwright_request_count", 0)) or 0),
                     "console_error_count": int(step_info.get("console_error_count", step_info.get("playwright_console_error_count", 0)) or 0),
@@ -953,6 +1053,14 @@ def _raise_if_episode_timeout(
         raise TimeoutError(f"episode timeout exceeded {episode_timeout_seconds}s for {site_id} episode={episode_index}")
 
 
+def _effective_eval_max_steps(max_steps: int) -> int:
+    try:
+        value = int(max_steps or 0)
+    except (TypeError, ValueError):
+        value = 0
+    return value if value > 0 else 60
+
+
 def _make_eval_env(
     site: Mapping[str, Any],
     site_profile: Mapping[str, Any],
@@ -983,6 +1091,7 @@ def _evaluate_site(
     episodes: int,
     max_steps: int,
     headless: bool,
+    min_steps: int = 0,
     strict_site_validation: bool = False,
     csv_logger: EpisodeCsvLogger | None = None,
     site_timeout_seconds: int = 60,
@@ -1004,6 +1113,8 @@ def _evaluate_site(
     fallback_reward_cap_value: float = 0.0,
 ) -> Dict[str, Any]:
     site_id = str(site["site_id"])
+    min_steps = max(0, int(min_steps or site.get("min_steps") or 0))
+    max_steps_limit = _effective_eval_max_steps(max_steps)
     scan_id = _run_id_from_output(output_path) or ""
     live_status_dir = _live_dir(output_path)
     site_started_at = time.monotonic()
@@ -1039,6 +1150,11 @@ def _evaluate_site(
     episode_rewards: List[float] = []
     scaled_episode_rewards: List[float] = []
     total_detected_candidates = 0
+    raw_anomaly_candidate_count = 0
+    filtered_false_positive_count = 0
+    anomaly_filter_reason_counts: Counter[str] = Counter()
+    finding_promotion_reason_counts: Counter[str] = Counter()
+    finding_rejection_reason_counts: Counter[str] = Counter()
     unique_candidates: Dict[tuple[str, str, str, str], Dict[str, Any]] = {}
     matched_by_bug_id: Dict[str, Dict[str, Any]] = {}
     suppressed_duplicates: Dict[tuple[str, str, str, str], Dict[str, Any]] = {}
@@ -1107,6 +1223,16 @@ def _evaluate_site(
         "matched_bug_ids": set(),
         "action_signature_counts": {},
     }
+    observation: Dict[str, Any] = {}
+    runner_started = True
+    page_loaded = False
+    initial_observation_collected = False
+    action_loop_entered = False
+    action_loop_iteration_count = 0
+    action_loop_exit_reason = ""
+    runner_exception = ""
+    runner_exception_traceback = ""
+    initial_counts: Dict[str, Any] = _empty_initial_scan_counts()
     completed_episodes = 0
     episode_errors: List[Dict[str, Any]] = []
     site_failed = False
@@ -1116,6 +1242,8 @@ def _evaluate_site(
     step_elapsed_values: List[int] = []
     episode_elapsed_values: List[int] = []
     early_stop_reasons: Counter[str] = Counter()
+    successful_action_count = 0
+    failed_action_count = 0
     timeout_count = 0
     episode_memory_reset_count = 0
     memory_state_norm_values: List[float] = []
@@ -1185,6 +1313,14 @@ def _evaluate_site(
     fallback_reward_capped_count = 0
     policy_executed_action_match_count = 0
     policy_executed_action_mismatch_count = 0
+    finish_guard_checked_steps = 0
+    finish_guard_blocked_count = 0
+    ppo_selected_opportunity_ids: list[str] = []
+    missing_failure_reason_count = 0
+    network_verification_performed = False
+    network_verification_success = False
+    console_verification_performed = False
+    console_verification_success = False
 
     for episode_index in range(1, episodes + 1):
         try:
@@ -1283,6 +1419,8 @@ def _evaluate_site(
                     _emit_stage("env_reset_started", site_id=site_id, episode=episode_index, resetAttempt=reset_attempt)
                     reset_started_at = time.monotonic()
                     observation, reset_info = env.reset()
+                    page_loaded = True
+                    initial_observation_collected = bool(observation)
                     reset_elapsed_ms = int((time.monotonic() - reset_started_at) * 1000)
                     reset_elapsed_values.append(reset_elapsed_ms)
                     if reset_elapsed_ms > env_reset_timeout_ms:
@@ -1354,9 +1492,24 @@ def _evaluate_site(
                     if warning not in warnings:
                         warnings.append(warning)
                         _emit_event(event="warning", site_id=site_id, episode=episode_index, message=warning)
+            try:
+                history["step_index"] = 0
+                history["min_steps"] = min_steps
+                _attach_action_history_to_observation(observation, history)
+                initial_counts = _initial_scan_counts(observation, history, action_space)
+            except Exception as init_exc:
+                initial_counts["opportunity_generation_error"] = str(init_exc)
             memory_state = agent.reset_memory_state()
             episode_memory_reset_count += 1
-            for step_index in range(max_steps):
+            step_index = 0
+            finish_allowed_streak = 0
+            consecutive_finish_episode_attempts = 0
+            while True:
+                action_loop_entered = True
+                action_loop_iteration_count += 1
+                step_index += 1
+                history["step_index"] = step_index
+                history["min_steps"] = min_steps
                 _raise_if_site_timeout(site_started_at, site_timeout_seconds, site_id)
                 _raise_if_episode_timeout(episode_started_at, episode_timeout_seconds, site_id, episode_index)
                 boundary_reason = _target_url_boundary_violation(observation, site)
@@ -1368,7 +1521,7 @@ def _evaluate_site(
                         event="warning",
                         site_id=site_id,
                         episode=episode_index,
-                        step=step_index + 1,
+                        step=step_index,
                         message=boundary_reason,
                     )
                     _write_live_status(
@@ -1378,10 +1531,11 @@ def _evaluate_site(
                         stage="target_url_boundary_stop",
                         current_site=site_id,
                         current_episode=episode_index,
-                        current_step=step_index + 1,
+                        current_step=step_index,
                         message=boundary_reason,
                     )
                     done = True
+                    action_loop_exit_reason = "target_url_boundary"
                     break
                 _attach_action_history_to_observation(observation, history)
                 obs_vector = encoder.encode_observation(observation)
@@ -1391,7 +1545,7 @@ def _evaluate_site(
                 policy_action = action_space.decode(policy_action_id)
                 policy_action["action_id"] = policy_action_id
                 policy_action["site_id"] = site_id
-                _enrich_action(policy_action, observation)
+                _enrich_action(policy_action, observation, history)
                 if 0 <= policy_action_id < len(action_mask) and float(action_mask[policy_action_id]) > 0.0:
                     policy_selected_valid_action_count += 1
                 else:
@@ -1437,19 +1591,61 @@ def _evaluate_site(
                 verification_action_redirect_count += deltas.get("verification_action_redirect_count", 0)
                 meta_action_repeated_priority_lowered_count += deltas.get("meta_action_repeated_priority_lowered_count", 0)
                 policy_selected_meta_action_suppressed_count += deltas.get("policy_selected_meta_action_suppressed_count", 0)
-                selected = (
-                    policy_selected
-                    if str(fallback_mode or "eval") == "strict"
-                    else agent.select_greedy_action(obs_vector, executed_mask, memory_state=memory_state)
+                opportunity_action_id = _select_dom_exhaustive_action_id(
+                    action_space,
+                    observation,
+                    executed_mask if str(fallback_mode or "eval") != "strict" else action_mask,
+                    history,
                 )
+                if opportunity_action_id is not None:
+                    selected = {"action_id": int(opportunity_action_id), "memory_state": policy_selected.get("memory_state", memory_state), "memory_state_norm": policy_selected.get("memory_state_norm", 0.0)}
+                    history["dom_exhaustive_action_mode"] = True
+                else:
+                    selected = (
+                        policy_selected
+                        if str(fallback_mode or "eval") == "strict"
+                        else agent.select_greedy_action(obs_vector, executed_mask, memory_state=memory_state)
+                    )
                 selected_memory_state = selected.get("memory_state", memory_state)
                 memory_state_norm_values.append(float(selected.get("memory_state_norm", 0.0) or 0.0))
                 action_id = int(selected["action_id"])
                 action = action_space.decode(action_id)
                 action["action_id"] = action_id
                 action["site_id"] = site_id
-                _enrich_action(action, observation)
+                _enrich_action(action, observation, history)
                 mask_stats = action_space.build_action_mask_stats(observation, executed_mask, action_id)
+                finish_guard_checked_steps += 1
+                if not bool(mask_stats.get("finish_allowed", False)):
+                    finish_guard_blocked_count += 1
+                    finish_allowed_streak = 0
+                else:
+                    finish_allowed_streak += 1
+                finish_id = action_space.encode("finish_episode", 0)
+                if (
+                    finish_allowed_streak >= 2
+                    and str(action.get("action_type") or "") != "finish_episode"
+                    and _progress_policy_allows_finish(observation, history)
+                    and 0 <= finish_id < len(executed_mask)
+                    and float(executed_mask[finish_id]) > 0.0
+                ):
+                    action_id = finish_id
+                    selected = {
+                        "action_id": int(action_id),
+                        "memory_state": selected_memory_state,
+                        "memory_state_norm": selected.get("memory_state_norm", 0.0),
+                    }
+                    action = action_space.decode(action_id)
+                    action["action_id"] = action_id
+                    action["site_id"] = site_id
+                    _enrich_action(action, observation, history)
+                    mask_stats = action_space.build_action_mask_stats(observation, executed_mask, action_id)
+                    if isinstance(history, dict):
+                        history["observation_driven_finish_selected_count"] = int(
+                            history.get("observation_driven_finish_selected_count", 0) or 0
+                        ) + 1
+                selected_opportunity_id = str(mask_stats.get("selected_opportunity_id") or "")
+                if selected_opportunity_id:
+                    ppo_selected_opportunity_ids.append(selected_opportunity_id)
                 detailed_reasons = list(history.get("_fallback_reasons_step", []) or [])
                 fallback_reason = ",".join(str(reason) for reason in detailed_reasons) if detailed_reasons else _fallback_reason(fallback_warning)
                 fallback_applied = bool(str(fallback_mode or "eval") != "strict" and (repeated or fallback_warning or action_id != policy_action_id))
@@ -1468,12 +1664,12 @@ def _evaluate_site(
                     fallback_reason=fallback_reason if fallback_applied else "",
                 )
                 if csv_logger is not None:
-                    csv_logger.log_observation(site_id, f"{site_id}-EP{episode_index:03d}", step_index + 1, step_index + 1, observation)
+                    csv_logger.log_observation(site_id, f"{site_id}-EP{episode_index:03d}", step_index, step_index, observation)
                     csv_logger.log_action_space(
                         site_id,
                         f"{site_id}-EP{episode_index:03d}",
-                        step_index + 1,
-                        step_index + 1,
+                        step_index,
+                        step_index,
                         observation,
                         action_space,
                         executed_mask,
@@ -1483,7 +1679,7 @@ def _evaluate_site(
                     event="action",
                     site_id=site_id,
                     episode=episode_index,
-                    step=step_index + 1,
+                    step=step_index,
                     action=action.get("action_type"),
                     target=_action_target_text(action),
                     target_text=_action_target_text(action),
@@ -1496,14 +1692,14 @@ def _evaluate_site(
                 )
                 if action.get("action_type") == "click_element":
                     if first_click_step is None:
-                        first_click_step = step_index + 1
+                        first_click_step = step_index
                     if action.get("clicked_bid") or action.get("clicked_text"):
                         unique_clicked_targets.add(str(action.get("clicked_bid") or action.get("clicked_text")))
                     if action.get("action_element_key"):
                         clicked_element_keys.add(str(action.get("action_element_key")))
                 if action.get("action_type") == "inspect_dom" and history.get("last_action_type") == "inspect_dom":
                     inspect_dom_repeat_count += 1
-                _emit_stage("step_started", site_id=site_id, episode=episode_index, step=step_index + 1)
+                _emit_stage("step_started", site_id=site_id, episode=episode_index, step=step_index)
                 _save_live_screenshot(
                     env,
                     output_path,
@@ -1511,7 +1707,7 @@ def _evaluate_site(
                     status="running",
                     site_id=site_id,
                     episode=episode_index,
-                    step=step_index + 1,
+                    step=step_index,
                     stage="step_started",
                 )
                 step_started_at = time.monotonic()
@@ -1519,6 +1715,23 @@ def _evaluate_site(
                 before_unique_count = len(unique_candidates)
                 before_matched_count = len(matched_by_bug_id)
                 next_observation, _, done, step_info = env.step(action_id)
+                action_type_for_step = str(action.get("action_type") or "")
+                action_success = bool(step_info.get("action_success") or step_info.get("clicked") or step_info.get("filled") or step_info.get("pressed"))
+                if action_success:
+                    successful_action_count += 1
+                else:
+                    failed_action_count += 1
+                    if not str(step_info.get("failure_reason") or step_info.get("invalid_action_reason") or step_info.get("action_error") or ""):
+                        missing_failure_reason_count += 1
+                        step_info["failure_reason"] = "action_failed_without_reason"
+                if action_type_for_step in {"inspect_network", "inspect_last_api_response", "inspect_api_response"}:
+                    network_verification_performed = True
+                    if action_success:
+                        network_verification_success = True
+                if action_type_for_step in {"inspect_console", "inspect_console_errors"}:
+                    console_verification_performed = True
+                    if action_success:
+                        console_verification_success = True
                 page_text_delta = abs(_page_text_length(next_observation) - _page_text_length(observation))
                 next_candidates_for_delta = next_observation.get("candidate_elements", []) or []
                 before_candidates_for_delta = observation.get("candidate_elements", []) or []
@@ -1529,8 +1742,8 @@ def _evaluate_site(
                 step_elapsed_ms = int((time.monotonic() - step_started_at) * 1000)
                 step_elapsed_values.append(step_elapsed_ms)
                 if step_elapsed_ms > step_timeout_ms:
-                    raise TimeoutError(f"step exceeded {step_timeout_ms}ms for {site_id} episode={episode_index} step={step_index + 1}")
-                _emit_stage("step_completed", site_id=site_id, episode=episode_index, step=step_index + 1, stepElapsedMs=step_elapsed_ms)
+                    raise TimeoutError(f"step exceeded {step_timeout_ms}ms for {site_id} episode={episode_index} step={step_index}")
+                _emit_stage("step_completed", site_id=site_id, episode=episode_index, step=step_index, stepElapsedMs=step_elapsed_ms)
                 _save_live_screenshot(
                     env,
                     output_path,
@@ -1538,15 +1751,18 @@ def _evaluate_site(
                     status="running",
                     site_id=site_id,
                     episode=episode_index,
-                    step=step_index + 1,
+                    step=step_index,
                     stage="step_completed",
                 )
-                action["failed"] = bool(step_info.get("last_action_error"))
+                action["failed"] = bool(step_info.get("last_action_error") or not action_success)
+                if step_info.get("failure_reason") and not action.get("failure_reason"):
+                    action["failure_reason"] = str(step_info.get("failure_reason") or "")
                 anomalies = detect_anomalies(
                     observation,
                     next_observation,
                     {"action": action, "site_profile": site_profile, **step_info},
                     site_profile=site_profile,
+                    history=history,
                 )
                 infra_anomalies = detect_infra_anomalies(
                     next_observation,
@@ -1642,6 +1858,24 @@ def _evaluate_site(
                     "penalty_login_flow_incomplete_early_stop",
                     "penalty_targetless_action_success",
                     "penalty_inspect_dom_failure_completed",
+                    "reward_api_response_checked",
+                    "reward_api_schema_checked",
+                    "reward_api_console_checked",
+                    "reward_failed_action_followup_verification",
+                    "api_page_coverage_reward_total",
+                    "penalty_repeated_inspect_layout_same_context",
+                    "reward_required_opportunity_executed",
+                    "reward_required_opportunity_verified",
+                    "reward_action_coverage_increase",
+                    "reward_anomaly_verification_executed",
+                    "reward_finish_episode_when_allowed",
+                    "opportunity_shaping_reward_total",
+                    "penalty_finish_required_opportunity_remaining",
+                    "penalty_finish_blocked_repeat",
+                    "penalty_repeated_opportunity_selected",
+                    "penalty_verified_opportunity_repeated",
+                    "penalty_failed_action_missing_reason",
+                    "opportunity_shaping_penalty_total",
                 ):
                     signal_summary[key] += float(reward_breakdown.get(key, 0.0) or 0.0)
                 if reward_breakdown.get("playwright_listener_warning"):
@@ -1664,7 +1898,7 @@ def _evaluate_site(
                     site_id=site_id,
                     base_url=str(site.get("base_url") or ""),
                     episode=episode_index,
-                    step=step_index + 1,
+                    step=step_index,
                     action=action,
                     target=_action_target_text(action),
                     reward=_clamp_reward(reward * reward_scale),
@@ -1679,8 +1913,8 @@ def _evaluate_site(
                         site_id=site_id,
                         base_url=str(site.get("base_url") or ""),
                         episode_id=episode_id,
-                        step_id=step_index + 1,
-                        tick_id=step_index + 1,
+                        step_id=step_index,
+                        tick_id=step_index,
                         before_observation=observation,
                         after_observation=next_observation,
                         action=action,
@@ -1692,7 +1926,7 @@ def _evaluate_site(
                         reward_breakdown=reward_breakdown,
                         done=done,
                     )
-                    csv_logger.log_observation(site_id, episode_id, step_index + 1, f"{step_index + 1}.after", next_observation)
+                    csv_logger.log_observation(site_id, episode_id, step_index, f"{step_index}.after", next_observation)
                 action_counts[str(action.get("action_type") or "")] += 1
                 candidates = observation.get("candidate_elements", []) or []
                 if isinstance(candidates, list):
@@ -1789,8 +2023,14 @@ def _evaluate_site(
                         unclicked_functional_candidate_selected_count += 1
                         if action.get("is_high_value_functional_candidate"):
                             unclicked_high_value_candidate_selected_count += 1
-                    if action.get("clicked_bid") or action.get("clicked_text"):
-                        clicked_functional_priority_targets.add(str(action.get("clicked_bid") or action.get("clicked_text")))
+                    if selected_element_key:
+                        # Must match the key scheme _candidate_key() uses when populating
+                        # observed_functional_priority_targets (element_key, falling back to
+                        # bid/text) -- using raw clicked_bid/clicked_text here instead meant
+                        # this set almost never matched observed entries, so
+                        # unclicked_functional_count never reached 0 and finish_episode was
+                        # rejected forever even after every functional candidate was clicked.
+                        clicked_functional_priority_targets.add(selected_element_key)
                 if action.get("semantic_action_type"):
                     clicked_semantic_action_types[str(action.get("semantic_action_type"))] += 1
                 action_semantic_type = str(action.get("semantic_action_type") or "")
@@ -1892,7 +2132,7 @@ def _evaluate_site(
                         event="anomaly_detected",
                         site_id=site_id,
                         episode=episode_index,
-                        step=step_index + 1,
+                        step=step_index,
                         type=str(anomaly.get("type") or ""),
                         matched_bug_id=matched_bug_id,
                         confidence=float(anomaly.get("confidence", 0.0) or 0.0),
@@ -1904,7 +2144,7 @@ def _evaluate_site(
                         status="running",
                         site_id=site_id,
                         episode=episode_index,
-                        step=step_index + 1,
+                        step=step_index,
                         stage="anomaly_detected",
                     )
                     for bug_id in evidence.get("catalog_bug_id_matches", []) or []:
@@ -1922,6 +2162,16 @@ def _evaluate_site(
                     if _layout_evidence_key(evidence) not in {_layout_evidence_key(item) for item in layout_overflow_top_evidence} and len(layout_overflow_top_evidence) < 3:
                         layout_overflow_top_evidence.append(dict(evidence))
                 total_detected_candidates += len(anomalies)
+                raw_anomaly_candidate_count += len(anomalies)
+                for anomaly in anomalies:
+                    reason = _anomaly_promotion_reason(anomaly)
+                    if reason:
+                        finding_promotion_reason_counts[reason] += 1
+                    else:
+                        rejection = _anomaly_rejection_reason(anomaly)
+                        finding_rejection_reason_counts[rejection] += 1
+                        anomaly_filter_reason_counts[rejection] += 1
+                        filtered_false_positive_count += 1
                 _record_unique_candidates(unique_candidates, matched_by_bug_id, suppressed_duplicates, anomalies)
                 progress = _episode_progress_made(
                     before_unique_count=before_unique_count,
@@ -1939,34 +2189,83 @@ def _evaluate_site(
                 _update_history(history, observation, action, anomalies, after_observation=next_observation)
                 observation = next_observation
                 repeated_signature_count = _current_action_signature_count(history, action)
-                if no_progress_patience > 0 and int(history.get("no_progress_steps", 0) or 0) >= no_progress_patience:
+                effective_no_progress_patience = _effective_no_progress_patience(no_progress_patience, history)
+                if (
+                    effective_no_progress_patience > 0
+                    and int(history.get("no_progress_steps", 0) or 0) >= effective_no_progress_patience
+                ):
                     unclicked_functional_count = len(observed_functional_priority_targets - clicked_functional_priority_targets)
                     pending_reason = _required_observation_work_pending(observation, history)
                     if pending_reason:
                         early_stop_reasons[f"{pending_reason}_early_stop_blocked"] += 1
-                        history["no_progress_steps"] = max(0, no_progress_patience - 1)
+                        history["no_progress_steps"] = max(0, effective_no_progress_patience - 1)
                         done = False
                     elif unclicked_functional_count > 0:
                         no_progress_delayed_by_unclicked_functional_candidate_count += 1
-                        history["no_progress_steps"] = max(0, no_progress_patience - 1)
+                        history["no_progress_steps"] = max(0, effective_no_progress_patience - 1)
+                        done = False
+                    elif not _progress_policy_allows_finish(observation, history):
+                        early_stop_reasons["optional_coverage_early_stop_blocked"] += 1
+                        history["no_progress_steps"] = max(0, effective_no_progress_patience - 1)
                         done = False
                     else:
                         early_stop_reason = "no_progress"
                         early_stop_reasons[early_stop_reason] += 1
                         done = True
-                elif no_progress_patience > 0 and repeated_signature_count >= no_progress_patience + 1 and not progress:
-                    early_stop_reason = "repeated_action"
-                    early_stop_reasons[early_stop_reason] += 1
-                    done = True
+                elif (
+                    effective_no_progress_patience > 0
+                    and repeated_signature_count >= effective_no_progress_patience + 1
+                    and not progress
+                ):
+                    pending_reason = _required_observation_work_pending(observation, history)
+                    if pending_reason:
+                        early_stop_reasons[f"{pending_reason}_early_stop_blocked"] += 1
+                        done = False
+                    elif not _progress_policy_allows_finish(observation, history):
+                        early_stop_reasons["optional_coverage_repeated_action_blocked"] += 1
+                        done = False
+                    else:
+                        early_stop_reason = "repeated_action"
+                        early_stop_reasons[early_stop_reason] += 1
+                        done = True
+                if str(action.get("action_type") or "") == "finish_episode":
+                    consecutive_finish_episode_attempts += 1
+                else:
+                    consecutive_finish_episode_attempts = 0
                 if done and str(action.get("action_type") or "") == "finish_episode":
                     unclicked_functional_count = len(observed_functional_priority_targets - clicked_functional_priority_targets)
-                    if unclicked_functional_count > 0:
+                    pending_reason = _required_observation_work_pending(observation, history)
+                    opportunity_summary = history.get("opportunity_summary", {}) if isinstance(history, Mapping) else {}
+                    summary_allows_finish = bool(opportunity_summary.get("finish_allowed", False)) if isinstance(opportunity_summary, Mapping) else False
+                    if pending_reason:
+                        early_stop_reasons[f"{pending_reason}_finish_blocked"] += 1
+                        done = False
+                    elif unclicked_functional_count > 0 and not summary_allows_finish:
                         finish_delayed_by_unclicked_candidate_count += 1
                         done = False
+                if not done and consecutive_finish_episode_attempts >= 5:
+                    # Safety valve: the mask, the guided "force finish after streak" nudge, the
+                    # eval fallback redirects, and this done-override block are five separate,
+                    # historically-accumulated systems that each independently judge whether
+                    # finish_episode should be allowed -- they can disagree with each other in
+                    # combinations none of them individually account for, reproducing the same
+                    # finish/reject infinite loop this file has already been patched against
+                    # twice. Rather than chase every possible disagreement, force termination
+                    # once finish_episode has been attempted several times in a row with no
+                    # actual progress, so a live scan can never hang indefinitely on this.
+                    early_stop_reason = "finish_episode_repeated_safety_stop"
+                    early_stop_reasons[early_stop_reason] += 1
+                    done = True
+                if not done and step_index >= max_steps_limit:
+                    early_stop_reason = "max_steps"
+                    early_stop_reasons[early_stop_reason] += 1
+                    done = True
                 if done:
+                    if not action_loop_exit_reason:
+                        action_loop_exit_reason = early_stop_reason or str(action.get("action_type") or "done")
                     break
             if not early_stop_reason and not done:
-                early_stop_reason = "max_steps"
+                early_stop_reason = action_loop_exit_reason or "observation_loop_completed"
                 early_stop_reasons[early_stop_reason] += 1
             if int(history.get("functional_action_count", 0) or 0) <= 0:
                 no_functional_episode_count += 1
@@ -1986,6 +2285,9 @@ def _evaluate_site(
             site_failed = True
             error_type = exc.__class__.__name__
             error_message = str(exc)
+            runner_exception = error_message
+            runner_exception_traceback = traceback.format_exc()
+            action_loop_exit_reason = action_loop_exit_reason or "runner_exception"
             if isinstance(exc, TimeoutError):
                 timeout_count += 1
                 early_stop_reasons["timeout"] += 1
@@ -2021,10 +2323,17 @@ def _evaluate_site(
     missed_bug_ids = [bug_id for bug_id in known_bug_ids if bug_id not in set(matched_bug_ids)]
     unique_detected = len(unique_candidates)
     confirmed_bugs, catalog_related_anomalies, exploratory_anomalies = _classify_candidates(unique_candidates.values())
+    evidence_verified_finding_count = sum(
+        1
+        for item in [*confirmed_bugs, *catalog_related_anomalies, *exploratory_anomalies]
+        if _strong_finding_evidence(item) or str(item.get("human_review_status") or "") == "likely_true_positive"
+    )
     deduped_known_bug_candidates = len(confirmed_bugs) + len(catalog_related_anomalies)
     suppressed_duplicate_examples = list(suppressed_duplicates.values())[:3]
     action_diversity_score = _action_diversity_score(action_counts)
     anomaly_types = dict(Counter(str(item.get("type") or "") for item in unique_candidates.values()))
+    critical_issue_count = sum(1 for item in unique_candidates.values() if _issue_severity(item) in {"critical", "high"})
+    warning_issue_count = sum(1 for item in unique_candidates.values() if _issue_severity(item) in {"warning", "medium", "low"})
     early_stop_count = sum(int(value or 0) for value in early_stop_reasons.values())
     blocking_early_stop_count = sum(
         int(value or 0)
@@ -2046,12 +2355,205 @@ def _evaluate_site(
         error_message=error_message,
     )
     valid_for_comparison = not bool(exclusion_reason)
+    try:
+        _attach_action_history_to_observation(observation, history)
+    except Exception:
+        pass
+    opportunity_summary = history.get("opportunity_summary", {}) if isinstance(history, Mapping) else {}
+    if not isinstance(opportunity_summary, Mapping):
+        opportunity_summary = {}
+    executed_action_count = sum(int(value or 0) for value in action_counts.values())
+    max_steps_reached = int(early_stop_reasons.get("max_steps", 0) or 0) > 0
+    completion_status = _opportunity_completion_status(opportunity_summary)
+    completed_reason = _scan_completed_reason(
+        site_failed=site_failed,
+        early_stop_reasons=early_stop_reasons,
+        max_steps_reached=max_steps_reached,
+        opportunity_summary=opportunity_summary,
+        failed_action_count=failed_action_count,
+        missing_failure_reason_count=missing_failure_reason_count,
+        network_failure_detected=int(signal_summary.get("network_request_failed_count", 0.0) or 0.0) > 0,
+        network_verification_success=network_verification_success,
+        console_error_detected=int(signal_summary.get("console_error_count", 0.0) or 0.0) > 0,
+        console_verification_performed=console_verification_performed,
+        console_verification_success=console_verification_success,
+    )
+    action_budget_status = _action_budget_status(
+        max_steps_reached=max_steps_reached,
+        completed_reason=completed_reason,
+        opportunity_summary=opportunity_summary,
+    )
+    valid_scan_run = _valid_scan_run(
+        opportunity_summary,
+        completed_reason=completed_reason,
+        site_failed=site_failed,
+    )
+    zero_action_diagnosis = _zero_action_diagnosis(
+        executed_action_count=executed_action_count,
+        raw_event_log_count=executed_action_count,
+        action_loop_entered=action_loop_entered,
+        action_loop_iteration_count=action_loop_iteration_count,
+        initial_observation_collected=initial_observation_collected,
+        candidate_count=int(initial_counts.get("initial_candidate_count", 0) or 0),
+        generated_opportunity_count=int(opportunity_summary.get("generated_opportunity_count", initial_counts.get("generated_opportunity_count", 0)) or 0),
+        enabled_opportunity_count=int(initial_counts.get("enabled_opportunity_count", 0) or 0),
+        finish_only_mask=bool(initial_counts.get("finish_only_mask", False)),
+    )
+    opportunity_debug = _opportunity_debug_summary(
+        history,
+        opportunity_summary,
+        finish_guard_checked_steps=finish_guard_checked_steps,
+        finish_guard_blocked_count=finish_guard_blocked_count,
+        ppo_selected_opportunity_ids=ppo_selected_opportunity_ids,
+    )
+    scan_status = "completed_valid" if valid_scan_run else "completed_invalid"
+    if site_failed:
+        scan_status = "failed_runner_exception"
+    if not initial_observation_collected:
+        scan_status = "failed_no_observation"
+    if executed_action_count == 0:
+        valid_scan_run = False
+        valid_for_comparison = False
+        scan_status = "failed_no_action_executed" if initial_observation_collected else "failed_no_observation"
+        completed_reason = "invalid_action_loop_not_entered" if not action_loop_entered else "invalid_completed_without_actions"
+        action_budget_status = "no_action_executed"
+        exclusion_reason = exclusion_reason or zero_action_diagnosis or "no_action_executed"
     result = {
         "status": site_status,
+        "scan_status": scan_status,
         "error_type": error_type,
         "error_message": error_message,
+        "runner_started": runner_started,
+        "page_loaded": page_loaded,
+        "initial_observation_collected": initial_observation_collected,
+        "action_loop_entered": action_loop_entered,
+        "action_loop_iteration_count": action_loop_iteration_count,
+        "first_observation_candidate_count": int(initial_counts.get("initial_candidate_count", 0) or 0),
+        "finish_allowed_at_step_0": bool(initial_counts.get("finish_allowed_at_step_0", False)),
+        "finish_blocked_reason_at_step_0": str(initial_counts.get("finish_blocked_reason_at_step_0") or ""),
+        "action_loop_exit_reason": action_loop_exit_reason or completed_reason,
+        "initial_candidate_count": int(initial_counts.get("initial_candidate_count", 0) or 0),
+        "initial_clickable_count": int(initial_counts.get("initial_clickable_count", 0) or 0),
+        "initial_fillable_count": int(initial_counts.get("initial_fillable_count", 0) or 0),
+        "initial_link_count": int(initial_counts.get("initial_link_count", 0) or 0),
+        "initial_button_count": int(initial_counts.get("initial_button_count", 0) or 0),
+        "initial_form_count": int(initial_counts.get("initial_form_count", 0) or 0),
+        "initial_network_request_count": int(initial_counts.get("initial_network_request_count", 0) or 0),
+        "enabled_opportunity_count": int(initial_counts.get("enabled_opportunity_count", 0) or 0),
+        "masked_opportunity_count": int(initial_counts.get("masked_opportunity_count", 0) or 0),
+        "finish_only_mask": bool(initial_counts.get("finish_only_mask", False)),
+        "opportunity_generation_error": str(initial_counts.get("opportunity_generation_error") or ""),
+        "action_mask_error": str(initial_counts.get("action_mask_error") or ""),
+        "runner_exception": runner_exception,
+        "runner_exception_traceback": runner_exception_traceback,
+        "zero_action_diagnosis": zero_action_diagnosis,
         "requested_episodes": episodes,
         "completed_episodes": completed_episodes,
+        "min_steps": min_steps,
+        "max_steps": max_steps,
+        "max_steps_configured": max_steps,
+        "action_loop_mode": "observation_driven",
+        "action_count_limit_enabled": False,
+        "min_steps_configured": min_steps,
+        "actual_steps_executed": executed_action_count,
+        "completed_reason": completed_reason,
+        "action_budget_status": action_budget_status,
+        "max_steps_reached": max_steps_reached,
+        "stopped_by_max_steps": max_steps_reached,
+        "remaining_opportunities_at_max_steps": int(opportunity_summary.get("remaining_opportunity_count", 0) or 0) if max_steps_reached else 0,
+        "max_steps_completion_status": completion_status if max_steps_reached else "",
+        "executed_action_count": executed_action_count,
+        "runner_action_count": executed_action_count,
+        "episode_action_count": executed_action_count,
+        "result_json_action_count": executed_action_count,
+        "report_json_action_count": 0,
+        "frontend_rendered_action_count": 0,
+        "pdf_rendered_action_count": 0,
+        "log_pipeline_mismatch": False,
+        "log_pipeline_mismatch_stage": "",
+        "successful_action_count": successful_action_count,
+        "failed_action_count": failed_action_count,
+        "runner_failed_action_count": failed_action_count,
+        "timeline_failed_action_count": failed_action_count,
+        "summary_failed_action_count": failed_action_count,
+        "exploration_failed_action_count": failed_action_count,
+        "failed_action_count_mismatch": False,
+        "failed_action_count_mismatch_reason": "",
+        "valid_report_metrics": True,
+        "report_metric_warning": "",
+        "missing_failure_reason_count": missing_failure_reason_count,
+        "action_log_count": executed_action_count,
+        "state_log_count": completed_episodes,
+        "network_log_count": int(signal_summary.get("network_request_failed_count", 0.0) or 0.0),
+        "issue_log_count": raw_anomaly_candidate_count,
+        "network_failure_count": int(signal_summary.get("network_request_failed_count", 0.0) or 0.0),
+        "console_error_count": int(signal_summary.get("console_error_count", 0.0) or 0.0),
+        "runtime_error_count": int(signal_summary.get("runtime_exception_count", 0.0) or 0.0),
+        "warning_issue_count": warning_issue_count,
+        "critical_issue_count": critical_issue_count,
+        "total_problem_signal_count": (
+            failed_action_count
+            + int(signal_summary.get("network_request_failed_count", 0.0) or 0.0)
+            + int(signal_summary.get("console_error_count", 0.0) or 0.0)
+            + int(signal_summary.get("runtime_exception_count", 0.0) or 0.0)
+            + warning_issue_count
+            + critical_issue_count
+        ),
+        "network_failure_detected": int(signal_summary.get("network_request_failed_count", 0.0) or 0.0) > 0,
+        "network_verification_required": int(signal_summary.get("network_request_failed_count", 0.0) or 0.0) > 0,
+        "network_verification_performed": network_verification_performed,
+        "network_verification_success": network_verification_success,
+        "console_error_detected": int(signal_summary.get("console_error_count", 0.0) or 0.0) > 0,
+        "console_verification_required": int(signal_summary.get("console_error_count", 0.0) or 0.0) > 0,
+        "console_verification_performed": console_verification_performed,
+        "console_verification_success": console_verification_success,
+        "detected_candidate_count": int(opportunity_summary.get("detected_candidate_count", 0) or 0),
+        "generated_opportunity_count": int(opportunity_summary.get("generated_opportunity_count", 0) or 0),
+        "required_opportunity_count": int(opportunity_summary.get("required_opportunity_count", 0) or 0),
+        "optional_opportunity_count": int(opportunity_summary.get("optional_opportunity_count", 0) or 0),
+        "executed_opportunity_count": int(opportunity_summary.get("executed_opportunity_count", 0) or 0),
+        "verified_opportunity_count": int(opportunity_summary.get("verified_opportunity_count", 0) or 0),
+        "skipped_opportunity_count": int(opportunity_summary.get("skipped_opportunity_count", 0) or 0),
+        "failed_opportunity_count": int(opportunity_summary.get("failed_opportunity_count", 0) or 0),
+        "remaining_opportunity_count": int(opportunity_summary.get("remaining_opportunity_count", 0) or 0),
+        "pending_opportunity_count": int(opportunity_summary.get("pending_opportunity_count", opportunity_summary.get("remaining_opportunity_count", 0)) or 0),
+        "remaining_blocking_opportunity_count": int(opportunity_summary.get("remaining_blocking_opportunity_count", 0) or 0),
+        "pending_blocking_opportunity_count": int(opportunity_summary.get("pending_blocking_opportunity_count", opportunity_summary.get("remaining_blocking_opportunity_count", 0)) or 0),
+        "remaining_required_opportunity_count": int(opportunity_summary.get("remaining_required_opportunity_count", 0) or 0),
+        "pending_required_opportunity_count": int(opportunity_summary.get("pending_required_opportunity_count", opportunity_summary.get("remaining_required_opportunity_count", 0)) or 0),
+        "action_opportunity_coverage_rate": float(opportunity_summary.get("action_opportunity_coverage_rate", 0.0) or 0.0),
+        "action_coverage_rate": float(opportunity_summary.get("action_coverage_rate", opportunity_summary.get("action_opportunity_coverage_rate", 0.0)) or 0.0),
+        "required_opportunity_completion_rate": float(opportunity_summary.get("required_opportunity_completion_rate", 0.0) or 0.0),
+        "optional_opportunity_coverage_rate": float(opportunity_summary.get("optional_opportunity_coverage_rate", 0.0) or 0.0),
+        "unverified_anomaly_count": int(opportunity_summary.get("unverified_anomaly_count", 0) or 0),
+        "verified_finding_count": max(
+            int(opportunity_summary.get("verified_finding_count", 0) or 0),
+            int(evidence_verified_finding_count),
+        ),
+        "anomaly_verification_required": bool(opportunity_summary.get("anomaly_verification_required", False)),
+        "anomaly_verification_completed": bool(opportunity_summary.get("anomaly_verification_completed", True)),
+        "finish_allowed": bool(opportunity_summary.get("finish_allowed", False)),
+        "finish_blocked_reason": str(opportunity_summary.get("finish_blocked_reason") or ""),
+        "opportunity_diagnostics": list(opportunity_summary.get("opportunity_diagnostics") or []),
+        "dom_exhaustive_action_mode": bool(opportunity_summary.get("dom_exhaustive_action_mode", True)),
+        "dom_exhaustive_action_selected_count": int(history.get("dom_exhaustive_action_selected_count", 0) or 0),
+        "page_type": str(opportunity_summary.get("page_type") or ""),
+        "has_login_form": bool(opportunity_summary.get("has_login_form", False)),
+        "has_username_or_email_input": bool(opportunity_summary.get("has_username_or_email_input", False)),
+        "has_password_input": bool(opportunity_summary.get("has_password_input", False)),
+        "has_login_submit": bool(opportunity_summary.get("has_login_submit", False)),
+        "username_or_email_filled": bool(opportunity_summary.get("username_or_email_filled", False)),
+        "password_filled": bool(opportunity_summary.get("password_filled", False)),
+        "login_submit_clicked": bool(opportunity_summary.get("login_submit_clicked", False)),
+        "login_result_checked": bool(opportunity_summary.get("login_result_checked", False)),
+        "login_flow_attempted": bool(opportunity_summary.get("login_flow_attempted", False)),
+        "login_flow_completed": bool(opportunity_summary.get("login_flow_completed", False)),
+        "login_flow_status": str(opportunity_summary.get("login_flow_status") or ""),
+        "valid_scan_run": valid_scan_run,
+        "opportunity_debug": opportunity_debug,
+        "repeated_inspect_dom_count": int(history.get("repeated_inspect_dom_count", inspect_dom_repeat_count) or 0),
+        "repeated_inspect_dom_penalty_applied": int(history.get("repeated_inspect_dom_penalty_applied", 0) or 0),
+        "repeated_inspect_dom_blocked": int(history.get("repeated_inspect_dom_blocked", 0) or 0),
         "valid_completed_episodes": completed_episodes if valid_for_comparison else 0,
         "valid_for_comparison": valid_for_comparison,
         "excluded_from_comparison_reason": exclusion_reason,
@@ -2102,6 +2604,14 @@ def _evaluate_site(
         "reward_scale": reward_scale,
         "detected_bug_count": unique_detected,
         "raw_detected_candidates": total_detected_candidates,
+        "raw_anomaly_candidate_count": raw_anomaly_candidate_count,
+        "filtered_false_positive_count": filtered_false_positive_count + len(suppressed_duplicates),
+        "duplicate_anomaly_count": len(suppressed_duplicates),
+        "anomaly_filter_reason_counts": dict(anomaly_filter_reason_counts + Counter({"duplicate_anomaly": len(suppressed_duplicates)})),
+        "finding_promotion_reason": _top_counter_key(finding_promotion_reason_counts),
+        "finding_promotion_reason_counts": dict(finding_promotion_reason_counts),
+        "finding_rejection_reason": _top_counter_key(finding_rejection_reason_counts),
+        "finding_rejection_reason_counts": dict(finding_rejection_reason_counts),
         "deduped_detected_candidates": unique_detected,
         "total_detected_candidates": total_detected_candidates,
         "unique_detected_candidates": unique_detected,
@@ -2241,9 +2751,13 @@ def _evaluate_site(
         "false_positive_filtered_count": _review_status_counts(exploratory_anomalies).get("likely_false_positive", 0),
         "action_diversity_score": action_diversity_score,
         "unique_action_type_count": len([key for key, value in action_counts.items() if int(value or 0) > 0]),
+        "repeated_action_type_count": _repeated_action_type_count(action_counts),
+        "repeated_strategy_count": _repeated_action_type_count(action_counts),
+        "consecutive_same_strategy_count": int(history.get("consecutive_same_strategy_count", 0) or 0),
         "unique_clicked_target_count": len(unique_clicked_targets),
         "open_detail_panel_count": int(action_counts.get("open_detail_panel", 0)),
         "click_retry_button_count": int(action_counts.get("click_retry_button", 0)),
+        "repeated_submit_action_count": int(history.get("repeated_submit_action_count", 0) or 0),
         "functional_action_count": int(signal_summary.get("functional_action_count", 0.0)),
         "first_functional_action_step": first_click_step if int(signal_summary.get("functional_action_count", 0.0)) > 0 else None,
         "unique_functional_action_type_count": len(
@@ -2280,6 +2794,23 @@ def _evaluate_site(
         "reward_submit_result_checked": float(signal_summary.get("reward_submit_result_checked", 0.0)),
         "penalty_login_flow_incomplete_early_stop": float(signal_summary.get("penalty_login_flow_incomplete_early_stop", 0.0)),
         "penalty_targetless_action_success": float(signal_summary.get("penalty_targetless_action_success", 0.0)),
+        "reward_api_response_checked": float(signal_summary.get("reward_api_response_checked", 0.0)),
+        "reward_api_schema_checked": float(signal_summary.get("reward_api_schema_checked", 0.0)),
+        "reward_api_console_checked": float(signal_summary.get("reward_api_console_checked", 0.0)),
+        "reward_failed_action_followup_verification": float(signal_summary.get("reward_failed_action_followup_verification", 0.0)),
+        "api_page_coverage_reward_total": float(signal_summary.get("api_page_coverage_reward_total", 0.0)),
+        "penalty_repeated_inspect_layout_same_context": float(signal_summary.get("penalty_repeated_inspect_layout_same_context", 0.0)),
+        "reward_required_opportunity_executed": float(signal_summary.get("reward_required_opportunity_executed", 0.0)),
+        "reward_required_opportunity_verified": float(signal_summary.get("reward_required_opportunity_verified", 0.0)),
+        "reward_action_coverage_increase": float(signal_summary.get("reward_action_coverage_increase", 0.0)),
+        "reward_anomaly_verification_executed": float(signal_summary.get("reward_anomaly_verification_executed", 0.0)),
+        "opportunity_shaping_reward_total": float(signal_summary.get("opportunity_shaping_reward_total", 0.0)),
+        "penalty_finish_required_opportunity_remaining": float(signal_summary.get("penalty_finish_required_opportunity_remaining", 0.0)),
+        "penalty_finish_blocked_repeat": float(signal_summary.get("penalty_finish_blocked_repeat", 0.0)),
+        "penalty_repeated_opportunity_selected": float(signal_summary.get("penalty_repeated_opportunity_selected", 0.0)),
+        "penalty_verified_opportunity_repeated": float(signal_summary.get("penalty_verified_opportunity_repeated", 0.0)),
+        "penalty_failed_action_missing_reason": float(signal_summary.get("penalty_failed_action_missing_reason", 0.0)),
+        "opportunity_shaping_penalty_total": float(signal_summary.get("opportunity_shaping_penalty_total", 0.0)),
         "known_bug_reward_total": 0.0,
         "signal_reward_total": float(signal_summary.get("signal_reward_total", 0.0)),
         "exploration_reward_total": float(signal_summary.get("exploration_reward_total", 0.0)),
@@ -2485,21 +3016,22 @@ def _evaluate_site(
         )
         if int(action_counts.get("click_element", 0)) == 0:
             result["warnings"].append("WARNING: open-ended site was not interacted with; click exploration is required.")
-        if int(action_counts.get("inspect_dom", 0)) > 50:
-            result["warnings"].append("WARNING: inspect_dom repeated excessively.")
-        if action_diversity_score < 0.5:
-            result["warnings"].append("WARNING: action diversity is low.")
+    if int(action_counts.get("inspect_dom", 0)) > 50:
+        result["warnings"].append("WARNING: inspect_dom repeated excessively.")
+    if action_diversity_score < 0.5:
+        result["warnings"].append("WARNING: action diversity is low.")
+    final_live_status = "failed" if site_failed or str(result.get("scan_status") or "").startswith("failed") else "completed"
     _write_live_status(
         live_status_dir,
         scan_id=scan_id,
-        status="completed",
-        stage="scan_completed",
+        status=final_live_status,
+        stage="scan_failed" if final_live_status == "failed" else "scan_completed",
         current_site=site_id,
         current_episode=episodes,
-        current_step=max_steps,
+        current_step=executed_action_count,
         latest_screenshot_path=str(live_status_dir / "latest.png") if live_status_dir is not None and (live_status_dir / "latest.png").exists() else None,
-        last_screenshot_ok=True,
-        last_screenshot_error=None,
+        last_screenshot_ok=final_live_status != "failed",
+        last_screenshot_error=str(result.get("runner_exception") or result.get("error_message") or "") if final_live_status == "failed" else None,
     )
     return result
 
@@ -2511,6 +3043,7 @@ def _apply_eval_fallback_mask(
     history: Mapping[str, Any],
 ) -> tuple[np.ndarray, str, int]:
     mask = np.asarray(action_mask, dtype=np.float32).copy()
+    original_mask = mask.copy()
     site_id = _site_id_from_observation(observation)
     warning = ""
     repeated = 0
@@ -2644,18 +3177,28 @@ def _apply_eval_fallback_mask(
         warning = f"WARNING: {site_id} policy selected inspect_dom repeatedly; action fallback applied."
     if _is_openended_observation(observation) and inspect_dom_total >= 10:
         _disable_action_type(action_space, mask, "inspect_dom")
+        repeated = 1
         _record_fallback_reason(history, "policy_selected_meta_action")
         if isinstance(history, dict):
             _record_meta_suppression(history)
         warning = warning or f"WARNING: {site_id} inspect_dom budget exhausted; action fallback applied."
     if site_id == "site9800" and inspect_layout_total >= 8:
         _disable_action_type(action_space, mask, "inspect_layout")
+        repeated = 1
         _record_fallback_reason(history, "policy_selected_meta_action")
         if isinstance(history, dict):
             _record_meta_suppression(history)
         warning = warning or f"WARNING: {site_id} inspect_layout budget exhausted; action fallback applied."
     elif _is_openended_observation(observation) and inspect_layout_total >= 12:
         _disable_action_type(action_space, mask, "inspect_layout")
+        repeated = 1
+        _record_fallback_reason(history, "policy_selected_meta_action")
+        if isinstance(history, dict):
+            _record_meta_suppression(history)
+        warning = warning or f"WARNING: {site_id} inspect_layout budget exhausted; action fallback applied."
+    elif inspect_layout_total >= 6:
+        _disable_action_type(action_space, mask, "inspect_layout")
+        repeated = 1
         _record_fallback_reason(history, "policy_selected_meta_action")
         if isinstance(history, dict):
             _record_meta_suppression(history)
@@ -2664,7 +3207,8 @@ def _apply_eval_fallback_mask(
         _record_fallback_reason(history, "invalid_action_index")
         repeated = 1
         warning = warning or f"WARNING: {site_id} invalid action mask; global fallback applied."
-        _apply_global_fallback(action_space, mask)
+        if not _restore_pending_required_opportunity_action(action_space, mask, original_mask, history):
+            _apply_global_fallback(action_space, mask, observation, history)
     if _delay_finish_when_unclicked_candidates(action_space, mask, observation, history) > 0:
         _record_fallback_reason(history, "exploration_redirect")
         warning = warning or f"WARNING: {site_id} finish_episode delayed; unclicked functional candidates remain."
@@ -3007,8 +3551,96 @@ def _disable_element_key_action(
     return blocked
 
 
-def _apply_global_fallback(action_space: ActionSpace, mask: np.ndarray) -> None:
+def _restore_pending_required_opportunity_action(
+    action_space: ActionSpace,
+    mask: np.ndarray,
+    original_mask: np.ndarray,
+    history: Mapping[str, Any],
+) -> bool:
+    opportunities = history.get("action_opportunities", []) if isinstance(history, Mapping) else []
+    if not isinstance(opportunities, list):
+        return False
+    exhausted_meta = _meta_action_exhausted(history)
+    pending = [
+        item
+        for item in opportunities
+        if isinstance(item, Mapping)
+        and bool(item.get("required"))
+        and not bool(item.get("executed"))
+        and not bool(item.get("verified"))
+        and not bool(item.get("failed"))
+        and not str(item.get("skipped_reason") or "")
+    ]
+    type_rank = {
+        "click_button": 0,
+        "click_link": 1,
+        "fill_text_input": 2,
+        "fill_search_input": 3,
+        "select_option": 4,
+        "click_submit": 5,
+        "submit_form": 6,
+        "inspect_network": 20,
+        "inspect_console": 21,
+        "verify_action_result": 30,
+        "verify_anomaly_reproduction": 40,
+        "inspect_dom": 50,
+    }
+    ordered = sorted(
+        pending,
+        key=lambda item: (
+            type_rank.get(str(item.get("opportunity_type") or ""), 99),
+            -float(item.get("priority", 0.0) or 0.0),
+            str(item.get("opportunity_id") or ""),
+        ),
+    )
+    for opportunity in ordered:
+        for action_id in action_ids_for_opportunities([opportunity], action_space):
+            if action_id < 0 or action_id >= len(original_mask):
+                continue
+            try:
+                action_type = str(action_space.decode(action_id).get("action_type") or "")
+            except Exception:
+                action_type = ""
+            if action_type in exhausted_meta:
+                continue
+            if float(original_mask[action_id]) > 0.0:
+                mask[action_id] = 1.0
+                if isinstance(history, dict):
+                    history["required_opportunity_restored_after_empty_mask_count"] = int(
+                        history.get("required_opportunity_restored_after_empty_mask_count", 0) or 0
+                    ) + 1
+                return True
+    return False
+
+
+def _meta_action_exhausted(history: Mapping[str, Any]) -> set[str]:
+    counts = history.get("action_type_counts", {}) if isinstance(history, Mapping) else {}
+    if not isinstance(counts, Mapping):
+        counts = {}
+    exhausted: set[str] = set()
+    if int(counts.get("inspect_dom", 0) or 0) >= 3 or int(history.get("repeated_inspect_dom_count", 0) or 0) >= 2:
+        exhausted.add("inspect_dom")
+    if int(counts.get("inspect_layout", 0) or 0) >= 6:
+        exhausted.add("inspect_layout")
+    if int(counts.get("inspect_network", 0) or 0) >= 1:
+        exhausted.add("inspect_network")
+    if int(counts.get("inspect_console", 0) or 0) >= 1:
+        exhausted.add("inspect_console")
+    return exhausted
+
+
+def _apply_global_fallback(
+    action_space: ActionSpace,
+    mask: np.ndarray,
+    observation: Mapping[str, Any] | None = None,
+    history: Mapping[str, Any] | None = None,
+) -> None:
+    exhausted_meta = _meta_action_exhausted(history or {})
+    if observation is not None and history is not None and _prefer_functional_actions(action_space, mask, observation, history):
+        return
     for action_type in ("inspect_dom", "inspect_network", "scroll_down", "finish_episode", "noop"):
+        if action_type in exhausted_meta:
+            continue
         try:
             action_id = action_space.encode(action_type, 0)
         except ValueError:
@@ -3074,6 +3706,9 @@ def _delay_finish_when_unclicked_candidates(
     observation: Mapping[str, Any],
     history: Mapping[str, Any],
 ) -> int:
+    summary = history.get("opportunity_summary", {}) if isinstance(history, Mapping) else {}
+    if isinstance(summary, Mapping) and bool(summary.get("finish_allowed", False)):
+        return 0
     if not _has_unclicked_functional_candidate(action_space, mask, observation, history):
         return 0
     delayed = 0
@@ -3195,9 +3830,12 @@ def _functional_priority_action_ids(
         if action_id >= len(mask) or float(mask[action_id]) <= 0.0:
             continue
         score = float(candidate.get("openended_action_priority", 0.0) or 0.0)
+        semantic_type = str(candidate.get("semantic_action_type") or "").lower()
         score += 6.0 if clicked_count <= 0 else -20.0
         score += 5.0 if bool(candidate.get("is_high_value_functional_candidate")) and clicked_count <= 0 else 0.0
-        score += 4.0 if str(candidate.get("semantic_action_type") or "") == "workout_add" else 0.0
+        score += 5.0 if semantic_type in {"add", "purchase", "checkout"} and clicked_count <= 0 else 0.0
+        score += 4.5 if semantic_type in {"cart", "quantity"} and clicked_count <= 0 else 0.0
+        score += 4.0 if semantic_type in {"detail", "details", "product_detail", "workout_add"} and clicked_count <= 0 else 0.0
         score += 1.0 if str(candidate.get("role") or "").lower() == "button" else 0.0
         score += 0.5 if str(candidate.get("tag") or "").lower() == "button" else 0.0
         ranked.append((score, action_id))
@@ -3282,6 +3920,26 @@ def _login_form_unprocessed(observation: Mapping[str, Any], history: Mapping[str
 
 
 def _required_observation_work_pending(observation: Mapping[str, Any], history: Mapping[str, Any]) -> str:
+    opportunity_summary = history.get("opportunity_summary", {}) if isinstance(history, Mapping) else {}
+    if isinstance(opportunity_summary, Mapping):
+        if int(opportunity_summary.get("remaining_required_opportunity_count", 0) or 0) > 0:
+            return "required_opportunity"
+        if int(opportunity_summary.get("unverified_anomaly_count", 0) or 0) > 0:
+            return "unverified_anomaly"
+        blocked_reason = str(opportunity_summary.get("finish_blocked_reason") or "")
+        if opportunity_summary.get("finish_allowed") is False and blocked_reason in {
+            "required_opportunity_remaining",
+            "unverified_anomaly_remaining",
+            "login_flow_incomplete",
+            "observed_opportunity_remaining",
+            "observed_actionable_opportunity_remaining",
+        }:
+            return "required_opportunity"
+    page_verification = history.get("page_verification", {}) if isinstance(history, Mapping) else {}
+    if isinstance(page_verification, Mapping):
+        remaining = page_verification.get("required_verifications_remaining")
+        if isinstance(remaining, list) and remaining:
+            return "required_verification"
     login_flow = history.get("login_flow", {}) if isinstance(history, Mapping) else {}
     if isinstance(login_flow, Mapping) and bool(login_flow.get("has_login_form")):
         remaining = login_flow.get("required_actions_remaining")
@@ -3291,36 +3949,175 @@ def _required_observation_work_pending(observation: Mapping[str, Any], history: 
             return "login_form"
     if _login_form_unprocessed(observation, history):
         return "login_form"
-    runtime = observation.get("runtime_signals", {}) if isinstance(observation, Mapping) else {}
-    infra = observation.get("infra_signals", {}) if isinstance(observation, Mapping) else {}
-    if not isinstance(runtime, Mapping):
-        runtime = {}
-    if not isinstance(infra, Mapping):
-        infra = {}
-    counts = history.get("action_type_counts", {})
+    # Deliberately no blanket "any network/console activity was never inspected"
+    # check here: action_opportunity_service.py already generates a required
+    # inspect_console opportunity whenever there's a real console error, and an
+    # inspect_network opportunity that's only required on API/JSON-typed pages
+    # (not on every page that merely loaded a script or image) -- both already
+    # feed remaining_required_opportunity_count above. A separate, blunter
+    # unconditional copy here previously disagreed with that more nuanced
+    # judgment and reproduced the same finish/reject infinite loop this
+    # function exists to prevent.
+    return ""
+
+
+def _effective_no_progress_patience(configured_patience: int, history: Mapping[str, Any]) -> int:
+    try:
+        configured = int(configured_patience or 0)
+    except (TypeError, ValueError):
+        configured = 0
+    if configured > 0:
+        if isinstance(history, dict):
+            history["effective_no_progress_patience"] = configured
+            history["dynamic_no_progress_patience_enabled"] = False
+        return configured
+    summary = history.get("opportunity_summary", {}) if isinstance(history, Mapping) else {}
+    if not isinstance(summary, Mapping):
+        default_patience = 8
+    else:
+        generated = int(summary.get("generated_opportunity_count", 0) or 0)
+        candidates = int(summary.get("detected_candidate_count", 0) or 0)
+        default_patience = 4 + min(generated, 24) // 4 + min(candidates, 40) // 12
+        default_patience = max(6, min(14, default_patience))
+    if isinstance(history, dict):
+        history["effective_no_progress_patience"] = default_patience
+        history["dynamic_no_progress_patience_enabled"] = True
+    return default_patience
+
+
+def _progress_policy_allows_finish(observation: Mapping[str, Any], history: Mapping[str, Any]) -> bool:
+    if _required_observation_work_pending(observation, history):
+        return False
+    if _commerce_work_pending(observation, history):
+        return False
+    summary = history.get("opportunity_summary", {}) if isinstance(history, Mapping) else {}
+    if not isinstance(summary, Mapping):
+        return int(history.get("no_progress_steps", 0) or 0) >= _effective_no_progress_patience(0, history)
+    remaining = int(summary.get("remaining_opportunity_count", 0) or 0)
+    generated = int(summary.get("generated_opportunity_count", 0) or 0)
+    coverage = float(
+        summary.get("action_opportunity_coverage_rate", summary.get("action_coverage_rate", 0.0)) or 0.0
+    )
+    threshold = float(summary.get("coverage_threshold", 0.7) or 0.7)
+    if remaining <= 0 or generated <= 0:
+        return True
+    counts = history.get("action_type_counts", {}) if isinstance(history, Mapping) else {}
+    finish_attempts = int(counts.get("finish_episode", 0) or 0) if isinstance(counts, Mapping) else 0
+    if finish_attempts > 0 and remaining > 0 and not _remaining_opportunities_exhausted(history):
+        if isinstance(history, dict):
+            history["finish_repeated_with_remaining_opportunities_blocked"] = int(
+                history.get("finish_repeated_with_remaining_opportunities_blocked", 0) or 0
+            ) + 1
+        return False
+    if coverage >= threshold:
+        return True
+    if _remaining_opportunities_exhausted(history):
+        return True
+    patience = _effective_no_progress_patience(0, history)
+    return bool(patience > 0 and int(history.get("no_progress_steps", 0) or 0) >= patience)
+
+
+def _commerce_work_pending(observation: Mapping[str, Any], history: Mapping[str, Any]) -> bool:
+    candidates = observation.get("candidate_elements", []) if isinstance(observation, Mapping) else []
+    if not isinstance(candidates, list):
+        candidates = []
+    has_commerce_candidate = any(
+        isinstance(candidate, Mapping)
+        and (
+            str(candidate.get("semantic_action_type") or "").lower() in {"cart", "purchase", "add"}
+            or bool(
+                candidate.get("is_purchase_action")
+                or candidate.get("is_cart_related")
+                or candidate.get("is_quantity_control")
+                or candidate.get("is_cart_quantity_related")
+                or candidate.get("is_checkout_related")
+                or candidate.get("is_detail_trigger")
+            )
+            or _commerce_candidate_text_match(candidate)
+        )
+        for candidate in candidates
+    )
+    if not has_commerce_candidate:
+        return False
+    counts = history.get("action_type_counts", {}) if isinstance(history, Mapping) else {}
     if not isinstance(counts, Mapping):
         counts = {}
-    network_count = max(
-        _safe_int(runtime.get("playwright_request_count"), 0),
-        _safe_int(runtime.get("network_request_count"), 0),
-        len(runtime.get("network_entries", [])) if isinstance(runtime.get("network_entries"), list) else 0,
+    if int(counts.get("change_viewport_mobile", 0) or 0) <= 0:
+        if isinstance(history, dict):
+            history["finish_blocked_by_missing_mobile_commerce_check"] = int(
+                history.get("finish_blocked_by_missing_mobile_commerce_check", 0) or 0
+            ) + 1
+        return True
+    return False
+
+
+def _commerce_candidate_text_match(candidate: Mapping[str, Any]) -> bool:
+    text = " ".join(
+        str(candidate.get(key) or "")
+        for key in ("name", "text", "placeholder", "title", "href", "id", "class_name")
+    ).lower()
+    return any(
+        token in text
+        for token in (
+            "cart",
+            "basket",
+            "checkout",
+            "payment",
+            "purchase",
+            "order",
+            "product",
+            "detail",
+            "quantity",
+            "qty",
+            "subtotal",
+            "total",
+            "장바구니",
+            "카트",
+            "결제",
+            "주문",
+            "상품",
+            "상세",
+            "수량",
+            "합계",
+        )
     )
-    if network_count > 0 and int(counts.get("inspect_network", 0) or 0) <= 0:
-        return "network_verification"
-    console_count = max(
-        _safe_int(runtime.get("playwright_console_error_count"), 0),
-        _safe_int(runtime.get("console_error_count"), 0),
-        _safe_int(infra.get("console_error_count"), 0),
-    )
-    if console_count > 0 and int(counts.get("inspect_console", 0) or 0) <= 0:
-        return "console_verification"
-    return ""
+
+
+def _remaining_opportunities_exhausted(history: Mapping[str, Any]) -> bool:
+    opportunities = history.get("action_opportunities", []) if isinstance(history, Mapping) else []
+    if not isinstance(opportunities, list):
+        return False
+    if not opportunities:
+        return False
+    blacklisted = {str(item) for item in history.get("blacklisted_action_signatures", set()) or set()}
+    failed_counts = history.get("failed_action_signature_counts", {})
+    if not isinstance(failed_counts, Mapping):
+        failed_counts = {}
+    remaining = [
+        item
+        for item in opportunities
+        if isinstance(item, Mapping)
+        and not bool(item.get("executed"))
+        and not bool(item.get("verified"))
+        and not bool(item.get("failed"))
+        and not str(item.get("skipped_reason") or "")
+    ]
+    if not remaining:
+        return True
+    for item in remaining:
+        signature = str(item.get("action_signature") or "")
+        if not signature:
+            return False
+        if signature not in blacklisted and int(failed_counts.get(signature, 0) or 0) < 2:
+            return False
+    return True
 
 
 def _attach_action_history_to_observation(observation: Mapping[str, Any], history: Mapping[str, Any]) -> None:
     if not isinstance(observation, dict):
         return
     _update_login_flow_state(history, observation=observation, action=None, after_observation=None)
+    _update_page_verification_state(history, observation=observation, action=None, after_observation=None)
     obs_history = observation.setdefault("history", {})
     if not isinstance(obs_history, dict):
         obs_history = {}
@@ -3328,6 +4125,106 @@ def _attach_action_history_to_observation(observation: Mapping[str, Any], histor
     counts = history.get("action_type_counts", {})
     obs_history["action_type_counts"] = dict(counts) if isinstance(counts, Mapping) else {}
     obs_history["login_flow"] = dict(history.get("login_flow", {}) or {})
+    obs_history["page_verification"] = dict(history.get("page_verification", {}) or {})
+    obs_history["step_index"] = int(history.get("step_index", 0) or 0)
+    obs_history["min_steps"] = int(history.get("min_steps", 0) or 0)
+    _copy_policy_safe_action_history(obs_history, history)
+    opportunity_state = build_action_opportunities(observation, history)
+    obs_history["action_opportunities"] = opportunity_state["opportunities"]
+    obs_history["opportunity_summary"] = opportunity_state["summary"]
+    history["action_opportunities"] = opportunity_state["opportunities"]
+    history["opportunity_summary"] = opportunity_state["summary"]
+
+
+def _select_dom_exhaustive_action_id(
+    action_space: ActionSpace,
+    observation: Mapping[str, Any],
+    action_mask: np.ndarray,
+    history: Mapping[str, Any],
+) -> int | None:
+    if not isinstance(history, Mapping):
+        return None
+    opportunities = history.get("action_opportunities", [])
+    if not isinstance(opportunities, list):
+        return None
+    force_optional = _should_force_optional_opportunity(history)
+    executed_signatures = {str(item) for item in history.get("executed_action_signatures", set()) or set()}
+    blacklisted_signatures = {str(item) for item in history.get("blacklisted_action_signatures", set()) or set()}
+    pending: list[Mapping[str, Any]] = []
+    for opportunity in opportunities:
+        if not isinstance(opportunity, Mapping):
+            continue
+        signature = str(opportunity.get("action_signature") or "")
+        if bool(opportunity.get("verified")) or bool(opportunity.get("executed")):
+            continue
+        if str(opportunity.get("skipped_reason") or ""):
+            continue
+        if signature and (signature in executed_signatures or signature in blacklisted_signatures):
+            continue
+        opportunity_type = str(opportunity.get("opportunity_type") or "")
+        if not bool(opportunity.get("required")) and not opportunity_type.startswith("verify_") and not force_optional:
+            continue
+        pending.append(opportunity)
+    if not pending:
+        return None
+    type_rank = {
+        "fill_email_input": 0,
+        "fill_username_or_email": 1,
+        "fill_password_input": 2,
+        "fill_password": 3,
+        "click_submit": 4,
+        "click_login_submit": 5,
+        "submit_form": 6,
+        "verify_login_result": 7,
+        "verify_runtime_error": 8,
+        "inspect_console": 9,
+        "inspect_network": 10,
+        "verify_action_result": 11,
+        "verify_duplicated_rendering": 12,
+        "verify_anomaly": 13,
+        "verify_anomaly_reproduction": 14,
+        "fill_search_input": 20,
+        "fill_text_input": 21,
+        "select_option": 22,
+        "click_button": 23,
+        "click_link": 30,
+        "inspect_dom": 40,
+        "inspect_layout": 45,
+        "change_viewport_once": 50,
+    }
+    ordered = sorted(
+        pending,
+        key=lambda item: (
+            not bool(item.get("required")),
+            type_rank.get(str(item.get("opportunity_type") or ""), 99),
+            -float(item.get("priority", 0.0) or 0.0),
+            str(item.get("action_signature") or item.get("opportunity_id") or ""),
+        ),
+    )
+    for opportunity in ordered:
+        for action_id in action_ids_for_opportunities([opportunity], action_space):
+            if 0 <= action_id < len(action_mask) and float(action_mask[action_id]) > 0.0:
+                if isinstance(history, dict):
+                    history["dom_exhaustive_action_selected_count"] = int(history.get("dom_exhaustive_action_selected_count", 0) or 0) + 1
+                    history["last_dom_exhaustive_opportunity_id"] = str(opportunity.get("opportunity_id") or "")
+                    history["last_dom_exhaustive_opportunity_type"] = str(opportunity.get("opportunity_type") or "")
+                return int(action_id)
+    return None
+
+
+def _should_force_optional_opportunity(history: Mapping[str, Any]) -> bool:
+    summary = history.get("opportunity_summary", {}) if isinstance(history, Mapping) else {}
+    if not isinstance(summary, Mapping):
+        return False
+    if int(summary.get("remaining_required_opportunity_count", 0) or 0) > 0:
+        return False
+    if int(summary.get("unverified_anomaly_count", 0) or 0) > 0:
+        return False
+    optional_count = int(summary.get("optional_opportunity_count", 0) or 0)
+    remaining = int(summary.get("remaining_opportunity_count", 0) or 0)
+    coverage = float(summary.get("action_opportunity_coverage_rate", 0.0) or 0.0)
+    threshold = float(summary.get("coverage_threshold", 0.7) or 0.7)
+    return bool(optional_count > 0 and remaining > 0 and coverage < threshold)
 
 
 def _safe_int(value: Any, default: int = 0) -> int:
@@ -3335,6 +4232,280 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return int(value)
     except Exception:
         return default
+
+
+def _first_counter_key(counter: Mapping[str, Any]) -> str:
+    for key, value in counter.items():
+        try:
+            if int(value or 0) > 0:
+                return str(key)
+        except Exception:
+            continue
+    return ""
+
+
+def _first_result_completed_reason(results: Iterable[Mapping[str, Any]]) -> str:
+    for result in results:
+        reason = str(result.get("completed_reason") or "")
+        if reason:
+            return reason
+    return "completed"
+
+
+def _opportunity_debug_summary(
+    history: Mapping[str, Any],
+    opportunity_summary: Mapping[str, Any],
+    *,
+    finish_guard_checked_steps: int,
+    finish_guard_blocked_count: int,
+    ppo_selected_opportunity_ids: list[str],
+) -> dict[str, Any]:
+    opportunities = history.get("action_opportunities", []) if isinstance(history, Mapping) else []
+    if not isinstance(opportunities, list):
+        opportunities = []
+    count_by_type: Counter[str] = Counter()
+    required_by_type: Counter[str] = Counter()
+    masked_count = 0
+    enabled_count = 0
+    repeated_action_blocked_count = int(history.get("repeated_action_redirect_count", 0) or 0) + int(
+        history.get("repeated_target_redirect_count", 0) or 0
+    )
+    for item in opportunities:
+        if not isinstance(item, Mapping):
+            continue
+        opportunity_type = str(item.get("opportunity_type") or "")
+        if not opportunity_type:
+            continue
+        count_by_type[opportunity_type] += 1
+        if bool(item.get("required")):
+            required_by_type[opportunity_type] += 1
+        if bool(item.get("masked")):
+            masked_count += 1
+        if bool(item.get("enabled", True)):
+            enabled_count += 1
+    return {
+        "opportunity_engine_enabled": True,
+        "opportunity_generation_called": bool(opportunities or opportunity_summary),
+        "opportunity_count_by_type": dict(count_by_type),
+        "required_count_by_type": dict(required_by_type),
+        "finish_guard_enabled": True,
+        "finish_guard_checked_steps": int(finish_guard_checked_steps),
+        "finish_guard_blocked_count": int(finish_guard_blocked_count),
+        "action_mask_from_opportunity_enabled": True,
+        "enabled_opportunity_count": int(enabled_count),
+        "masked_opportunity_count": int(masked_count),
+        "ppo_selected_opportunity_ids": list(ppo_selected_opportunity_ids),
+        "repeated_action_blocker_enabled": True,
+        "repeated_action_blocked_count": int(repeated_action_blocked_count),
+        "anomaly_verification_required_enabled": True,
+        "anomaly_verification_remaining_count": int(opportunity_summary.get("unverified_anomaly_count", 0) or 0),
+    }
+
+
+def _empty_initial_scan_counts() -> Dict[str, Any]:
+    return {
+        "initial_candidate_count": 0,
+        "initial_clickable_count": 0,
+        "initial_fillable_count": 0,
+        "initial_link_count": 0,
+        "initial_button_count": 0,
+        "initial_form_count": 0,
+        "initial_network_request_count": 0,
+        "generated_opportunity_count": 0,
+        "required_opportunity_count": 0,
+        "enabled_opportunity_count": 0,
+        "masked_opportunity_count": 0,
+        "finish_only_mask": False,
+        "finish_allowed_at_step_0": False,
+        "finish_blocked_reason_at_step_0": "",
+        "opportunity_generation_error": "",
+        "action_mask_error": "",
+    }
+
+
+def _initial_scan_counts(
+    observation: Mapping[str, Any],
+    history: Mapping[str, Any],
+    action_space: ActionSpace,
+) -> Dict[str, Any]:
+    counts = _empty_initial_scan_counts()
+    candidates = observation.get("candidate_elements", []) if isinstance(observation, Mapping) else []
+    candidates = candidates if isinstance(candidates, list) else []
+    runtime = observation.get("runtime_signals", {}) if isinstance(observation, Mapping) else {}
+    runtime = runtime if isinstance(runtime, Mapping) else {}
+    counts["initial_candidate_count"] = len(candidates)
+    counts["initial_clickable_count"] = sum(1 for item in candidates if isinstance(item, Mapping) and bool(item.get("clickable")))
+    counts["initial_fillable_count"] = sum(1 for item in candidates if isinstance(item, Mapping) and bool(item.get("fillable")))
+    counts["initial_link_count"] = sum(
+        1
+        for item in candidates
+        if isinstance(item, Mapping)
+        and (bool(item.get("href")) or str(item.get("role") or "").lower() == "link" or str(item.get("tag") or "").lower() == "a")
+    )
+    counts["initial_button_count"] = sum(
+        1
+        for item in candidates
+        if isinstance(item, Mapping)
+        and (str(item.get("role") or "").lower() == "button" or str(item.get("tag") or "").lower() == "button")
+    )
+    counts["initial_form_count"] = sum(1 for item in candidates if isinstance(item, Mapping) and bool(item.get("is_form_control")))
+    counts["initial_network_request_count"] = max(
+        _safe_int(runtime.get("network_request_count"), 0),
+        _safe_int(runtime.get("playwright_request_count"), 0),
+        len(runtime.get("network_entries", [])) if isinstance(runtime.get("network_entries"), list) else 0,
+    )
+    obs_history = observation.get("history", {}) if isinstance(observation, Mapping) else {}
+    summary = obs_history.get("opportunity_summary", {}) if isinstance(obs_history, Mapping) else {}
+    opportunities = obs_history.get("action_opportunities", []) if isinstance(obs_history, Mapping) else []
+    if isinstance(summary, Mapping):
+        counts["generated_opportunity_count"] = int(summary.get("generated_opportunity_count", 0) or 0)
+        counts["required_opportunity_count"] = int(summary.get("required_opportunity_count", 0) or 0)
+        counts["finish_allowed_at_step_0"] = bool(summary.get("finish_allowed", False))
+        counts["finish_blocked_reason_at_step_0"] = str(summary.get("finish_blocked_reason") or "")
+    if isinstance(opportunities, list):
+        counts["enabled_opportunity_count"] = sum(1 for item in opportunities if isinstance(item, Mapping) and not bool(item.get("masked", False)))
+        counts["masked_opportunity_count"] = sum(1 for item in opportunities if isinstance(item, Mapping) and bool(item.get("masked", False)))
+    try:
+        mask = action_space.build_action_mask(observation)
+        enabled = action_space.enabled_action_types(mask)
+        counts["finish_only_mask"] = bool(enabled and set(enabled) == {"finish_episode"})
+    except Exception as exc:
+        counts["action_mask_error"] = str(exc)
+    return counts
+
+
+def _zero_action_diagnosis(
+    *,
+    executed_action_count: int,
+    raw_event_log_count: int,
+    action_loop_entered: bool,
+    action_loop_iteration_count: int,
+    initial_observation_collected: bool,
+    candidate_count: int,
+    generated_opportunity_count: int,
+    enabled_opportunity_count: int,
+    finish_only_mask: bool,
+) -> str:
+    if executed_action_count > 0 and raw_event_log_count > 0:
+        return ""
+    if not initial_observation_collected:
+        return "failed_no_observation"
+    if not action_loop_entered or action_loop_iteration_count <= 0:
+        return "action_loop_not_entered"
+    if candidate_count <= 0:
+        return "no_candidates_from_observation"
+    if candidate_count > 0 and generated_opportunity_count <= 0:
+        return "candidates_exist_but_no_opportunities_generated"
+    if generated_opportunity_count > 0 and enabled_opportunity_count <= 0:
+        return "opportunities_exist_but_all_masked"
+    if finish_only_mask:
+        return "finish_allowed_too_early"
+    if enabled_opportunity_count > 0:
+        return "opportunities_enabled_but_no_action_executed"
+    if raw_event_log_count <= 0:
+        return "report_log_missing"
+    return "invalid_completed_without_actions"
+
+
+_NORMAL_COMPLETED_REASONS = {
+    "completed_by_required_opportunities_done",
+    "completed_by_coverage_saturation",
+    "completed_by_no_new_opportunity",
+    "completed_at_max_steps_with_all_required_done",
+}
+
+
+def _scan_completed_reason(
+    *,
+    site_failed: bool,
+    early_stop_reasons: Mapping[str, Any],
+    max_steps_reached: bool,
+    opportunity_summary: Mapping[str, Any],
+    failed_action_count: int = 0,
+    missing_failure_reason_count: int = 0,
+    network_failure_detected: bool = False,
+    network_verification_success: bool = False,
+    console_error_detected: bool = False,
+    console_verification_performed: bool = False,
+    console_verification_success: bool = False,
+) -> str:
+    if site_failed:
+        return "forced_by_error"
+    remaining_required = int(opportunity_summary.get("remaining_required_opportunity_count", 0) or 0)
+    unverified = int(opportunity_summary.get("unverified_anomaly_count", 0) or 0)
+    failed_opportunity_count = int(opportunity_summary.get("failed_opportunity_count", 0) or 0)
+    coverage = float(opportunity_summary.get("action_opportunity_coverage_rate", 0.0) or 0.0)
+    threshold = float(opportunity_summary.get("coverage_threshold", 0.7) or 0.7)
+    required_done = remaining_required == 0 and float(opportunity_summary.get("required_opportunity_completion_rate", 0.0) or 0.0) >= 1.0
+    has_login_form = bool(opportunity_summary.get("has_login_form", False))
+    login_flow_completed = bool(opportunity_summary.get("login_flow_completed", False))
+    if missing_failure_reason_count > 0:
+        return "invalid_completed_with_unexplained_action_failure"
+    if has_login_form and not login_flow_completed:
+        return "invalid_completed_with_login_flow_incomplete"
+    if failed_action_count > 0 and (remaining_required > 0 or unverified > 0 or failed_opportunity_count > 0):
+        return "invalid_completed_with_remaining_required_or_unverified_issue"
+    if network_failure_detected and not network_verification_success:
+        return "invalid_completed_with_remaining_required_or_unverified_issue"
+    if console_error_detected and (not console_verification_performed or not console_verification_success):
+        return "invalid_completed_with_remaining_required_or_unverified_issue"
+    if remaining_required > 0 and (unverified > 0 or failed_opportunity_count > 0):
+        return "invalid_completed_with_remaining_required_or_unverified_issue"
+    if max_steps_reached:
+        if remaining_required > 0:
+            return "invalid_completed_with_remaining_required_or_unverified_issue"
+        if unverified > 0:
+            return "invalid_completed_with_remaining_required_or_unverified_issue"
+        return "completed_at_max_steps_with_all_required_done"
+    if remaining_required > 0:
+        return "invalid_completed_with_remaining_required_or_unverified_issue"
+    if unverified > 0:
+        return "invalid_completed_with_remaining_required_or_unverified_issue"
+    if failed_opportunity_count > 0:
+        return "invalid_completed_with_remaining_required_or_unverified_issue"
+    if bool(opportunity_summary.get("finish_allowed", False)) and required_done:
+        if str(_first_counter_key(early_stop_reasons)) == "no_progress":
+            return "completed_by_no_new_opportunity"
+        return "completed_by_required_opportunities_done"
+    return "invalid_completed_before_finish_allowed"
+
+
+def _action_budget_status(*, max_steps_reached: bool, completed_reason: str, opportunity_summary: Mapping[str, Any]) -> str:
+    if completed_reason == "invalid_completed_with_login_flow_incomplete":
+        return "insufficient_login_flow"
+    if max_steps_reached:
+        if completed_reason == "completed_at_max_steps_with_all_required_done":
+            return "completed_at_max_steps_with_all_required_done"
+        if int(opportunity_summary.get("remaining_required_opportunity_count", 0) or 0) > 0:
+            return "insufficient_verification"
+        return "stopped_by_max_steps"
+    if completed_reason in _NORMAL_COMPLETED_REASONS:
+        return "completed_before_max_steps"
+    if completed_reason.startswith("invalid_completed_with"):
+        return "insufficient_verification"
+    return "incomplete_before_max_steps"
+
+
+def _opportunity_completion_status(opportunity_summary: Mapping[str, Any]) -> str:
+    if int(opportunity_summary.get("remaining_required_opportunity_count", 0) or 0) > 0:
+        return "remaining_required"
+    if int(opportunity_summary.get("unverified_anomaly_count", 0) or 0) > 0:
+        return "unverified_anomaly"
+    return "all_required_done"
+
+
+def _valid_scan_run(opportunity_summary: Mapping[str, Any], *, completed_reason: str, site_failed: bool) -> bool:
+    if site_failed or completed_reason not in _NORMAL_COMPLETED_REASONS:
+        return False
+    if bool(opportunity_summary.get("has_login_form", False)) and not bool(opportunity_summary.get("login_flow_completed", False)):
+        return False
+    if int(opportunity_summary.get("remaining_required_opportunity_count", 0) or 0) > 0:
+        return False
+    if int(opportunity_summary.get("unverified_anomaly_count", 0) or 0) > 0:
+        return False
+    if float(opportunity_summary.get("required_opportunity_completion_rate", 0.0) or 0.0) < 1.0:
+        return False
+    return True
 
 
 def _action_signature(action: Mapping[str, Any]) -> str:
@@ -3817,6 +4988,7 @@ def _classify_candidates(candidates: Any) -> tuple[List[Dict[str, Any]], List[Di
         if not isinstance(item, Mapping):
             continue
         row = dict(item)
+        _apply_evidence_review_status(row)
         evidence = row.get("evidence", {}) if isinstance(row.get("evidence"), Mapping) else {}
         row["classification"] = "confirmed_known_bug" if row.get("matched_bug_id") else (
             "catalog_related_anomaly" if _is_catalog_related(evidence) else "exploratory_anomaly"
@@ -3885,6 +5057,61 @@ def _ensure_human_review_fields(row: Dict[str, Any]) -> None:
     else:
         row["human_review_status"] = "needs_review"
         row["review_question"] = f"Verify whether {target or anomaly_type} is a real visible UI failure or an expected no-op."
+
+
+def _apply_evidence_review_status(row: Dict[str, Any]) -> None:
+    if str(row.get("human_review_status") or "") in {"likely_true_positive", "likely_false_positive"}:
+        return
+    evidence = row.get("evidence", {}) if isinstance(row.get("evidence"), Mapping) else {}
+    anomaly_type = str(row.get("type") or "")
+    confidence = float(row.get("confidence", 0.0) or 0.0)
+    if _strong_finding_evidence(row):
+        row["human_review_status"] = "likely_true_positive"
+        row.setdefault("review_question", f"Verify the browser-visible evidence for {anomaly_type}.")
+        return
+    if anomaly_type == "layout-overlap" and confidence < 0.75:
+        row["human_review_status"] = "needs_review"
+        row.setdefault("review_question", "Desktop overlap signal is weak; verify on mobile or with exact bounding boxes.")
+    elif anomaly_type == "button-no-response" and not _meaningful_no_response_target(evidence):
+        row["human_review_status"] = "needs_review"
+        row.setdefault("review_question", "Verify whether this generic/no-navigation click is expected to change state.")
+
+
+def _strong_finding_evidence(anomaly: Mapping[str, Any]) -> bool:
+    anomaly_type = str(anomaly.get("type") or "")
+    confidence = float(anomaly.get("confidence", 0.0) or 0.0)
+    evidence = anomaly.get("evidence", {}) if isinstance(anomaly.get("evidence"), Mapping) else {}
+    if anomaly_type in {"api-5xx", "network-error", "runtime-exception", "console-error"}:
+        return confidence >= 0.7
+    if anomaly_type in {"cart-quantity-mismatch", "cart-total-mismatch", "product-detail-mismatch", "api-ui-mismatch", "weak-password-validation"}:
+        return confidence >= 0.74
+    if anomaly_type == "layout-overlap":
+        return bool(evidence.get("mobile_viewport") and evidence.get("overlapping_elements_identified") and confidence >= 0.75)
+    if anomaly_type == "button-no-response":
+        no_observable_change = not any(
+            bool(evidence.get(key))
+            for key in ("route_changed", "cart_state_changed", "toast_visible", "modal_opened", "form_opened")
+        )
+        return bool(confidence >= 0.74 and no_observable_change and _meaningful_no_response_target(evidence))
+    return False
+
+
+def _meaningful_no_response_target(evidence: Mapping[str, Any]) -> bool:
+    target = evidence.get("target") if isinstance(evidence.get("target"), Mapping) else {}
+    semantic = str(target.get("semantic_action_type") or evidence.get("semantic_action_type") or "").lower() if isinstance(target, Mapping) else ""
+    text = " ".join(
+        str(value or "")
+        for value in (
+            evidence.get("clicked_text"),
+            evidence.get("clicked_name"),
+            evidence.get("candidate_text"),
+            target.get("text") if isinstance(target, Mapping) else "",
+            target.get("name") if isinstance(target, Mapping) else "",
+        )
+    ).lower()
+    return semantic in {"add", "cart", "checkout", "submit", "save", "detail", "details"} or any(
+        token in text for token in ("add", "cart", "checkout", "submit", "save", "order", "buy", "detail")
+    )
 
 
 def _review_target_text(evidence: Mapping[str, Any]) -> str:
@@ -4074,6 +5301,21 @@ def _candidate_severity(anomaly: Mapping[str, Any]) -> str:
     return "Medium" if anomaly_type == "form-no-feedback" else "Low"
 
 
+def _issue_severity(item: Mapping[str, Any]) -> str:
+    if not isinstance(item, Mapping):
+        return ""
+    risk = item.get("risk")
+    if isinstance(risk, Mapping):
+        value = risk.get("severity") or risk.get("level")
+        if value:
+            return str(value).lower()
+    value = item.get("severity") or item.get("level")
+    if value:
+        return str(value).lower()
+    value = _candidate_severity(item)
+    return str(value or "").lower()
+
+
 def _candidate_keywords(target: str, anomaly: Mapping[str, Any]) -> List[str]:
     words = [part.strip() for part in str(target or "").replace("/", " ").split() if part.strip()]
     lowered = sorted({word.lower() for word in words})
@@ -4200,6 +5442,46 @@ def _action_diversity_score(action_counts: Mapping[str, Any]) -> float:
     main_actions = {"click_element", "inspect_layout", "inspect_dom", "change_viewport_mobile"}
     used = sum(1 for action_type in main_actions if int(action_counts.get(action_type, 0) or 0) > 0)
     return round(used / len(main_actions), 4)
+
+
+def _repeated_action_type_count(action_counts: Mapping[str, Any]) -> int:
+    return sum(max(0, int(value or 0) - 1) for value in action_counts.values())
+
+
+def _anomaly_promotion_reason(anomaly: Mapping[str, Any]) -> str:
+    confidence = float(anomaly.get("confidence", 0.0) or 0.0)
+    status = str(anomaly.get("human_review_status") or "")
+    anomaly_type = str(anomaly.get("type") or "")
+    if _strong_finding_evidence(anomaly):
+        return "strong_browser_evidence"
+    if status == "likely_true_positive":
+        return "human_review_likely_true_positive"
+    if status in {"needs_review", "needs_verification"}:
+        return f"{status}_followup_required"
+    if anomaly_type in {"console-error", "runtime-exception", "api-forbidden", "api-4xx", "api-5xx", "network-error"} and confidence >= 0.5:
+        return "runtime_or_network_signal"
+    if confidence >= 0.8:
+        return "high_confidence_observed_signal"
+    if confidence >= 0.6:
+        return "confidence_threshold_met"
+    return ""
+
+
+def _anomaly_rejection_reason(anomaly: Mapping[str, Any]) -> str:
+    confidence = float(anomaly.get("confidence", 0.0) or 0.0)
+    status = str(anomaly.get("human_review_status") or "")
+    if status == "likely_false_positive":
+        return "human_review_likely_false_positive"
+    if confidence < 0.6:
+        return "low_confidence_below_threshold"
+    return "not_promoted_by_report_filter"
+
+
+def _top_counter_key(counter: Mapping[str, Any]) -> str:
+    if not counter:
+        return ""
+    items = sorted(((str(key), int(value or 0)) for key, value in counter.items()), key=lambda item: (-item[1], item[0]))
+    return items[0][0] if items else ""
 
 
 def _repeated_action_rate_from_action_counts(action_counts: Mapping[str, Any]) -> float:

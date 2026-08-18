@@ -23,7 +23,7 @@ class SearchInputNoEffectTests(unittest.TestCase):
         )
         self.assertFalse(any(item.get("type") in {"button-no-response", "form-no-feedback"} for item in anomalies))
 
-    def test_search_textbox_fill_then_no_effect_can_be_anomaly(self) -> None:
+    def test_search_textbox_fill_alone_not_no_feedback_anomaly(self) -> None:
         candidate = _search_candidate()
         anomalies = detect_anomalies(
             _observation(candidate),
@@ -31,8 +31,41 @@ class SearchInputNoEffectTests(unittest.TestCase):
             {"action": {"action_type": "fill_input", "candidate_index": 0}},
             {},
         )
+        self.assertFalse(any(item.get("type") == "form-no-feedback" for item in anomalies))
+
+    def test_search_enter_then_no_effect_can_be_anomaly(self) -> None:
+        candidate = _search_candidate()
+        anomalies = detect_anomalies(
+            _observation(candidate),
+            _observation(candidate),
+            {"action": {"action_type": "press_enter", "candidate_index": 0}},
+            {},
+        )
         self.assertTrue(any(item.get("type") == "form-no-feedback" for item in anomalies))
         self.assertTrue(any(item.get("evidence", {}).get("search_input_no_effect") for item in anomalies))
+
+    def test_plain_title_textbox_fill_alone_not_no_feedback_anomaly(self) -> None:
+        candidate = _search_candidate()
+        candidate.update(
+            {
+                "bid": "title",
+                "text": "게시글 제목을 입력하세요",
+                "name": "게시글 제목을 입력하세요",
+                "role": "textbox",
+                "input_type": "text",
+                "semantic_action_type": "",
+                "is_search_related": False,
+            }
+        )
+
+        anomalies = detect_anomalies(
+            _observation(candidate),
+            _observation(candidate),
+            {"action": {"action_type": "fill_input", "candidate_index": 0, "input_value": "테스트 제목"}},
+            {},
+        )
+
+        self.assertFalse(any(item.get("type") == "form-no-feedback" for item in anomalies))
 
 
 def _search_candidate() -> dict:

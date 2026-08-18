@@ -129,6 +129,7 @@ def build_per_site_metric(site_id: str, site_result: Mapping[str, Any]) -> dict[
     return {
         "site_id": site_id,
         "status": str(site_result.get("status") or "ok"),
+        "scan_status": str(site_result.get("scan_status") or ""),
         "error_type": str(site_result.get("error_type") or ""),
         "error_message": str(site_result.get("error_message") or ""),
         "requested_episodes": requested_episodes,
@@ -136,6 +137,38 @@ def build_per_site_metric(site_id: str, site_result: Mapping[str, Any]) -> dict[
         "valid_completed_episodes": valid_completed_episodes,
         "valid_for_comparison": valid_for_comparison,
         "excluded_from_comparison_reason": str(site_result.get("excluded_from_comparison_reason") or ""),
+        "runner_started": bool(site_result.get("runner_started", False)),
+        "page_loaded": bool(site_result.get("page_loaded", False)),
+        "initial_observation_collected": bool(site_result.get("initial_observation_collected", False)),
+        "action_loop_entered": bool(site_result.get("action_loop_entered", False)),
+        "action_loop_iteration_count": int(site_result.get("action_loop_iteration_count") or 0),
+        "action_loop_exit_reason": str(site_result.get("action_loop_exit_reason") or ""),
+        "first_observation_candidate_count": int(site_result.get("first_observation_candidate_count") or 0),
+        "initial_candidate_count": int(site_result.get("initial_candidate_count") or 0),
+        "initial_clickable_count": int(site_result.get("initial_clickable_count") or 0),
+        "initial_fillable_count": int(site_result.get("initial_fillable_count") or 0),
+        "initial_link_count": int(site_result.get("initial_link_count") or 0),
+        "initial_button_count": int(site_result.get("initial_button_count") or 0),
+        "initial_form_count": int(site_result.get("initial_form_count") or 0),
+        "initial_network_request_count": int(site_result.get("initial_network_request_count") or 0),
+        "enabled_opportunity_count": int(site_result.get("enabled_opportunity_count") or 0),
+        "masked_opportunity_count": int(site_result.get("masked_opportunity_count") or 0),
+        "finish_only_mask": bool(site_result.get("finish_only_mask", False)),
+        "finish_allowed_at_step_0": bool(site_result.get("finish_allowed_at_step_0", False)),
+        "finish_blocked_reason_at_step_0": str(site_result.get("finish_blocked_reason_at_step_0") or ""),
+        "opportunity_generation_error": str(site_result.get("opportunity_generation_error") or ""),
+        "action_mask_error": str(site_result.get("action_mask_error") or ""),
+        "runner_exception": str(site_result.get("runner_exception") or ""),
+        "runner_exception_traceback": str(site_result.get("runner_exception_traceback") or ""),
+        "zero_action_diagnosis": str(site_result.get("zero_action_diagnosis") or ""),
+        "runner_action_count": int(site_result.get("runner_action_count", site_result.get("executed_action_count", 0)) or 0),
+        "episode_action_count": int(site_result.get("episode_action_count", site_result.get("executed_action_count", 0)) or 0),
+        "result_json_action_count": int(site_result.get("result_json_action_count", site_result.get("executed_action_count", 0)) or 0),
+        "report_json_action_count": int(site_result.get("report_json_action_count") or 0),
+        "frontend_rendered_action_count": int(site_result.get("frontend_rendered_action_count") or 0),
+        "pdf_rendered_action_count": int(site_result.get("pdf_rendered_action_count") or 0),
+        "log_pipeline_mismatch": bool(site_result.get("log_pipeline_mismatch", False)),
+        "log_pipeline_mismatch_stage": str(site_result.get("log_pipeline_mismatch_stage") or ""),
         "partial": bool(site_result.get("partial", False)),
         "base_url": site_result.get("requested_base_url") or site_result.get("base_url") or "",
         "episode_count": completed_episodes,
@@ -148,6 +181,35 @@ def build_per_site_metric(site_id: str, site_result: Mapping[str, Any]) -> dict[
         **counts,
         **metrics,
         "invalid_action_count": int(site_result.get("invalid_action_count") or 0),
+        "failed_action_count": int(site_result.get("failed_action_count") or 0),
+        "runner_failed_action_count": int(site_result.get("runner_failed_action_count") or site_result.get("failed_action_count") or 0),
+        "timeline_failed_action_count": int(site_result.get("timeline_failed_action_count") or site_result.get("failed_action_count") or 0),
+        "summary_failed_action_count": int(site_result.get("summary_failed_action_count") or site_result.get("failed_action_count") or 0),
+        "exploration_failed_action_count": int(site_result.get("exploration_failed_action_count") or site_result.get("failed_action_count") or 0),
+        "failed_action_count_mismatch": bool(site_result.get("failed_action_count_mismatch", False)),
+        "failed_action_count_mismatch_reason": str(site_result.get("failed_action_count_mismatch_reason") or ""),
+        "valid_report_metrics": bool(site_result.get("valid_report_metrics", True)),
+        "report_metric_warning": str(site_result.get("report_metric_warning") or ""),
+        "raw_event_log_count": int(site_result.get("raw_event_log_count") or 0),
+        "action_log_count": int(site_result.get("action_log_count") or site_result.get("executed_action_count") or 0),
+        "state_log_count": int(site_result.get("state_log_count") or 0),
+        "network_log_count": int(site_result.get("network_log_count") or 0),
+        "issue_log_count": int(site_result.get("issue_log_count") or 0),
+        "network_failure_count": int(site_result.get("network_failure_count") or site_result.get("network_error_count") or 0),
+        "console_error_count": int(site_result.get("console_error_count") or 0),
+        "runtime_error_count": int(site_result.get("runtime_error_count") or site_result.get("runtime_exception_count") or 0),
+        "warning_issue_count": int(site_result.get("warning_issue_count") or 0),
+        "critical_issue_count": int(site_result.get("critical_issue_count") or 0),
+        "total_problem_signal_count": int(site_result.get("total_problem_signal_count") or 0),
+        "missing_failure_reason_count": int(site_result.get("missing_failure_reason_count") or 0),
+        "network_failure_detected": bool(site_result.get("network_failure_detected", False)),
+        "network_verification_required": bool(site_result.get("network_verification_required", False)),
+        "network_verification_performed": bool(site_result.get("network_verification_performed", False)),
+        "network_verification_success": bool(site_result.get("network_verification_success", False)),
+        "console_error_detected": bool(site_result.get("console_error_detected", False)),
+        "console_verification_required": bool(site_result.get("console_verification_required", False)),
+        "console_verification_performed": bool(site_result.get("console_verification_performed", False)),
+        "console_verification_success": bool(site_result.get("console_verification_success", False)),
         "no_effect_action_count": int(site_result.get("no_effect_action_count") or 0),
         "avg_step_elapsed_ms": int(site_result.get("avg_step_elapsed_ms") or 0),
         "max_step_elapsed_ms": int(site_result.get("max_step_elapsed_ms") or 0),
@@ -186,6 +248,74 @@ def build_per_site_metric(site_id: str, site_result: Mapping[str, Any]) -> dict[
         "reward_submit_result_checked": float(site_result.get("reward_submit_result_checked") or 0.0),
         "penalty_login_flow_incomplete_early_stop": float(site_result.get("penalty_login_flow_incomplete_early_stop") or 0.0),
         "penalty_targetless_action_success": float(site_result.get("penalty_targetless_action_success") or 0.0),
+        "api_page_coverage_reward_total": float(site_result.get("api_page_coverage_reward_total") or 0.0),
+        "penalty_repeated_inspect_layout_same_context": float(site_result.get("penalty_repeated_inspect_layout_same_context") or 0.0),
+        "opportunity_shaping_reward_total": float(site_result.get("opportunity_shaping_reward_total") or 0.0),
+        "opportunity_shaping_penalty_total": float(site_result.get("opportunity_shaping_penalty_total") or 0.0),
+        "reward_required_opportunity_executed": float(site_result.get("reward_required_opportunity_executed") or 0.0),
+        "reward_required_opportunity_verified": float(site_result.get("reward_required_opportunity_verified") or 0.0),
+        "reward_action_coverage_increase": float(site_result.get("reward_action_coverage_increase") or 0.0),
+        "reward_anomaly_verification_executed": float(site_result.get("reward_anomaly_verification_executed") or 0.0),
+        "reward_finish_episode_when_allowed": float(site_result.get("reward_finish_episode_when_allowed") or 0.0),
+        "penalty_finish_required_opportunity_remaining": float(site_result.get("penalty_finish_required_opportunity_remaining") or 0.0),
+        "penalty_finish_blocked_repeat": float(site_result.get("penalty_finish_blocked_repeat") or 0.0),
+        "penalty_repeated_opportunity_selected": float(site_result.get("penalty_repeated_opportunity_selected") or 0.0),
+        "penalty_verified_opportunity_repeated": float(site_result.get("penalty_verified_opportunity_repeated") or 0.0),
+        "penalty_failed_action_missing_reason": float(site_result.get("penalty_failed_action_missing_reason") or 0.0),
+        "detected_candidate_count": int(site_result.get("detected_candidate_count") or 0),
+        "raw_anomaly_candidate_count": int(site_result.get("raw_anomaly_candidate_count") or site_result.get("raw_detected_candidates") or 0),
+        "filtered_false_positive_count": int(site_result.get("filtered_false_positive_count") or 0),
+        "duplicate_anomaly_count": int(site_result.get("duplicate_anomaly_count") or site_result.get("suppressed_duplicate_count") or 0),
+        "anomaly_filter_reason_counts": dict(site_result.get("anomaly_filter_reason_counts") or {}) if isinstance(site_result.get("anomaly_filter_reason_counts"), Mapping) else {},
+        "finding_promotion_reason": str(site_result.get("finding_promotion_reason") or ""),
+        "finding_promotion_reason_counts": dict(site_result.get("finding_promotion_reason_counts") or {}) if isinstance(site_result.get("finding_promotion_reason_counts"), Mapping) else {},
+        "finding_rejection_reason": str(site_result.get("finding_rejection_reason") or ""),
+        "finding_rejection_reason_counts": dict(site_result.get("finding_rejection_reason_counts") or {}) if isinstance(site_result.get("finding_rejection_reason_counts"), Mapping) else {},
+        "generated_opportunity_count": int(site_result.get("generated_opportunity_count") or 0),
+        "required_opportunity_count": int(site_result.get("required_opportunity_count") or 0),
+        "optional_opportunity_count": int(site_result.get("optional_opportunity_count") or 0),
+        "executed_opportunity_count": int(site_result.get("executed_opportunity_count") or 0),
+        "verified_opportunity_count": int(site_result.get("verified_opportunity_count") or 0),
+        "skipped_opportunity_count": int(site_result.get("skipped_opportunity_count") or 0),
+        "failed_opportunity_count": int(site_result.get("failed_opportunity_count") or 0),
+        "remaining_opportunity_count": int(site_result.get("remaining_opportunity_count") or 0),
+        "pending_opportunity_count": int(site_result.get("pending_opportunity_count") or site_result.get("remaining_opportunity_count") or 0),
+        "remaining_required_opportunity_count": int(site_result.get("remaining_required_opportunity_count") or 0),
+        "pending_required_opportunity_count": int(site_result.get("pending_required_opportunity_count") or site_result.get("remaining_required_opportunity_count") or 0),
+        "action_opportunity_coverage_rate": float(site_result.get("action_opportunity_coverage_rate") or 0.0),
+        "action_coverage_rate": float(site_result.get("action_coverage_rate") or site_result.get("action_opportunity_coverage_rate") or 0.0),
+        "required_opportunity_completion_rate": float(site_result.get("required_opportunity_completion_rate") or 0.0),
+        "optional_opportunity_coverage_rate": float(site_result.get("optional_opportunity_coverage_rate") or 0.0),
+        "unverified_anomaly_count": int(site_result.get("unverified_anomaly_count") or 0),
+        "verified_finding_count": int(site_result.get("verified_finding_count") or 0),
+        "anomaly_verification_required": bool(site_result.get("anomaly_verification_required", False)),
+        "anomaly_verification_completed": bool(site_result.get("anomaly_verification_completed", False)),
+        "finish_allowed": bool(site_result.get("finish_allowed", False)),
+        "finish_blocked_reason": str(site_result.get("finish_blocked_reason") or ""),
+        "opportunity_diagnostics": list(site_result.get("opportunity_diagnostics") or []) if isinstance(site_result.get("opportunity_diagnostics"), list) else [],
+        "valid_scan_run": bool(site_result.get("valid_scan_run", False)),
+        "completed_reason": str(site_result.get("completed_reason") or ""),
+        "action_budget_status": str(site_result.get("action_budget_status") or ""),
+        "has_login_form": bool(site_result.get("has_login_form", False)),
+        "has_username_or_email_input": bool(site_result.get("has_username_or_email_input", False)),
+        "has_password_input": bool(site_result.get("has_password_input", False)),
+        "has_login_submit": bool(site_result.get("has_login_submit", False)),
+        "username_or_email_filled": bool(site_result.get("username_or_email_filled", False)),
+        "password_filled": bool(site_result.get("password_filled", False)),
+        "login_submit_clicked": bool(site_result.get("login_submit_clicked", False)),
+        "login_result_checked": bool(site_result.get("login_result_checked", False)),
+        "login_flow_attempted": bool(site_result.get("login_flow_attempted", False)),
+        "login_flow_completed": bool(site_result.get("login_flow_completed", False)),
+        "login_flow_status": str(site_result.get("login_flow_status") or ""),
+        "repeated_inspect_dom_count": int(site_result.get("repeated_inspect_dom_count") or 0),
+        "repeated_inspect_dom_penalty_applied": int(site_result.get("repeated_inspect_dom_penalty_applied") or 0),
+        "repeated_inspect_dom_blocked": int(site_result.get("repeated_inspect_dom_blocked") or 0),
+        "opportunity_debug": site_result.get("opportunity_debug") if isinstance(site_result.get("opportunity_debug"), dict) else {},
+        "dom_exhaustive_action_mode": bool(site_result.get("dom_exhaustive_action_mode", True)),
+        "max_steps_reached": bool(site_result.get("max_steps_reached", False)),
+        "stopped_by_max_steps": bool(site_result.get("stopped_by_max_steps", False)),
+        "remaining_opportunities_at_max_steps": int(site_result.get("remaining_opportunities_at_max_steps") or 0),
+        "max_steps_completion_status": str(site_result.get("max_steps_completion_status") or ""),
         "first_click_reward_count": int(site_result.get("first_click_reward_count") or 0),
         "new_action_type_reward_count": int(site_result.get("new_action_type_reward_count") or 0),
         "new_target_reward_count": int(site_result.get("new_target_reward_count") or 0),
@@ -194,6 +324,9 @@ def build_per_site_metric(site_id: str, site_result: Mapping[str, Any]) -> dict[
         "no_effect_action_penalty_count": int(site_result.get("no_effect_action_penalty_count") or 0),
         "action_diversity_score": float(site_result.get("action_diversity_score") or 0.0),
         "unique_action_type_count": int(site_result.get("unique_action_type_count") or 0),
+        "repeated_action_type_count": int(site_result.get("repeated_action_type_count") or 0),
+        "repeated_strategy_count": int(site_result.get("repeated_strategy_count") or 0),
+        "consecutive_same_strategy_count": int(site_result.get("consecutive_same_strategy_count") or 0),
         "unique_clicked_target_count": int(site_result.get("unique_clicked_target_count") or 0),
         "unique_element_key_count": int(site_result.get("unique_element_key_count") or 0),
         "unique_clicked_element_key_count": int(site_result.get("unique_clicked_element_key_count") or 0),
@@ -211,6 +344,7 @@ def build_per_site_metric(site_id: str, site_result: Mapping[str, Any]) -> dict[
         "first_click_step": site_result.get("first_click_step"),
         "open_detail_panel_count": int(site_result.get("open_detail_panel_count") or 0),
         "click_retry_button_count": int(site_result.get("click_retry_button_count") or 0),
+        "repeated_submit_action_count": int(site_result.get("repeated_submit_action_count") or 0),
         "functional_action_count": functional_action_count,
         "functional_priority_candidate_count": int(site_result.get("functional_priority_candidate_count") or 0),
         "functional_priority_click_count": int(site_result.get("functional_priority_click_count") or 0),
@@ -434,6 +568,115 @@ def aggregate_site_metrics(per_site_metrics: Sequence[Mapping[str, Any]]) -> dic
         "reward_submit_result_checked": sum(float(item.get("reward_submit_result_checked") or 0.0) for item in per_site_metrics),
         "penalty_login_flow_incomplete_early_stop": sum(float(item.get("penalty_login_flow_incomplete_early_stop") or 0.0) for item in per_site_metrics),
         "penalty_targetless_action_success": sum(float(item.get("penalty_targetless_action_success") or 0.0) for item in per_site_metrics),
+        "api_page_coverage_reward_total": sum(float(item.get("api_page_coverage_reward_total") or 0.0) for item in per_site_metrics),
+        "penalty_repeated_inspect_layout_same_context": sum(float(item.get("penalty_repeated_inspect_layout_same_context") or 0.0) for item in per_site_metrics),
+        "opportunity_shaping_reward_total": sum(float(item.get("opportunity_shaping_reward_total") or 0.0) for item in per_site_metrics),
+        "opportunity_shaping_penalty_total": sum(float(item.get("opportunity_shaping_penalty_total") or 0.0) for item in per_site_metrics),
+        "reward_required_opportunity_executed": sum(float(item.get("reward_required_opportunity_executed") or 0.0) for item in per_site_metrics),
+        "reward_required_opportunity_verified": sum(float(item.get("reward_required_opportunity_verified") or 0.0) for item in per_site_metrics),
+        "reward_action_coverage_increase": sum(float(item.get("reward_action_coverage_increase") or 0.0) for item in per_site_metrics),
+        "reward_anomaly_verification_executed": sum(float(item.get("reward_anomaly_verification_executed") or 0.0) for item in per_site_metrics),
+        "reward_finish_episode_when_allowed": sum(float(item.get("reward_finish_episode_when_allowed") or 0.0) for item in per_site_metrics),
+        "penalty_finish_required_opportunity_remaining": sum(float(item.get("penalty_finish_required_opportunity_remaining") or 0.0) for item in per_site_metrics),
+        "penalty_finish_blocked_repeat": sum(float(item.get("penalty_finish_blocked_repeat") or 0.0) for item in per_site_metrics),
+        "penalty_repeated_opportunity_selected": sum(float(item.get("penalty_repeated_opportunity_selected") or 0.0) for item in per_site_metrics),
+        "penalty_verified_opportunity_repeated": sum(float(item.get("penalty_verified_opportunity_repeated") or 0.0) for item in per_site_metrics),
+        "penalty_failed_action_missing_reason": sum(float(item.get("penalty_failed_action_missing_reason") or 0.0) for item in per_site_metrics),
+        "detected_candidate_count": sum(int(item.get("detected_candidate_count") or 0) for item in per_site_metrics),
+        "raw_anomaly_candidate_count": sum(int(item.get("raw_anomaly_candidate_count") or 0) for item in per_site_metrics),
+        "filtered_false_positive_count": sum(int(item.get("filtered_false_positive_count") or 0) for item in per_site_metrics),
+        "duplicate_anomaly_count": sum(int(item.get("duplicate_anomaly_count") or 0) for item in per_site_metrics),
+        "anomaly_filter_reason_counts": _sum_counter_dicts(item.get("anomaly_filter_reason_counts") for item in per_site_metrics),
+        "finding_promotion_reason": _top_counter_key(_sum_counter_dicts(item.get("finding_promotion_reason_counts") for item in per_site_metrics)),
+        "finding_promotion_reason_counts": _sum_counter_dicts(item.get("finding_promotion_reason_counts") for item in per_site_metrics),
+        "finding_rejection_reason": _top_counter_key(_sum_counter_dicts(item.get("finding_rejection_reason_counts") for item in per_site_metrics)),
+        "finding_rejection_reason_counts": _sum_counter_dicts(item.get("finding_rejection_reason_counts") for item in per_site_metrics),
+        "generated_opportunity_count": sum(int(item.get("generated_opportunity_count") or 0) for item in per_site_metrics),
+        "required_opportunity_count": sum(int(item.get("required_opportunity_count") or 0) for item in per_site_metrics),
+        "optional_opportunity_count": sum(int(item.get("optional_opportunity_count") or 0) for item in per_site_metrics),
+        "executed_opportunity_count": sum(int(item.get("executed_opportunity_count") or 0) for item in per_site_metrics),
+        "verified_opportunity_count": sum(int(item.get("verified_opportunity_count") or 0) for item in per_site_metrics),
+        "skipped_opportunity_count": sum(int(item.get("skipped_opportunity_count") or 0) for item in per_site_metrics),
+        "failed_opportunity_count": sum(int(item.get("failed_opportunity_count") or 0) for item in per_site_metrics),
+        "remaining_opportunity_count": sum(int(item.get("remaining_opportunity_count") or 0) for item in per_site_metrics),
+        "pending_opportunity_count": sum(int(item.get("pending_opportunity_count") or item.get("remaining_opportunity_count") or 0) for item in per_site_metrics),
+        "remaining_required_opportunity_count": sum(int(item.get("remaining_required_opportunity_count") or 0) for item in per_site_metrics),
+        "pending_required_opportunity_count": sum(int(item.get("pending_required_opportunity_count") or item.get("remaining_required_opportunity_count") or 0) for item in per_site_metrics),
+        "action_opportunity_coverage_rate": _avg_float(item.get("action_opportunity_coverage_rate") for item in per_site_metrics),
+        "action_coverage_rate": _avg_float(item.get("action_coverage_rate", item.get("action_opportunity_coverage_rate")) for item in per_site_metrics),
+        "required_opportunity_completion_rate": _avg_float(item.get("required_opportunity_completion_rate") for item in per_site_metrics),
+        "optional_opportunity_coverage_rate": _avg_float(item.get("optional_opportunity_coverage_rate") for item in per_site_metrics),
+        "unverified_anomaly_count": sum(int(item.get("unverified_anomaly_count") or 0) for item in per_site_metrics),
+        "verified_finding_count": sum(int(item.get("verified_finding_count") or 0) for item in per_site_metrics),
+        "anomaly_verification_required": any(bool(item.get("anomaly_verification_required", False)) for item in per_site_metrics),
+        "anomaly_verification_completed": all(bool(item.get("anomaly_verification_completed", False)) for item in per_site_metrics) if per_site_metrics else False,
+        "finish_allowed": all(bool(item.get("finish_allowed", False)) for item in per_site_metrics) if per_site_metrics else False,
+        "finish_blocked_reason": next((str(item.get("finish_blocked_reason") or "") for item in per_site_metrics if item.get("finish_blocked_reason")), ""),
+        "opportunity_diagnostics": sorted(
+            {
+                str(reason)
+                for item in per_site_metrics
+                if isinstance(item.get("opportunity_diagnostics"), list)
+                for reason in item.get("opportunity_diagnostics", [])
+                if str(reason)
+            }
+        ),
+        "valid_scan_run": all(bool(item.get("valid_scan_run", False)) for item in per_site_metrics) if per_site_metrics else False,
+        "dom_exhaustive_action_mode": all(bool(item.get("dom_exhaustive_action_mode", True)) for item in per_site_metrics) if per_site_metrics else True,
+        "has_login_form": any(bool(item.get("has_login_form", False)) for item in per_site_metrics),
+        "has_username_or_email_input": any(bool(item.get("has_username_or_email_input", False)) for item in per_site_metrics),
+        "has_password_input": any(bool(item.get("has_password_input", False)) for item in per_site_metrics),
+        "has_login_submit": any(bool(item.get("has_login_submit", False)) for item in per_site_metrics),
+        "username_or_email_filled": any(bool(item.get("username_or_email_filled", False)) for item in per_site_metrics),
+        "password_filled": any(bool(item.get("password_filled", False)) for item in per_site_metrics),
+        "login_submit_clicked": any(bool(item.get("login_submit_clicked", False)) for item in per_site_metrics),
+        "login_result_checked": any(bool(item.get("login_result_checked", False)) for item in per_site_metrics),
+        "login_flow_attempted": any(bool(item.get("login_flow_attempted", False)) for item in per_site_metrics),
+        "login_flow_completed": all(bool(item.get("login_flow_completed", False)) for item in per_site_metrics if bool(item.get("has_login_form", False))) if any(bool(item.get("has_login_form", False)) for item in per_site_metrics) else False,
+        "login_flow_status": next((str(item.get("login_flow_status") or "") for item in per_site_metrics if item.get("login_flow_status")), ""),
+        "scan_status": next((str(item.get("scan_status") or "") for item in per_site_metrics if item.get("scan_status")), ""),
+        "runner_started": any(bool(item.get("runner_started", False)) for item in per_site_metrics),
+        "page_loaded": any(bool(item.get("page_loaded", False)) for item in per_site_metrics),
+        "initial_observation_collected": any(bool(item.get("initial_observation_collected", False)) for item in per_site_metrics),
+        "action_loop_entered": any(bool(item.get("action_loop_entered", False)) for item in per_site_metrics),
+        "action_loop_iteration_count": sum(int(item.get("action_loop_iteration_count") or 0) for item in per_site_metrics),
+        "action_loop_exit_reason": next((str(item.get("action_loop_exit_reason") or "") for item in per_site_metrics if item.get("action_loop_exit_reason")), ""),
+        "first_observation_candidate_count": sum(int(item.get("first_observation_candidate_count") or 0) for item in per_site_metrics),
+        "initial_candidate_count": sum(int(item.get("initial_candidate_count") or 0) for item in per_site_metrics),
+        "initial_clickable_count": sum(int(item.get("initial_clickable_count") or 0) for item in per_site_metrics),
+        "initial_fillable_count": sum(int(item.get("initial_fillable_count") or 0) for item in per_site_metrics),
+        "initial_link_count": sum(int(item.get("initial_link_count") or 0) for item in per_site_metrics),
+        "initial_button_count": sum(int(item.get("initial_button_count") or 0) for item in per_site_metrics),
+        "initial_form_count": sum(int(item.get("initial_form_count") or 0) for item in per_site_metrics),
+        "initial_network_request_count": sum(int(item.get("initial_network_request_count") or 0) for item in per_site_metrics),
+        "enabled_opportunity_count": sum(int(item.get("enabled_opportunity_count") or 0) for item in per_site_metrics),
+        "masked_opportunity_count": sum(int(item.get("masked_opportunity_count") or 0) for item in per_site_metrics),
+        "finish_only_mask": any(bool(item.get("finish_only_mask", False)) for item in per_site_metrics),
+        "finish_allowed_at_step_0": any(bool(item.get("finish_allowed_at_step_0", False)) for item in per_site_metrics),
+        "finish_blocked_reason_at_step_0": next((str(item.get("finish_blocked_reason_at_step_0") or "") for item in per_site_metrics if item.get("finish_blocked_reason_at_step_0")), ""),
+        "opportunity_generation_error": next((str(item.get("opportunity_generation_error") or "") for item in per_site_metrics if item.get("opportunity_generation_error")), ""),
+        "action_mask_error": next((str(item.get("action_mask_error") or "") for item in per_site_metrics if item.get("action_mask_error")), ""),
+        "runner_exception": next((str(item.get("runner_exception") or "") for item in per_site_metrics if item.get("runner_exception")), ""),
+        "runner_exception_traceback": next((str(item.get("runner_exception_traceback") or "") for item in per_site_metrics if item.get("runner_exception_traceback")), ""),
+        "zero_action_diagnosis": next((str(item.get("zero_action_diagnosis") or "") for item in per_site_metrics if item.get("zero_action_diagnosis")), ""),
+        "runner_action_count": sum(int(item.get("runner_action_count") or 0) for item in per_site_metrics),
+        "episode_action_count": sum(int(item.get("episode_action_count") or 0) for item in per_site_metrics),
+        "result_json_action_count": sum(int(item.get("result_json_action_count") or 0) for item in per_site_metrics),
+        "report_json_action_count": sum(int(item.get("report_json_action_count") or 0) for item in per_site_metrics),
+        "frontend_rendered_action_count": sum(int(item.get("frontend_rendered_action_count") or 0) for item in per_site_metrics),
+        "pdf_rendered_action_count": sum(int(item.get("pdf_rendered_action_count") or 0) for item in per_site_metrics),
+        "log_pipeline_mismatch": any(bool(item.get("log_pipeline_mismatch", False)) for item in per_site_metrics),
+        "log_pipeline_mismatch_stage": next((str(item.get("log_pipeline_mismatch_stage") or "") for item in per_site_metrics if item.get("log_pipeline_mismatch_stage")), ""),
+        "completed_reason": next((str(item.get("completed_reason") or "") for item in per_site_metrics if item.get("completed_reason")), ""),
+        "action_budget_status": next((str(item.get("action_budget_status") or "") for item in per_site_metrics if item.get("action_budget_status")), ""),
+        "repeated_inspect_dom_count": sum(int(item.get("repeated_inspect_dom_count") or 0) for item in per_site_metrics),
+        "repeated_inspect_dom_penalty_applied": sum(int(item.get("repeated_inspect_dom_penalty_applied") or 0) for item in per_site_metrics),
+        "repeated_inspect_dom_blocked": sum(int(item.get("repeated_inspect_dom_blocked") or 0) for item in per_site_metrics),
+        "opportunity_debug": _aggregate_opportunity_debug(per_site_metrics),
+        "max_steps_reached": any(bool(item.get("max_steps_reached", False)) for item in per_site_metrics),
+        "stopped_by_max_steps": any(bool(item.get("stopped_by_max_steps", False)) for item in per_site_metrics),
+        "remaining_opportunities_at_max_steps": sum(int(item.get("remaining_opportunities_at_max_steps") or 0) for item in per_site_metrics),
+        "max_steps_completion_status": next((str(item.get("max_steps_completion_status") or "") for item in per_site_metrics if item.get("max_steps_completion_status")), ""),
         "first_click_reward_count": sum(int(item.get("first_click_reward_count") or 0) for item in per_site_metrics),
         "new_action_type_reward_count": sum(int(item.get("new_action_type_reward_count") or 0) for item in per_site_metrics),
         "new_target_reward_count": sum(int(item.get("new_target_reward_count") or 0) for item in per_site_metrics),
@@ -442,6 +685,9 @@ def aggregate_site_metrics(per_site_metrics: Sequence[Mapping[str, Any]]) -> dic
         "no_effect_action_penalty_count": sum(int(item.get("no_effect_action_penalty_count") or 0) for item in per_site_metrics),
         "action_diversity_score": _avg_float(item.get("action_diversity_score") for item in per_site_metrics),
         "unique_action_type_count": sum(int(item.get("unique_action_type_count") or 0) for item in per_site_metrics),
+        "repeated_action_type_count": sum(int(item.get("repeated_action_type_count") or 0) for item in per_site_metrics),
+        "repeated_strategy_count": sum(int(item.get("repeated_strategy_count") or 0) for item in per_site_metrics),
+        "consecutive_same_strategy_count": sum(int(item.get("consecutive_same_strategy_count") or 0) for item in per_site_metrics),
         "unique_clicked_target_count": sum(int(item.get("unique_clicked_target_count") or 0) for item in per_site_metrics),
         "unique_element_key_count": sum(int(item.get("unique_element_key_count") or 0) for item in per_site_metrics),
         "unique_clicked_element_key_count": sum(int(item.get("unique_clicked_element_key_count") or 0) for item in per_site_metrics),
@@ -457,6 +703,7 @@ def aggregate_site_metrics(per_site_metrics: Sequence[Mapping[str, Any]]) -> dic
         ),
         "open_detail_panel_count": sum(int(item.get("open_detail_panel_count") or 0) for item in per_site_metrics),
         "click_retry_button_count": sum(int(item.get("click_retry_button_count") or 0) for item in per_site_metrics),
+        "repeated_submit_action_count": sum(int(item.get("repeated_submit_action_count") or 0) for item in per_site_metrics),
         "functional_action_count": sum(int(item.get("functional_action_count") or 0) for item in per_site_metrics),
         "functional_priority_candidate_count": sum(int(item.get("functional_priority_candidate_count") or 0) for item in per_site_metrics),
         "functional_priority_click_count": sum(int(item.get("functional_priority_click_count") or 0) for item in per_site_metrics),
@@ -513,6 +760,35 @@ def aggregate_site_metrics(per_site_metrics: Sequence[Mapping[str, Any]]) -> dic
         "high_value_button_no_response_count": sum(int(item.get("high_value_button_no_response_count") or 0) for item in per_site_metrics),
         "no_effect_click_to_new_candidate_fallback_count": sum(int(item.get("no_effect_click_to_new_candidate_fallback_count") or 0) for item in per_site_metrics),
         "action_fallback_count": sum(int(item.get("action_fallback_count") or 0) for item in per_site_metrics),
+        "failed_action_count": sum(int(item.get("failed_action_count") or 0) for item in per_site_metrics),
+        "runner_failed_action_count": sum(int(item.get("runner_failed_action_count") or 0) for item in per_site_metrics),
+        "timeline_failed_action_count": sum(int(item.get("timeline_failed_action_count") or 0) for item in per_site_metrics),
+        "summary_failed_action_count": sum(int(item.get("summary_failed_action_count") or 0) for item in per_site_metrics),
+        "exploration_failed_action_count": sum(int(item.get("exploration_failed_action_count") or 0) for item in per_site_metrics),
+        "failed_action_count_mismatch": any(bool(item.get("failed_action_count_mismatch", False)) for item in per_site_metrics),
+        "failed_action_count_mismatch_reason": next((str(item.get("failed_action_count_mismatch_reason") or "") for item in per_site_metrics if item.get("failed_action_count_mismatch_reason")), ""),
+        "valid_report_metrics": all(bool(item.get("valid_report_metrics", True)) for item in per_site_metrics) if per_site_metrics else True,
+        "report_metric_warning": next((str(item.get("report_metric_warning") or "") for item in per_site_metrics if item.get("report_metric_warning")), ""),
+        "raw_event_log_count": sum(int(item.get("raw_event_log_count") or 0) for item in per_site_metrics),
+        "action_log_count": sum(int(item.get("action_log_count") or 0) for item in per_site_metrics),
+        "state_log_count": sum(int(item.get("state_log_count") or 0) for item in per_site_metrics),
+        "network_log_count": sum(int(item.get("network_log_count") or 0) for item in per_site_metrics),
+        "issue_log_count": sum(int(item.get("issue_log_count") or 0) for item in per_site_metrics),
+        "network_failure_count": sum(int(item.get("network_failure_count") or 0) for item in per_site_metrics),
+        "console_error_count": sum(int(item.get("console_error_count") or 0) for item in per_site_metrics),
+        "runtime_error_count": sum(int(item.get("runtime_error_count") or 0) for item in per_site_metrics),
+        "warning_issue_count": sum(int(item.get("warning_issue_count") or 0) for item in per_site_metrics),
+        "critical_issue_count": sum(int(item.get("critical_issue_count") or 0) for item in per_site_metrics),
+        "total_problem_signal_count": sum(int(item.get("total_problem_signal_count") or 0) for item in per_site_metrics),
+        "missing_failure_reason_count": sum(int(item.get("missing_failure_reason_count") or 0) for item in per_site_metrics),
+        "network_failure_detected": any(bool(item.get("network_failure_detected", False)) for item in per_site_metrics),
+        "network_verification_required": any(bool(item.get("network_verification_required", False)) for item in per_site_metrics),
+        "network_verification_performed": any(bool(item.get("network_verification_performed", False)) for item in per_site_metrics),
+        "network_verification_success": any(bool(item.get("network_verification_success", False)) for item in per_site_metrics),
+        "console_error_detected": any(bool(item.get("console_error_detected", False)) for item in per_site_metrics),
+        "console_verification_required": any(bool(item.get("console_verification_required", False)) for item in per_site_metrics),
+        "console_verification_performed": any(bool(item.get("console_verification_performed", False)) for item in per_site_metrics),
+        "console_verification_success": any(bool(item.get("console_verification_success", False)) for item in per_site_metrics),
         "action_fallback_invalid_action_count": sum(int(item.get("action_fallback_invalid_action_count") or 0) for item in per_site_metrics),
         "action_fallback_visited_element_key_count": sum(int(item.get("action_fallback_visited_element_key_count") or 0) for item in per_site_metrics),
         "action_fallback_low_value_candidate_count": sum(int(item.get("action_fallback_low_value_candidate_count") or 0) for item in per_site_metrics),
@@ -797,6 +1073,98 @@ def _rate_from_counts(counts: Any) -> float:
         if count > 1:
             repeated += count - 1
     return round(repeated / total, 4) if total else 0.0
+
+
+def _sum_counter_dicts(values: Any) -> dict[str, int]:
+    counter: Counter[str] = Counter()
+    for value in values or []:
+        if not isinstance(value, Mapping):
+            continue
+        counter.update({str(key): int(count or 0) for key, count in value.items()})
+    return dict(counter)
+
+
+def _top_counter_key(counter: Mapping[str, Any]) -> str:
+    if not isinstance(counter, Mapping) or not counter:
+        return ""
+    return sorted(((str(key), int(value or 0)) for key, value in counter.items()), key=lambda item: (-item[1], item[0]))[0][0]
+
+
+def _aggregate_opportunity_debug(per_site_metrics: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    opportunity_count_by_type: dict[str, int] = {}
+    required_count_by_type: dict[str, int] = {}
+    selected_ids: list[str] = []
+    for item in per_site_metrics:
+        debug = item.get("opportunity_debug")
+        if not isinstance(debug, Mapping):
+            continue
+        _merge_int_dict(opportunity_count_by_type, debug.get("opportunity_count_by_type"))
+        _merge_int_dict(required_count_by_type, debug.get("required_count_by_type"))
+        ids = debug.get("ppo_selected_opportunity_ids")
+        if isinstance(ids, list):
+            selected_ids.extend(str(value) for value in ids if value)
+    return {
+        "opportunity_engine_enabled": any(
+            bool((item.get("opportunity_debug") or {}).get("opportunity_engine_enabled"))
+            for item in per_site_metrics
+            if isinstance(item.get("opportunity_debug"), Mapping)
+        ),
+        "opportunity_generation_called": any(
+            bool((item.get("opportunity_debug") or {}).get("opportunity_generation_called"))
+            for item in per_site_metrics
+            if isinstance(item.get("opportunity_debug"), Mapping)
+        ),
+        "opportunity_count_by_type": opportunity_count_by_type,
+        "required_count_by_type": required_count_by_type,
+        "finish_guard_enabled": any(
+            bool((item.get("opportunity_debug") or {}).get("finish_guard_enabled"))
+            for item in per_site_metrics
+            if isinstance(item.get("opportunity_debug"), Mapping)
+        ),
+        "finish_guard_checked_steps": sum(
+            int((item.get("opportunity_debug") or {}).get("finish_guard_checked_steps") or 0)
+            for item in per_site_metrics
+            if isinstance(item.get("opportunity_debug"), Mapping)
+        ),
+        "finish_guard_blocked_count": sum(
+            int((item.get("opportunity_debug") or {}).get("finish_guard_blocked_count") or 0)
+            for item in per_site_metrics
+            if isinstance(item.get("opportunity_debug"), Mapping)
+        ),
+        "action_mask_from_opportunity_enabled": any(
+            bool((item.get("opportunity_debug") or {}).get("action_mask_from_opportunity_enabled"))
+            for item in per_site_metrics
+            if isinstance(item.get("opportunity_debug"), Mapping)
+        ),
+        "ppo_selected_opportunity_ids": selected_ids,
+        "repeated_action_blocker_enabled": any(
+            bool((item.get("opportunity_debug") or {}).get("repeated_action_blocker_enabled"))
+            for item in per_site_metrics
+            if isinstance(item.get("opportunity_debug"), Mapping)
+        ),
+        "repeated_action_blocked_count": sum(
+            int((item.get("opportunity_debug") or {}).get("repeated_action_blocked_count") or 0)
+            for item in per_site_metrics
+            if isinstance(item.get("opportunity_debug"), Mapping)
+        ),
+        "anomaly_verification_required_enabled": any(
+            bool((item.get("opportunity_debug") or {}).get("anomaly_verification_required_enabled"))
+            for item in per_site_metrics
+            if isinstance(item.get("opportunity_debug"), Mapping)
+        ),
+        "anomaly_verification_remaining_count": sum(
+            int((item.get("opportunity_debug") or {}).get("anomaly_verification_remaining_count") or 0)
+            for item in per_site_metrics
+            if isinstance(item.get("opportunity_debug"), Mapping)
+        ),
+    }
+
+
+def _merge_int_dict(target: dict[str, int], value: Any) -> None:
+    if not isinstance(value, Mapping):
+        return
+    for key, count in value.items():
+        target[str(key)] = int(target.get(str(key), 0) or 0) + int(count or 0)
 
 
 def _avg_int(values: Any) -> int:

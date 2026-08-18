@@ -1,0 +1,30 @@
+{
+  "shared_model_path": "artifacts/models/jaws_ppo_v4_blind_gru_memory_retrain.pt",
+  "output_dir": "artifacts/multisite/react_tailwind",
+  "sites": [
+    {
+      "site_id": "tailadmin",
+      "base_url": "https://react-demo.tailadmin.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "horizonui",
+      "base_url": "https://horizon-ui.com/horizon-tailwind-react",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "windmilldashboard",
+      "base_url": "https://windmillui.com/dashboard-react",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "zishop",
+      "base_url": "https://zishop.vercel.app/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    }
+  ]
+}

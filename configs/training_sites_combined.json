@@ -1,0 +1,240 @@
+{
+  "shared_model_path": "artifacts/models/jaws_ppo_v4_blind_gru_memory_retrain.pt",
+  "output_dir": "artifacts/multisite/combined_local_and_qa_practice",
+  "sites": [
+    {
+      "site_id": "local_shop",
+      "base_url": "http://localhost:5175",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "local_forum",
+      "base_url": "http://localhost:5176",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "local_membership",
+      "base_url": "http://localhost:5177",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "local_admin",
+      "base_url": "http://localhost:5178",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "local_studyhub",
+      "base_url": "http://localhost:5179",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "juiceshop",
+      "base_url": "https://demo.owasp-juice.shop/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "parabank",
+      "base_url": "https://parabank.parasoft.com/parabank",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "saucedemo",
+      "base_url": "https://www.saucedemo.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "demoblaze",
+      "base_url": "https://www.demoblaze.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "practicesoftwaretesting",
+      "base_url": "https://practicesoftwaretesting.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "theinternet",
+      "base_url": "https://the-internet.herokuapp.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "demoqa",
+      "base_url": "https://demoqa.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "nopcommerce",
+      "base_url": "https://demo.nopcommerce.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "restfulbooker",
+      "base_url": "https://automationintesting.online/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "magentoluma",
+      "base_url": "https://magento.softwaretestingboard.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "expandtesting",
+      "base_url": "https://practice.expandtesting.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "globalsqabanking",
+      "base_url": "https://www.globalsqa.com/angularJs-protractor/BankingProject/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "letcode",
+      "base_url": "https://letcode.in/test",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "practicetestautomation",
+      "base_url": "https://practicetestautomation.com/practice-test-login/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "automationteststore",
+      "base_url": "https://automationteststore.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "greenkart",
+      "base_url": "https://rahulshettyacademy.com/seleniumPractise/#/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "lambdatestecommerce",
+      "base_url": "https://ecommerce-playground.lambdatest.io/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "acmedemobanking",
+      "base_url": "https://demo.applitools.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "agilewaytravel",
+      "base_url": "https://travel.agileway.net/login",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "bookcart",
+      "base_url": "https://bookcart.azurewebsites.net/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "guru99newtours",
+      "base_url": "https://demo.guru99.com/test/newtours/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "way2automationregistration",
+      "base_url": "https://www.way2automation.com/angularjs-protractor/registeration/#/login",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "coffeecart",
+      "base_url": "https://coffee-cart.app/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "quotestoscrapelogin",
+      "base_url": "https://quotes.toscrape.com/login",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "webscraperstatic",
+      "base_url": "https://webscraper.io/test-sites/e-commerce/static",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "webscraperajax",
+      "base_url": "https://webscraper.io/test-sites/e-commerce/ajax",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "webscraperlogin",
+      "base_url": "https://webscraper.io/test-sites/e-commerce/login",
+      "has_bug_catalog": false,
+      "reward_scale": 0.5
+    },
+    {
+      "site_id": "crawlertest",
+      "base_url": "https://crawler-test.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "guru99paymentgateway",
+      "base_url": "https://demo.guru99.com/payment-gateway/index.php",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "guru99deletecustomer",
+      "base_url": "https://demo.guru99.com/test/delete_customer.php",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "techlisticform",
+      "base_url": "https://www.techlistic.com/p/selenium-practice-form.html",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "protractorcalculator",
+      "base_url": "http://juliemr.github.io/protractor-demo/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "bugeatertasks",
+      "base_url": "https://bugeater.web.app/app/list",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "parkcalc",
+      "base_url": "https://www.shino.de/parkcalc/",
+      "has_bug_catalog": false,
+      "reward_scale": 0.5
+    }
+  ]
+}

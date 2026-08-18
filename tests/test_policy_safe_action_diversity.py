@@ -178,6 +178,44 @@ class PolicySafeActionDiversityRewardTests(unittest.TestCase):
         )
         self.assertEqual(-0.7, breakdown["penalty_same_action_signature_repeat"])
 
+    def test_reused_click_type_not_penalized_for_new_target(self) -> None:
+        history = {
+            "action_type_counts": {"click_element": 3},
+            "action_signature_counts": {
+                "click_element:0:click_element:btn-1": 1,
+                "click_element:1:click_element:btn-2": 1,
+            },
+            "target_signatures": {"click_element:btn-1", "click_element:btn-2"},
+        }
+        _, breakdown = calculate_autonomous_reward(
+            _observation(),
+            _observation(url="http://local/next"),
+            {"action_type": "click_element", "candidate_index": 2},
+            [],
+            [],
+            history,
+        )
+        self.assertEqual(0.3, breakdown["reward_new_target"])
+        self.assertEqual(0.0, breakdown["penalty_same_action_type_repeat"])
+        self.assertEqual(0.0, breakdown["penalty_same_action_signature_repeat"])
+
+    def test_reused_click_type_still_penalized_for_seen_signature(self) -> None:
+        history = {
+            "action_type_counts": {"click_element": 3},
+            "action_signature_counts": {"click_element:0:click_element:btn-1": 1},
+            "target_signatures": {"click_element:btn-1"},
+        }
+        _, breakdown = calculate_autonomous_reward(
+            _observation(),
+            _observation(),
+            {"action_type": "click_element", "candidate_index": 0},
+            [],
+            [],
+            history,
+        )
+        self.assertEqual(-0.5, breakdown["penalty_same_action_type_repeat"])
+        self.assertEqual(-0.7, breakdown["penalty_same_action_signature_repeat"])
+
     def test_no_effect_open_detail_penalty(self) -> None:
         _, breakdown = calculate_autonomous_reward(
             _observation(),

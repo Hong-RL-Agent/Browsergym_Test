@@ -98,7 +98,20 @@ INFRA_METRIC_KEYWORDS = ("metric", "latency", "cpu", "memory", "throughput", "up
 INFRA_API_TRIGGER_KEYWORDS = ("api", "request", "trigger", "probe", "check", "test", "fetch", "ping", "simulate")
 INFRA_RETRY_KEYWORDS = ("retry", "rerun", "again", "reload", "refresh")
 INFRA_RECOVERY_KEYWORDS = ("recover", "restart", "restore", "rollback", "heal", "reconnect", "fallback")
-INFRA_DETAIL_KEYWORDS = ("detail", "details", "more", "expand", "open", "view", "inspect", "logs", "trace", "timeline")
+INFRA_DETAIL_KEYWORDS = (
+    "detail",
+    "details",
+    "expand",
+    "open",
+    "inspect",
+    "logs",
+    "trace",
+    "timeline",
+    "상세",
+    "상품",
+    "제품",
+    "자세히",
+)
 INFRA_TIMELINE_KEYWORDS = ("timeline", "history", "event", "events", "log", "logs", "trace")
 FUNCTIONAL_SEMANTIC_KEYWORDS = {
     "workout_add": ("운동 추가", "운동추가", "add workout", "workout add"),
@@ -206,6 +219,8 @@ class BrowserGymObservationAdapter:
             viewport_width,
             viewport_height,
             site_profile,
+            history=history,
+            page_url=url,
         )
         cart_state = _cart_state(page_text, obs, candidate_elements)
         dom_node_count = _dom_node_count(obs.get("dom_object"))
@@ -342,6 +357,8 @@ class BrowserGymObservationAdapter:
         viewport_width: int,
         viewport_height: int,
         site_profile: Optional[Mapping[str, Any]] = None,
+        history: Optional[Mapping[str, Any]] = None,
+        page_url: str = "",
     ) -> tuple[List[Dict[str, Any]], Dict[str, Any], Dict[str, Dict[str, Any]]]:
         properties = _index_extra_properties(obs.get("extra_element_properties"))
         source_counts: Counter[str] = Counter()
@@ -466,7 +483,7 @@ class BrowserGymObservationAdapter:
             candidates = list(candidates_by_key.values())
 
         candidates.sort(key=_candidate_sort_key, reverse=True)
-        selected_candidates = candidates[: self.max_candidates]
+        selected_candidates = self._select_candidate_window(candidates, history, page_url)
         candidate_metadata = _extract_policy_candidate_metadata(selected_candidates)
         candidates = [_strip_policy_candidate_metadata(candidate) for candidate in selected_candidates]
         debug = {
@@ -484,6 +501,52 @@ class BrowserGymObservationAdapter:
             ),
         }
         return candidates, debug, candidate_metadata
+
+    def _select_candidate_window(
+        self,
+        candidates: List[Dict[str, Any]],
+        history: Optional[Mapping[str, Any]],
+        page_url: str = "",
+    ) -> List[Dict[str, Any]]:
+        """Pick which candidates fit in the fixed-size policy input this step.
+
+        When a page exposes more interactive elements than max_candidates, a
+        plain candidates[:max_candidates] truncation permanently hides whatever
+        sorts below the cut -- the policy can never even learn those elements
+        exist. Instead, rotate the window across successive observations of the
+        same page: candidates already surfaced in a prior step are deprioritized
+        so unseen ones get their turn, and the window resets once everything has
+        been shown at least once (or once navigation lands on a different page).
+        """
+        if len(candidates) <= self.max_candidates or not isinstance(history, dict):
+            return candidates[: self.max_candidates]
+
+        if history.get("candidate_window_page_url") != page_url:
+            history["candidate_window_page_url"] = page_url
+            history["candidate_window_shown_keys"] = set()
+
+        shown_keys = history.get("candidate_window_shown_keys")
+        if not isinstance(shown_keys, set):
+            shown_keys = set()
+        history["candidate_window_shown_keys"] = shown_keys
+
+        def _window_key(candidate: Mapping[str, Any]) -> str:
+            return str(candidate.get("element_key") or candidate.get("bid") or "")
+
+        unshown = [c for c in candidates if _window_key(c) not in shown_keys]
+        already_shown = [c for c in candidates if _window_key(c) in shown_keys]
+        window = (unshown + already_shown)[: self.max_candidates]
+
+        for candidate in window:
+            key = _window_key(candidate)
+            if key:
+                shown_keys.add(key)
+        if len(shown_keys) >= len(candidates):
+            # Every candidate on this page has been surfaced at least once --
+            # reset so the window keeps rotating instead of freezing.
+            shown_keys.clear()
+            shown_keys.update(_window_key(candidate) for candidate in window if _window_key(candidate))
+        return window
 
     def _candidate_from_axtree(
         self,
@@ -553,6 +616,7 @@ class BrowserGymObservationAdapter:
             bid=str(bid),
             text=text or name,
             name=name or text,
+            selector=_axtree_role_selector(role, text or name),
             role=role or "generic",
             tag=_as_str(_ax_value(node.get("tag")) or _ax_value(node.get("tagName")) or prop.get("tag") or prop.get("tagName")),
             bbox=bbox,
@@ -744,19 +808,19 @@ def _make_candidate(
     is_functional_priority_candidate = bool(clickable and enabled and visibility > 0.0 and semantic_action_type)
     is_high_value_functional_candidate = semantic_action_type in HIGH_VALUE_SEMANTIC_ACTION_TYPES
     is_login_related = _contains_keyword(openended_text, ("sign in", "login", "로그인"))
-    is_cart_related_openended = _contains_keyword(openended_text, ("cart", "basket", "장바구니"))
-    is_checkout_related = _contains_keyword(openended_text, ("checkout", "payment", "결제"))
+    is_cart_related_openended = _contains_keyword(openended_text, ("cart", "basket", "장바구니", "카트", "담기"))
+    is_checkout_related = _contains_keyword(openended_text, ("checkout", "payment", "결제", "주문", "주문하기", "구매"))
     is_search_related = _contains_keyword(openended_text, ("search", "검색"))
     is_filter_related = semantic_action_type in {"filter", "category", "tab"} or _contains_keyword(openended_text, ("filter", "sort"))
-    is_submit_related = _contains_keyword(openended_text, ("submit", "save", "continue", "next", "add", "buy", "purchase"))
+    is_submit_related = _contains_keyword(openended_text, ("submit", "save", "continue", "next", "add", "buy", "purchase", "주문", "구매", "담기", "추가"))
     is_purchase_action = _contains_keyword(keyword_text, PURCHASE_KEYWORDS)
     policy_text = keyword_text.lower()
     is_sparse_related = _contains_keyword(policy_text, ("sparse", "sparse data"))
     is_forbidden_related = _contains_keyword(policy_text, ("forbidden", "403", "restricted", "access denied"))
     is_async_related = _contains_keyword(policy_text, ("async", "loading", "pending"))
     is_hang_related = _contains_keyword(policy_text, ("hang", "timeout", "stuck"))
-    is_quantity_control = _contains_keyword(policy_text, ("quantity", "qty", "+", "-", "plus", "minus"))
-    is_cart_quantity_related = _contains_keyword(policy_text, ("cart", "quantity", "qty", "subtotal", "total"))
+    is_quantity_control = _contains_keyword(policy_text, ("quantity", "qty", "plus", "minus", "수량", "증가", "감소", "더하기", "빼기")) or policy_text.strip() in {"+", "-", "＋", "－"}
+    is_cart_quantity_related = _contains_keyword(policy_text, ("cart", "quantity", "qty", "subtotal", "total", "장바구니", "카트", "수량", "소계", "합계", "총액"))
     is_network_related = _contains_keyword(policy_text, ("api", "network", "forbidden", "403"))
     is_alert_card = _contains_keyword(keyword_text, INFRA_ALERT_KEYWORDS)
     is_metric_card = _contains_keyword(keyword_text, INFRA_METRIC_KEYWORDS)
@@ -923,6 +987,39 @@ def _dedupe_candidate_key(candidate: Mapping[str, Any]) -> str:
     selector = _as_str(candidate.get("selector") or candidate.get("selector_hint"))
     if selector:
         return f"selector:{selector}"
+    # Rendered position + tag/role is checked before bid, not after: bid is NOT a
+    # reliable cross-source identity signal on its own. _node_bid() falls back
+    # through nodeId (an AXTree accessibility-node id) vs backendDOMNodeId (a DOM
+    # backend-node id) vs a synthetic per-source counter ("dom-3"/"pw-3") -- all
+    # different, unrelated ID spaces, so the SAME physical element reliably gets
+    # two different non-empty bids from two different extraction sources, and a
+    # bid-first check (as this used to be) never actually falls through to
+    # position for elements lacking testid/selector -- bid is always truthy, so
+    # the position fallback was dead code in practice. Confirmed on a real site:
+    # its search input's AXTree-sourced candidate had no captured placeholder
+    # (misclassified downstream as a login field) while the Playwright-DOM-
+    # sourced candidate had the real placeholder and correct classification --
+    # since their bids never matched, they never merged, filling one never
+    # registered as "already filled" for the other, and the search box kept
+    # getting re-filled with a fresh non-matching probe value every time either
+    # ghost candidate was picked. Two interactive elements of the same role
+    # landing in the same ~80px rendered-position bucket are almost certainly
+    # the same physical element seen through different extraction paths.
+    #
+    # Deliberately keyed on role alone, not tag: an AXTree-sourced candidate's
+    # "tag" comes from a side-channel extra_element_properties lookup (keyed by
+    # backend DOM node id) that can simply miss and leave tag empty, while a
+    # DOM-walk/Playwright-extractor-sourced candidate for the exact same
+    # element has the real tag -- requiring an exact tag match (as an earlier
+    # version of this function did) meant "" never matched "input" and the
+    # duplicate survived anyway. role is accessibility-derived and reliably
+    # populated on every source (confirmed on a real site: both the AXTree and
+    # Playwright-DOM candidates for one search box independently resolved role
+    # "textbox"), so it's the more trustworthy discriminator here.
+    position_key = _element_position_key(candidate.get("bbox"))
+    role = _as_str(candidate.get("role")).lower()
+    if position_key != "pos-unknown" and role:
+        return f"pos:{role}:{position_key}"
     bid = _as_str(candidate.get("bid"))
     return f"bid:{bid}" if bid else ""
 
@@ -1410,6 +1507,25 @@ def _index_extra_properties(extra: Any) -> Dict[str, Mapping[str, Any]]:
     return indexed
 
 
+def _axtree_role_selector(role: str, text: str) -> str:
+    """Playwright locator for an AXTree candidate that does not depend on `bid`.
+
+    AXTree nodes don't always carry BrowserGym's own injected bid attribute --
+    `_node_bid` falls back to CDP-internal ids (nodeId/backendDOMNodeId) in that
+    case, which look like a bid but never match any real `[bid="..."]` element
+    on the live page, so a click always fails with "target candidate not
+    found". A role+accessible-name locator resolves against the live DOM
+    directly and survives that bid mismatch.
+    """
+    text = str(text or "").strip()
+    if not text:
+        return ""
+    escaped = text.replace("\\", "\\\\").replace('"', '\\"')
+    if role and role not in {"generic", "none", ""}:
+        return f'role={role}[name="{escaped}"]'
+    return f'text="{escaped}"'
+
+
 def _node_bid(node: Mapping[str, Any]) -> str:
     for key in ("browsergym_id", "bid", "nodeId", "backendDOMNodeId", "backendNodeId"):
         value = node.get(key)
@@ -1749,24 +1865,48 @@ def _dom_node_count(dom_object: Any) -> int:
     return 0
 
 
-def _layout_overlap_count(candidates: List[Mapping[str, Any]]) -> int:
-    boxes = [c.get("bbox", [0, 0, 0, 0]) for c in candidates]
-    count = 0
-    for i, a in enumerate(boxes):
-        ax, ay, aw, ah = a
-        if aw <= 0 or ah <= 0:
+def _layout_overlap_pairs(candidates: List[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+    pairs: List[Dict[str, Any]] = []
+    for i, a in enumerate(candidates):
+        if not isinstance(a, Mapping):
             continue
-        for b in boxes[i + 1 :]:
-            bx, by, bw, bh = b
-            if bw <= 0 or bh <= 0:
+        abox = a.get("bbox", [0, 0, 0, 0])
+        if not _has_bbox(abox):
+            continue
+        ax, ay, aw, ah = [float(v or 0.0) for v in abox[:4]]
+        for b in candidates[i + 1 :]:
+            if not isinstance(b, Mapping):
                 continue
+            bbox = b.get("bbox", [0, 0, 0, 0])
+            if not _has_bbox(bbox):
+                continue
+            bx, by, bw, bh = [float(v or 0.0) for v in bbox[:4]]
             if ax < bx + bw and ax + aw > bx and ay < by + bh and ay + ah > by:
-                count += 1
-    return count
+                overlap_width = min(ax + aw, bx + bw) - max(ax, bx)
+                overlap_height = min(ay + ah, by + bh) - max(ay, by)
+                pairs.append(
+                    {
+                        "element1_text": _as_str(a.get("text") or a.get("name"))[:80],
+                        "element1_selector": _as_str(a.get("selector_hint") or _candidate_selector(a)),
+                        "element1_tag": _as_str(a.get("tag")),
+                        "element1_bbox": abox,
+                        "element2_text": _as_str(b.get("text") or b.get("name"))[:80],
+                        "element2_selector": _as_str(b.get("selector_hint") or _candidate_selector(b)),
+                        "element2_tag": _as_str(b.get("tag")),
+                        "element2_bbox": bbox,
+                        "overlap_area": max(0.0, overlap_width) * max(0.0, overlap_height),
+                    }
+                )
+    return pairs
+
+
+def _layout_overlap_count(candidates: List[Mapping[str, Any]]) -> int:
+    return len(_layout_overlap_pairs(candidates))
 
 
 def _layout_signals(candidates: List[Mapping[str, Any]], viewport_width: int, viewport_height: int) -> Dict[str, Any]:
-    overlap_count = _layout_overlap_count(candidates)
+    overlap_pairs = _layout_overlap_pairs(candidates)
+    overlap_count = len(overlap_pairs)
     overflow_details: List[Dict[str, Any]] = []
     layout_candidates: List[Dict[str, Any]] = []
     chart_like_count = 0
@@ -1831,8 +1971,10 @@ def _layout_signals(candidates: List[Mapping[str, Any]], viewport_width: int, vi
         if is_catalog_layout_target and (effective_overflow_right or effective_overflow_bottom):
             overflow_details.append(detail)
 
+    overlap_pairs_sorted = sorted(overlap_pairs, key=lambda pair: pair.get("overlap_area", 0.0), reverse=True)
     return {
         "layout_overlap_count": overlap_count,
+        "layout_overlap_details": overlap_pairs_sorted[:8],
         "layout_overflow_count": len(overflow_details),
         "layout_overflow_details": overflow_details[:8],
         "layout_overflow_candidates": layout_candidates[:16],
@@ -1869,6 +2011,19 @@ def _candidate_selector(candidate: Mapping[str, Any]) -> str:
     data_testid = _as_str(candidate.get("data_testid"))
     if data_testid:
         return f'[data-testid="{data_testid}"]'
+    element_id = _as_str(candidate.get("id"))
+    if element_id:
+        return f"#{element_id}"
+    # A real CSS class (e.g. ".product-price", ".cart-card-button") is far more
+    # readable review evidence than the "tag[bid='N']" fallback below, which
+    # tells a human nothing about which element was actually flagged --
+    # confirmed on a real layout-overlap finding where the recorded selector
+    # was the opaque "*[bid='30']" even though the underlying element had a
+    # real class name available in its own candidate data.
+    class_name = _as_str(candidate.get("class_name"))
+    first_class = class_name.split()[0] if class_name.split() else ""
+    if first_class:
+        return f".{first_class}"
     tag = _as_str(candidate.get("tag") or "*")
     bid = _as_str(candidate.get("bid"))
     return f"{tag}[bid='{bid}']" if bid else tag

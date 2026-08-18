@@ -71,6 +71,195 @@ class BrowserGymApiServerTests(unittest.TestCase):
         self.assertEqual("target candidate clicked", events[0]["action_success_reason"])
         self.assertIn("fill_input", events[0]["action_mask_enabled_actions"])
 
+    def test_action_timeline_records_coverage_metrics_and_next_action(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            job = self._job(tmp)
+            transition_path = Path(tmp) / "partial_transitions.jsonl"
+            transition_path.write_text(
+                json.dumps(
+                    {
+                        "episode": 1,
+                        "step": 1,
+                        "action": "click_element",
+                        "generated_opportunity_count": 4,
+                        "remaining_required_opportunity_count": 1,
+                        "action_opportunity_coverage_rate": 0.5,
+                        "required_opportunity_completion_rate": 0.75,
+                        "finish_allowed": False,
+                        "finish_blocked_reason": "required_opportunity_remaining",
+                        "selected_opportunity_id": "opp-1",
+                        "selected_opportunity_type": "click_button",
+                        "opportunity_required": True,
+                        "opportunity_status_before": "enabled",
+                        "opportunity_status_after_action": "verified",
+                        "next_recommended_verification_action": "inspect_console",
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            event = _spring_step_events(job)[0]
+
+        self.assertEqual(4, event["generated_opportunity_count"])
+        self.assertEqual(1, event["remaining_required_opportunity_count"])
+        self.assertEqual(0.5, event["action_coverage_rate_after_step"])
+        self.assertEqual("inspect_console", event["next_recommended_action"])
+
+    def test_result_exposes_opportunity_summary_and_scan_decision(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            job = self._job(tmp)
+            (Path(tmp) / "evaluation.json").write_text(
+                json.dumps(
+                    {
+                        "generated_opportunity_count": 5,
+                        "required_opportunity_count": 2,
+                        "executed_opportunity_count": 3,
+                        "verified_opportunity_count": 1,
+                        "remaining_required_opportunity_count": 1,
+                        "action_opportunity_coverage_rate": 0.6,
+                        "required_opportunity_completion_rate": 0.5,
+                        "unverified_anomaly_count": 1,
+                        "verified_finding_count": 0,
+                        "finish_allowed": False,
+                        "finish_blocked_reason": "required_opportunity_remaining",
+                        "completed_reason": "invalid_completed_with_remaining_required_or_unverified_issue",
+                        "valid_scan_run": False,
+                        "action_budget_status": "insufficient_verification",
+                        "opportunity_diagnostics": ["required_opportunity_not_created_for_console_error"],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            result = _browsergym_result(job)
+
+        self.assertIn("opportunitySummary", result)
+        self.assertIn("opportunitySummaryCamel", result)
+        self.assertIn("scanCountsCamel", result)
+        self.assertIn("opportunityDiagnostics", result)
+        self.assertIn("scanDecision", result)
+        self.assertEqual(5, result["opportunitySummary"]["generated_opportunity_count"])
+        self.assertEqual(5, result["opportunitySummaryCamel"]["generatedOpportunityCount"])
+        self.assertEqual(1, result["scanCountsCamel"]["remainingRequiredOpportunityCount"])
+        self.assertEqual(["required_opportunity_not_created_for_console_error"], result["opportunityDiagnostics"])
+        self.assertFalse(result["scanDecision"]["validScanRun"])
+
+    def test_result_explains_filtered_candidates_and_action_diversity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            job = self._job(tmp)
+            (Path(tmp) / "evaluation.json").write_text(
+                json.dumps(
+                    {
+                        "raw_anomaly_candidate_count": 4,
+                        "filtered_false_positive_count": 2,
+                        "duplicate_anomaly_count": 1,
+                        "anomaly_filter_reason_counts": {"duplicate_anomaly": 1},
+                        "finding_promotion_reason": "high_confidence_observed_signal",
+                        "finding_rejection_reason": "low_confidence_below_threshold",
+                        "action_diversity_score": 0.5,
+                        "unique_action_type_count": 3,
+                        "repeated_action_type_count": 2,
+                        "repeated_strategy_count": 2,
+                        "consecutive_same_strategy_count": 1,
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            counts = _browsergym_result(job)["scanCounts"]
+
+        self.assertEqual(4, counts["raw_anomaly_candidate_count"])
+        self.assertEqual(2, counts["filtered_false_positive_count"])
+        self.assertEqual(1, counts["duplicate_anomaly_count"])
+        self.assertEqual(0.5, counts["action_diversity_score"])
+        self.assertEqual("high_confidence_observed_signal", counts["finding_promotion_reason"])
+
+    def test_failed_action_count_counts_only_action_success_false(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            job = self._job(tmp)
+            transition_path = Path(tmp) / "partial_transitions.jsonl"
+            rows = [
+                {"log_type": "action", "action": "click_element", "action_success": True},
+                {"log_type": "action", "action": "click_element", "action_success": False, "failure_reason": "selector_not_found"},
+                {"log_type": "network", "network_request_count": 1, "action_success": False},
+                {"log_type": "issue", "detected_anomalies": [{"type": "network-error"}], "action_success": False},
+                {"log_type": "state", "url": "https://example.test", "action_success": False},
+            ]
+            transition_path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+            (Path(tmp) / "evaluation.json").write_text(
+                json.dumps({"failed_action_count": 5, "network_request_failed_count": 2, "console_error_count": 1}),
+                encoding="utf-8",
+            )
+
+            counts = _browsergym_result(job)["scanCounts"]
+
+        self.assertEqual(2, counts["action_log_count"])
+        self.assertEqual(1, counts["failed_action_count"])
+        self.assertEqual(2, counts["network_failure_count"])
+        self.assertEqual(1, counts["console_error_count"])
+        self.assertEqual(4, counts["total_problem_signal_count"])
+        self.assertTrue(counts["failed_action_count_mismatch"])
+        self.assertEqual("failed_action_count_mismatch", counts["report_metric_warning"])
+
+    def test_executed_action_count_prefers_runner_count_over_filtered_timeline(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            job = self._job(tmp)
+            (Path(tmp) / "partial_transitions.jsonl").write_text(
+                "\n".join(
+                    json.dumps(row)
+                    for row in [
+                        {"log_type": "action", "action": "inspect_dom", "action_success": True},
+                        {"log_type": "action", "action": "click_element", "action_success": True},
+                        {"log_type": "network", "network_request_count": 3},
+                        {"log_type": "issue", "detected_anomalies": [{"type": "console-error"}]},
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (Path(tmp) / "evaluation.json").write_text(
+                json.dumps({"executed_action_count": 9, "successful_action_count": 9, "failed_action_count": 0}),
+                encoding="utf-8",
+            )
+
+            counts = _browsergym_result(job)["scanCounts"]
+
+        self.assertEqual(9, counts["executed_action_count"])
+        self.assertEqual(2, counts["action_log_count"])
+        self.assertEqual(9, counts["successful_action_count"])
+
+    def test_failed_action_requires_failure_reason_for_valid_metrics(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            job = self._job(tmp)
+            (Path(tmp) / "partial_transitions.jsonl").write_text(
+                json.dumps({"log_type": "action", "action": "click_element", "action_success": False}) + "\n",
+                encoding="utf-8",
+            )
+            (Path(tmp) / "evaluation.json").write_text(json.dumps({"valid_scan_run": True}), encoding="utf-8")
+
+            counts = _browsergym_result(job)["scanCounts"]
+
+        self.assertEqual(1, counts["missing_failure_reason_count"])
+        self.assertFalse(counts["valid_scan_run"])
+        self.assertEqual("invalid_completed_with_unexplained_action_failure", counts["completed_reason"])
+
+    def test_action_timeline_log_type_recorded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            job = self._job(tmp)
+            (Path(tmp) / "partial_transitions.jsonl").write_text(
+                json.dumps({"log_type": "network", "network_request_count": 1, "url": "https://example.test"}) + "\n",
+                encoding="utf-8",
+            )
+
+            event = _spring_step_events(job)[0]
+
+        self.assertEqual("network", event["log_type"])
+        self.assertIsNone(event["success"])
+
     def test_report_does_not_truncate_action_timeline_to_9_actions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             job = self._job(tmp)
@@ -86,7 +275,7 @@ class BrowserGymApiServerTests(unittest.TestCase):
         self.assertEqual(12, len(events))
         self.assertEqual(12, events[-1]["candidate_count"])
 
-    def test_default_max_steps_at_least_30(self) -> None:
+    def test_default_scan_has_no_fixed_min_step_budget(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_root:
             import services.scan_backend_service as scan_service
 
@@ -111,9 +300,42 @@ class BrowserGymApiServerTests(unittest.TestCase):
 
             config = json.loads(Path(result.config_path).read_text(encoding="utf-8"))
 
-        self.assertGreaterEqual(config["max_steps"], 30)
+        self.assertEqual(60, config["max_steps"])
+        self.assertEqual("observation_driven", config["action_loop_mode"])
+        self.assertTrue(config["action_count_limit_enabled"])
+        self.assertEqual(0, config["min_steps"])
 
-    def test_login_form_min_steps_at_least_30(self) -> None:
+    def test_general_page_uses_opportunity_based_completion_not_min_steps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_root:
+            import services.scan_backend_service as scan_service
+
+            process = Mock()
+            process.pid = 4321
+            process.communicate.return_value = ("", "")
+            process.returncode = 0
+
+            original_root = scan_service.ROOT
+            try:
+                scan_service.ROOT = Path(tmp_root)
+                with patch.object(scan_service, "_preflight_target", return_value=""), patch.object(
+                    scan_service.subprocess, "Popen", return_value=process
+                ):
+                    result = start_browsergym_scan(
+                        scan_id="scan-general-page-steps",
+                        target_url="https://parabank.parasoft.com/parabank",
+                    )
+            finally:
+                scan_service.ROOT = original_root
+                scan_service.RUNNING_PROCESSES.pop("scan-general-page-steps", None)
+
+            config = json.loads(Path(result.config_path).read_text(encoding="utf-8"))
+
+        self.assertEqual(60, config["max_steps"])
+        self.assertEqual("observation_driven", config["action_loop_mode"])
+        self.assertTrue(config["action_count_limit_enabled"])
+        self.assertEqual(0, config["min_steps"])
+
+    def test_login_form_detected_without_fixed_min_steps(self) -> None:
         self.assertTrue(_looks_like_form_or_login_url("https://getbootstrap.com/docs/5.3/examples/sign-in/"))
 
     def test_job_status_completed_from_action_log(self) -> None:
@@ -128,6 +350,28 @@ class BrowserGymApiServerTests(unittest.TestCase):
 
         self.assertEqual("completed", status)
         self.assertEqual("", error)
+
+    def test_job_status_failed_when_completed_event_contains_runner_exception(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            job = self._job(tmp)
+            (Path(tmp) / "action_logs.jsonl").write_text(
+                json.dumps({"event": "scan_completed", "return_code": 0}) + "\n",
+                encoding="utf-8",
+            )
+            (Path(tmp) / "evaluation.json").write_text(
+                json.dumps(
+                    {
+                        "scan_status": "failed_runner_exception",
+                        "runner_exception": "episode timeout exceeded 60s",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            status, error = _job_status(job)
+
+        self.assertEqual("failed", status)
+        self.assertIn("episode timeout", error)
 
     def test_job_status_running_returns_status_and_error_pair(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -297,8 +541,19 @@ class BrowserGymApiServerTests(unittest.TestCase):
                 scan_service.RUNNING_PROCESSES.pop("scan-boundary", None)
 
             config = json.loads(Path(result.config_path).read_text(encoding="utf-8"))
+            actions = [
+                json.loads(line)
+                for line in (Path(tmp_root) / "artifacts" / "scans" / "scan-boundary" / "action_logs.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+                if line.strip()
+            ]
 
         self.assertTrue(config["enforce_target_url_boundary"])
+        self.assertEqual(20, config["max_steps"])
+        self.assertTrue(config["action_count_limit_enabled"])
+        command = next(item["command"] for item in actions if item.get("event") == "subprocess_started")
+        self.assertEqual("20", command[command.index("--max-steps") + 1])
         self.assertEqual(["www.scrapethissite.com"], config["allowed_hosts"])
         self.assertIn("/pages/simple/", config["allowed_path_prefixes"])
         self.assertIn("gumroad.com", config["blocked_url_keywords"])

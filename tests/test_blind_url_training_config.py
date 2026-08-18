@@ -67,7 +67,18 @@ class BlindUrlTrainingConfigTests(unittest.TestCase):
     def test_evaluation_reference_is_separate_and_not_training(self) -> None:
         reference = json.loads(EVAL_REFERENCE_PATH.read_text(encoding="utf-8"))
         self.assertFalse(reference["used_for_training"])
-        self.assertEqual([], reference["sites"])
+        # This is the fixed evaluation site set: deliberately populated (not
+        # empty) so policy-quality trends are comparable update-to-update, but
+        # every entry must be well-formed and distinct from the blind training
+        # config's sites -- new sites for training coverage go in the
+        # training_sites_* configs instead, never here.
+        self.assertIsInstance(reference["sites"], list)
+        self.assertTrue(reference["sites"])
+        training_site_ids = {str(site.get("site_id")) for site in self.config["sites"]}
+        for site in reference["sites"]:
+            self.assertIn("site_id", site)
+            self.assertIn("base_url", site)
+            self.assertNotIn(str(site.get("site_id")), training_site_ids)
 
     def test_training_does_not_load_evaluation_reference(self) -> None:
         audit = _policy_safety_audit(self.config)

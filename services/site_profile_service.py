@@ -198,15 +198,34 @@ def validate_site_identity(site_id: str, observation: Mapping[str, Any]) -> Dict
             f"{site_id}. Expected prefix: {expected_prefix}. Observed: {', '.join(observed[:12])}. "
             "This usually means base_url is mapped to the wrong website."
         )
+    title_site_id = _site_id_from_page_title(page_state)
+    if title_site_id and site_id and title_site_id != site_id:
+        identity_match = False
+        warnings.append(
+            "WARNING: observed page title appears to belong to "
+            f"{title_site_id}, but requested site_id is {site_id}. "
+            "This usually means base_url is mapped to the wrong website."
+        )
     return {
         "requested_site_id": site_id,
         "expected_bug_id_prefix": expected_prefix,
         "data_bug_ids_found": observed,
         "matching_data_bug_ids": matched,
         "mismatched_data_bug_ids": mismatched,
+        "title_site_id_hint": title_site_id,
         "site_identity_match": identity_match,
         "identity_warnings": warnings,
     }
+
+
+def _site_id_from_page_title(page_state: Mapping[str, Any]) -> str:
+    if not isinstance(page_state, Mapping):
+        return ""
+    title = str(page_state.get("title") or page_state.get("page_title") or "").lower()
+    match = re.search(r"\bsite\s*0*(\d{1,5})\b", title)
+    if not match:
+        return ""
+    return f"site{int(match.group(1)):03d}"
 
 
 def match_candidate_to_profile(candidate: Mapping[str, Any], site_profile: Optional[Mapping[str, Any]]) -> Dict[str, Any]:

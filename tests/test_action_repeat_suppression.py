@@ -15,6 +15,7 @@ from models.action_space import ActionSpace
 from runners.evaluate_multisite_browsergym_agent import (
     _apply_eval_fallback_mask,
     _functional_priority_action_ids,
+    _restore_pending_required_opportunity_action,
 )
 
 
@@ -82,6 +83,26 @@ class ActionRepeatSuppressionTests(unittest.TestCase):
         self.assertEqual(0.0, float(filtered[action_space.encode("finish_episode", 0)]))
         self.assertEqual(1, int(history.get("finish_delayed_by_unclicked_candidate_count", 0)))
 
+    def test_finish_allowed_does_not_skip_meta_repeat_suppression(self) -> None:
+        action_space = ActionSpace(max_candidates=3)
+        observation = _observation([_candidate("fresh", high=True)])
+        mask = action_space.build_action_mask(observation)
+        history = {
+            "action_type_counts": {"inspect_layout": 6},
+            "functional_action_count": 1,
+            "opportunity_summary": {
+                "finish_allowed": True,
+                "remaining_required_opportunity_count": 0,
+                "required_opportunity_completion_rate": 1.0,
+            },
+        }
+
+        filtered, warning, repeated = _apply_eval_fallback_mask(action_space, mask, observation, history)
+
+        self.assertEqual(1, repeated)
+        self.assertIn("inspect_layout budget exhausted", warning)
+        self.assertEqual(0.0, float(filtered[action_space.encode("inspect_layout", 0)]))
+
     def test_no_catalog_used_for_repeat_suppression(self) -> None:
         source = _function_source(
             ROOT / "runners" / "evaluate_multisite_browsergym_agent.py",
@@ -89,6 +110,53 @@ class ActionRepeatSuppressionTests(unittest.TestCase):
             "def _delay_finish_when_unclicked_candidates(",
         ).lower()
         self.assertNotIn("catalog", source)
+
+    def test_empty_mask_restores_pending_required_click_before_global_inspect_dom(self) -> None:
+        action_space = ActionSpace(max_candidates=3)
+        original = np.zeros(action_space.get_action_dim(), dtype=np.float32)
+        original[action_space.encode("click_element", 0)] = 1.0
+        original[action_space.encode("inspect_dom", 0)] = 1.0
+        empty = np.zeros_like(original)
+        history = {
+            "repeated_inspect_dom_count": 12,
+            "action_type_counts": {"inspect_dom": 12},
+            "action_opportunities": [
+                {
+                    "opportunity_id": "required-click",
+                    "opportunity_type": "click_button",
+                    "candidate_index": 0,
+                    "required": True,
+                    "executed": False,
+                    "verified": False,
+                    "failed": False,
+                    "skipped_reason": "",
+                    "priority": 1.0,
+                }
+            ],
+        }
+
+        restored = _restore_pending_required_opportunity_action(action_space, empty, original, history)
+
+        self.assertTrue(restored)
+        self.assertGreater(float(empty[action_space.encode("click_element", 0)]), 0.0)
+        self.assertEqual(0.0, float(empty[action_space.encode("inspect_dom", 0)]))
+
+    def test_repeated_inspect_dom_empty_mask_does_not_get_reenabled(self) -> None:
+        action_space = ActionSpace(max_candidates=3)
+        observation = _observation([_candidate("fresh", high=True)])
+        mask = np.zeros(action_space.get_action_dim(), dtype=np.float32)
+        mask[action_space.encode("inspect_dom", 0)] = 1.0
+        history = {
+            "last_action_type": "inspect_dom",
+            "consecutive_action_type_counts": {"inspect_dom": 3},
+            "action_type_counts": {"inspect_dom": 12},
+            "repeated_inspect_dom_count": 12,
+        }
+
+        filtered, _warning, repeated = _apply_eval_fallback_mask(action_space, mask, observation, history)
+
+        self.assertEqual(1, repeated)
+        self.assertEqual(0.0, float(filtered[action_space.encode("inspect_dom", 0)]))
 
 
 def _candidate(bid: str, *, high: bool) -> dict:

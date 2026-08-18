@@ -1,0 +1,61 @@
+{
+  "version": "local_5175_5179_openended",
+  "shared_model_path": "artifacts/models/jaws_browsergym_local_5175_5179.pt",
+  "output_dir": "artifacts/multisite/local_5175_5179",
+  "reward_mode": "signal_based",
+  "use_known_bug_reward": false,
+  "use_known_bug_for_training": false,
+  "use_known_bug_for_evaluation": false,
+  "training_uses_site_specific_bug_catalog": false,
+  "total_updates": 30,
+  "episodes_per_site": 2,
+  "eval_episodes": 1,
+  "max_steps": 40,
+  "site_timeout_seconds": 300,
+  "episode_timeout_seconds": 180,
+  "reset_timeout_ms": 60000,
+  "reset_retry_count": 1,
+  "no_progress_patience": 6,
+  "enable_guided_actions": true,
+  "debug_action_mask": false,
+  "use_memory_encoder": true,
+  "memory_encoder_type": "gru",
+  "memory_hidden_size": 128,
+  "sites": [
+    {
+      "site_id": "local5175",
+      "base_url": "http://localhost:5175/",
+      "has_bug_catalog": false,
+      "exploration_profile": "openended_commerce",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "local5176",
+      "base_url": "http://localhost:5176/",
+      "has_bug_catalog": false,
+      "exploration_profile": "openended_commerce",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "local5177",
+      "base_url": "http://127.0.0.1:5177/",
+      "has_bug_catalog": false,
+      "exploration_profile": "openended_commerce",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "local5178",
+      "base_url": "http://localhost:5178/",
+      "has_bug_catalog": false,
+      "exploration_profile": "openended_commerce",
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "local5179",
+      "base_url": "http://localhost:5179/",
+      "has_bug_catalog": false,
+      "exploration_profile": "openended_commerce",
+      "reward_scale": 1.0
+    }
+  ]
+}

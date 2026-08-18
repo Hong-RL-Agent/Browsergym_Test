@@ -116,6 +116,222 @@
     </div>
   </div>
 
+  <h2>Opportunity / Finish Decision</h2>
+  <table>
+    <tr>
+      <th>Generated</th>
+      <th>Required</th>
+      <th>Executed</th>
+      <th>Verified</th>
+      <th>Failed</th>
+      <th>Pending / Remaining Required</th>
+    </tr>
+    <tr>
+      <td>{{ report.summary.generated_opportunity_count|default(0) }}</td>
+      <td>{{ report.summary.required_opportunity_count|default(0) }}</td>
+      <td>{{ report.summary.executed_opportunity_count|default(0) }}</td>
+      <td>{{ report.summary.verified_opportunity_count|default(0) }}</td>
+      <td>{{ report.summary.failed_opportunity_count|default(0) }}</td>
+      <td>{{ report.summary.pending_opportunity_count|default(report.summary.remaining_opportunity_count|default(0)) }} / {{ report.summary.pending_required_opportunity_count|default(report.summary.remaining_required_opportunity_count|default(0)) }}</td>
+    </tr>
+    <tr>
+      <th>Coverage Rate</th>
+      <th>Required Completion</th>
+      <th>Unverified Anomaly</th>
+      <th>Verified Finding</th>
+      <th>Finish Allowed</th>
+      <th>Valid Scan Run</th>
+    </tr>
+    <tr>
+      <td>{{ report.summary.action_opportunity_coverage_rate|default(0)|fmt }}</td>
+      <td>{{ report.summary.required_opportunity_completion_rate|default(0)|fmt }}</td>
+      <td>{{ report.summary.unverified_anomaly_count|default(0) }}</td>
+      <td>{{ report.summary.verified_finding_count|default(0) }}</td>
+      <td>{{ report.summary.finish_allowed|default(false) }}</td>
+      <td>{{ report.summary.valid_scan_run|default(false) }}</td>
+    </tr>
+    <tr>
+      <th colspan="2">DOM Exhaustive Mode</th>
+      <td colspan="4">{{ report.summary.dom_exhaustive_action_mode|default(true) }}</td>
+    </tr>
+    <tr>
+      <th colspan="2">Action Budget Status</th>
+      <td colspan="4">{{ report.summary.action_budget_status|default("") }}</td>
+    </tr>
+    <tr>
+      <th colspan="2">Completed Reason</th>
+      <td colspan="4">{{ report.summary.completed_reason|default("") }}</td>
+    </tr>
+    <tr>
+      <th colspan="2">Finish Blocked Reason</th>
+      <td colspan="4">{{ report.summary.finish_blocked_reason|default("") }}</td>
+    </tr>
+    <tr>
+      <th colspan="2">Opportunity Diagnostics</th>
+      <td colspan="4">{{ report.summary.opportunity_diagnostics|default([]) }}</td>
+    </tr>
+  </table>
+  <table>
+    <tr>
+      <th>Page Type</th>
+      <th>Login Form</th>
+      <th>User/Email Input</th>
+      <th>Password Input</th>
+      <th>Login Submit</th>
+      <th>Login Flow Status</th>
+    </tr>
+    <tr>
+      <td>{{ report.summary.page_type|default("") }}</td>
+      <td>{{ report.summary.has_login_form|default(false) }}</td>
+      <td>{{ report.summary.has_username_or_email_input|default(false) }}</td>
+      <td>{{ report.summary.has_password_input|default(false) }}</td>
+      <td>{{ report.summary.has_login_submit|default(false) }}</td>
+      <td>{{ report.summary.login_flow_status|default("") }}</td>
+    </tr>
+    <tr>
+      <th>User/Email Filled</th>
+      <th>Password Filled</th>
+      <th>Submit Clicked</th>
+      <th>Result Checked</th>
+      <th>Attempted</th>
+      <th>Completed</th>
+    </tr>
+    <tr>
+      <td>{{ report.summary.username_or_email_filled|default(false) }}</td>
+      <td>{{ report.summary.password_filled|default(false) }}</td>
+      <td>{{ report.summary.login_submit_clicked|default(false) }}</td>
+      <td>{{ report.summary.login_result_checked|default(false) }}</td>
+      <td>{{ report.summary.login_flow_attempted|default(false) }}</td>
+      <td>{{ report.summary.login_flow_completed|default(false) }}</td>
+    </tr>
+  </table>
+  <table>
+    <tr>
+      <th colspan="6">Action Execution</th>
+    </tr>
+    <tr>
+      <th>Total Executed Actions</th>
+      <th>Successful Actions</th>
+      <th>Failed Actions</th>
+      <th>Missing Failure Reason</th>
+      <th>Action Log Rows</th>
+      <th>Raw Event Logs</th>
+    </tr>
+    <tr>
+      <td>{{ report.summary.executed_action_count|default(report.transition_summary.total_steps|default(0)) }}</td>
+      <td>{{ report.summary.successful_action_count|default(0) }}</td>
+      <td>{{ report.summary.failed_action_count|default(0) }}</td>
+      <td>{{ report.summary.missing_failure_reason_count|default(0) }}</td>
+      <td>{{ report.summary.action_log_count|default(0) }}</td>
+      <td>{{ report.summary.raw_event_log_count|default(0) }}</td>
+    </tr>
+    <tr>
+      <th>Runner Failed</th>
+      <th>Timeline Failed</th>
+      <th>Summary Failed</th>
+      <th>Exploration Failed</th>
+      <th>Metric Valid</th>
+      <th>Metric Warning</th>
+    </tr>
+    <tr>
+      <td>{{ report.summary.runner_failed_action_count|default(0) }}</td>
+      <td>{{ report.summary.timeline_failed_action_count|default(0) }}</td>
+      <td>{{ report.summary.summary_failed_action_count|default(0) }}</td>
+      <td>{{ report.summary.exploration_failed_action_count|default(0) }}</td>
+      <td>{{ report.summary.valid_report_metrics|default(true) }}</td>
+      <td>{{ report.summary.report_metric_warning|default("") }}</td>
+    </tr>
+    <tr>
+      <th colspan="2">Failed Count Mismatch</th>
+      <td colspan="4">{{ report.summary.failed_action_count_mismatch|default(false) }} {{ report.summary.failed_action_count_mismatch_reason|default("") }}</td>
+    </tr>
+  </table>
+  <table>
+    <tr>
+      <th colspan="6">Observed Error Signals</th>
+    </tr>
+    <tr>
+      <th>Total Problem Signals</th>
+      <th>Network Failure</th>
+      <th>Console Error</th>
+      <th>Runtime Error</th>
+      <th>Warning Issues</th>
+      <th>Critical Issues</th>
+    </tr>
+    <tr>
+      <td>{{ report.summary.total_problem_signal_count|default(0) }}</td>
+      <td>{{ report.summary.network_failure_count|default(0) }}</td>
+      <td>{{ report.summary.console_error_count|default(0) }}</td>
+      <td>{{ report.summary.runtime_error_count|default(0) }}</td>
+      <td>{{ report.summary.warning_issue_count|default(0) }}</td>
+      <td>{{ report.summary.critical_issue_count|default(0) }}</td>
+    </tr>
+    <tr>
+      <th>Network Verification</th>
+      <th>Console Verification</th>
+      <th>State Logs</th>
+      <th>Network Logs</th>
+      <th>Issue Logs</th>
+      <th></th>
+    </tr>
+    <tr>
+      <td>{{ report.summary.network_verification_performed|default(false) }} / {{ report.summary.network_verification_success|default(false) }}</td>
+      <td>{{ report.summary.console_verification_performed|default(false) }} / {{ report.summary.console_verification_success|default(false) }}</td>
+      <td>{{ report.summary.state_log_count|default(0) }}</td>
+      <td>{{ report.summary.network_log_count|default(0) }}</td>
+      <td>{{ report.summary.issue_log_count|default(0) }}</td>
+      <td></td>
+    </tr>
+    <tr>
+      <th>Anomaly Verification Required</th>
+      <th>Anomaly Verification Completed</th>
+      <th>Repeated Inspect DOM</th>
+      <th>Inspect DOM Penalty</th>
+      <th>Inspect DOM Blocked</th>
+      <th></th>
+    </tr>
+    <tr>
+      <td>{{ report.summary.anomaly_verification_required|default(false) }}</td>
+      <td>{{ report.summary.anomaly_verification_completed|default(false) }}</td>
+      <td>{{ report.summary.repeated_inspect_dom_count|default(0) }}</td>
+      <td>{{ report.summary.repeated_inspect_dom_penalty_applied|default(0) }}</td>
+      <td>{{ report.summary.repeated_inspect_dom_blocked|default(0) }}</td>
+      <td></td>
+    </tr>
+  </table>
+  <table>
+    <tr>
+      <th>Raw Anomaly Candidates</th>
+      <th>Verified Findings</th>
+      <th>Filtered / Duplicates</th>
+      <th>Promotion Reason</th>
+      <th>Rejection Reason</th>
+      <th>Action Diversity</th>
+    </tr>
+    <tr>
+      <td>{{ report.summary.raw_anomaly_candidate_count|default(0) }}</td>
+      <td>{{ report.summary.verified_finding_count|default(0) }}</td>
+      <td>{{ report.summary.filtered_false_positive_count|default(0) }} / {{ report.summary.duplicate_anomaly_count|default(0) }}</td>
+      <td>{{ report.summary.finding_promotion_reason|default("") }}</td>
+      <td>{{ report.summary.finding_rejection_reason|default("") }}</td>
+      <td>{{ report.summary.action_diversity_score|default(0)|fmt }}</td>
+    </tr>
+    <tr>
+      <th>Unique Action Types</th>
+      <th>Repeated Action Types</th>
+      <th>Repeated Strategy</th>
+      <th>Consecutive Same Strategy</th>
+      <th colspan="2">Filter Reason Counts</th>
+    </tr>
+    <tr>
+      <td>{{ report.summary.unique_action_type_count|default(0) }}</td>
+      <td>{{ report.summary.repeated_action_type_count|default(0) }}</td>
+      <td>{{ report.summary.repeated_strategy_count|default(0) }}</td>
+      <td>{{ report.summary.consecutive_same_strategy_count|default(0) }}</td>
+      <td colspan="2">{{ report.summary.anomaly_filter_reason_counts|default({}) }}</td>
+    </tr>
+  </table>
+
   {% if report.model %}
   <h2>RL 모델 정보 / RL Model</h2>
   <table>

@@ -71,6 +71,85 @@ def build_browsergym_report_data(
         "cart_count_detected_count": training_summary.get("cart_count_detected_count", transition_summary["cart_count_detected_count"]),
         "button_no_response_candidates": training_summary.get("button_no_response_candidates", transition_summary["button_no_response_candidates"]),
         "action_counts": training_summary.get("action_counts", transition_summary["action_counts"]),
+        "raw_anomaly_candidate_count": _summary_value(training_summary, transition_summary, "raw_anomaly_candidate_count", 0),
+        "filtered_false_positive_count": _summary_value(training_summary, transition_summary, "filtered_false_positive_count", 0),
+        "duplicate_anomaly_count": _summary_value(training_summary, transition_summary, "duplicate_anomaly_count", 0),
+        "anomaly_filter_reason_counts": _summary_value(training_summary, transition_summary, "anomaly_filter_reason_counts", {}),
+        "finding_promotion_reason": _summary_value(training_summary, transition_summary, "finding_promotion_reason", ""),
+        "finding_rejection_reason": _summary_value(training_summary, transition_summary, "finding_rejection_reason", ""),
+        "action_diversity_score": _summary_value(training_summary, transition_summary, "action_diversity_score", 0.0),
+        "unique_action_type_count": _summary_value(training_summary, transition_summary, "unique_action_type_count", 0),
+        "repeated_action_type_count": _summary_value(training_summary, transition_summary, "repeated_action_type_count", 0),
+        "repeated_strategy_count": _summary_value(training_summary, transition_summary, "repeated_strategy_count", 0),
+        "consecutive_same_strategy_count": _summary_value(training_summary, transition_summary, "consecutive_same_strategy_count", 0),
+        "generated_opportunity_count": _summary_value(training_summary, transition_summary, "generated_opportunity_count", 0),
+        "required_opportunity_count": _summary_value(training_summary, transition_summary, "required_opportunity_count", 0),
+        "executed_opportunity_count": _summary_value(training_summary, transition_summary, "executed_opportunity_count", 0),
+        "verified_opportunity_count": _summary_value(training_summary, transition_summary, "verified_opportunity_count", 0),
+        "failed_opportunity_count": _summary_value(training_summary, transition_summary, "failed_opportunity_count", 0),
+        "pending_opportunity_count": _summary_value(training_summary, transition_summary, "pending_opportunity_count", _summary_value(training_summary, transition_summary, "remaining_opportunity_count", 0)),
+        "remaining_required_opportunity_count": _summary_value(training_summary, transition_summary, "remaining_required_opportunity_count", 0),
+        "pending_required_opportunity_count": _summary_value(training_summary, transition_summary, "pending_required_opportunity_count", _summary_value(training_summary, transition_summary, "remaining_required_opportunity_count", 0)),
+        "action_opportunity_coverage_rate": _summary_value(training_summary, transition_summary, "action_opportunity_coverage_rate", 0.0),
+        "action_coverage_rate": _summary_value(training_summary, transition_summary, "action_coverage_rate", _summary_value(training_summary, transition_summary, "action_opportunity_coverage_rate", 0.0)),
+        "required_opportunity_completion_rate": _summary_value(training_summary, transition_summary, "required_opportunity_completion_rate", 0.0),
+        "unverified_anomaly_count": _summary_value(training_summary, transition_summary, "unverified_anomaly_count", 0),
+        "verified_finding_count": _summary_value(training_summary, transition_summary, "verified_finding_count", 0),
+        "anomaly_verification_required": _summary_value(training_summary, transition_summary, "anomaly_verification_required", False),
+        "anomaly_verification_completed": _summary_value(training_summary, transition_summary, "anomaly_verification_completed", False),
+        "finish_allowed": _summary_value(training_summary, transition_summary, "finish_allowed", False),
+        "finish_blocked_reason": _summary_value(training_summary, transition_summary, "finish_blocked_reason", ""),
+        "opportunity_diagnostics": _summary_value(training_summary, transition_summary, "opportunity_diagnostics", []),
+        "dom_exhaustive_action_mode": _summary_value(training_summary, transition_summary, "dom_exhaustive_action_mode", True),
+        "completed_reason": _summary_value(training_summary, transition_summary, "completed_reason", ""),
+        "valid_scan_run": _summary_value(training_summary, transition_summary, "valid_scan_run", False),
+        "action_budget_status": _summary_value(training_summary, transition_summary, "action_budget_status", ""),
+        "page_type": _summary_value(training_summary, transition_summary, "page_type", ""),
+        "raw_event_log_count": _summary_value(training_summary, transition_summary, "raw_event_log_count", 0),
+        "executed_action_count": _summary_value(training_summary, transition_summary, "executed_action_count", transition_summary["total_steps"]),
+        "successful_action_count": _summary_value(training_summary, transition_summary, "successful_action_count", 0),
+        "failed_action_count": _summary_value(training_summary, transition_summary, "failed_action_count", 0),
+        "runner_failed_action_count": _summary_value(training_summary, transition_summary, "runner_failed_action_count", 0),
+        "timeline_failed_action_count": _summary_value(training_summary, transition_summary, "timeline_failed_action_count", 0),
+        "summary_failed_action_count": _summary_value(training_summary, transition_summary, "summary_failed_action_count", 0),
+        "exploration_failed_action_count": _summary_value(training_summary, transition_summary, "exploration_failed_action_count", 0),
+        "failed_action_count_mismatch": _summary_value(training_summary, transition_summary, "failed_action_count_mismatch", False),
+        "failed_action_count_mismatch_reason": _summary_value(training_summary, transition_summary, "failed_action_count_mismatch_reason", ""),
+        "valid_report_metrics": _summary_value(training_summary, transition_summary, "valid_report_metrics", True),
+        "report_metric_warning": _summary_value(training_summary, transition_summary, "report_metric_warning", ""),
+        "action_log_count": _summary_value(training_summary, transition_summary, "action_log_count", 0),
+        "state_log_count": _summary_value(training_summary, transition_summary, "state_log_count", 0),
+        "network_log_count": _summary_value(training_summary, transition_summary, "network_log_count", 0),
+        "issue_log_count": _summary_value(training_summary, transition_summary, "issue_log_count", 0),
+        "network_failure_count": _summary_value(training_summary, transition_summary, "network_failure_count", 0),
+        "console_error_count": _summary_value(training_summary, transition_summary, "console_error_count", 0),
+        "runtime_error_count": _summary_value(training_summary, transition_summary, "runtime_error_count", 0),
+        "warning_issue_count": _summary_value(training_summary, transition_summary, "warning_issue_count", 0),
+        "critical_issue_count": _summary_value(training_summary, transition_summary, "critical_issue_count", 0),
+        "total_problem_signal_count": _summary_value(training_summary, transition_summary, "total_problem_signal_count", 0),
+        "missing_failure_reason_count": _summary_value(training_summary, transition_summary, "missing_failure_reason_count", 0),
+        "network_failure_detected": _summary_value(training_summary, transition_summary, "network_failure_detected", False),
+        "network_verification_required": _summary_value(training_summary, transition_summary, "network_verification_required", False),
+        "network_verification_performed": _summary_value(training_summary, transition_summary, "network_verification_performed", False),
+        "network_verification_success": _summary_value(training_summary, transition_summary, "network_verification_success", False),
+        "console_error_detected": _summary_value(training_summary, transition_summary, "console_error_detected", False),
+        "console_verification_required": _summary_value(training_summary, transition_summary, "console_verification_required", False),
+        "console_verification_performed": _summary_value(training_summary, transition_summary, "console_verification_performed", False),
+        "console_verification_success": _summary_value(training_summary, transition_summary, "console_verification_success", False),
+        "has_login_form": _summary_value(training_summary, transition_summary, "has_login_form", False),
+        "has_username_or_email_input": _summary_value(training_summary, transition_summary, "has_username_or_email_input", False),
+        "has_password_input": _summary_value(training_summary, transition_summary, "has_password_input", False),
+        "has_login_submit": _summary_value(training_summary, transition_summary, "has_login_submit", False),
+        "username_or_email_filled": _summary_value(training_summary, transition_summary, "username_or_email_filled", False),
+        "password_filled": _summary_value(training_summary, transition_summary, "password_filled", False),
+        "login_submit_clicked": _summary_value(training_summary, transition_summary, "login_submit_clicked", False),
+        "login_result_checked": _summary_value(training_summary, transition_summary, "login_result_checked", False),
+        "login_flow_attempted": _summary_value(training_summary, transition_summary, "login_flow_attempted", False),
+        "login_flow_completed": _summary_value(training_summary, transition_summary, "login_flow_completed", False),
+        "login_flow_status": _summary_value(training_summary, transition_summary, "login_flow_status", ""),
+        "repeated_inspect_dom_count": _summary_value(training_summary, transition_summary, "repeated_inspect_dom_count", 0),
+        "repeated_inspect_dom_penalty_applied": _summary_value(training_summary, transition_summary, "repeated_inspect_dom_penalty_applied", 0),
+        "repeated_inspect_dom_blocked": _summary_value(training_summary, transition_summary, "repeated_inspect_dom_blocked", 0),
     }
 
     bugs = [
@@ -218,6 +297,10 @@ def _summarize_transitions(transitions: List[Mapping[str, Any]]) -> Dict[str, An
     purchase_click_count = 0
     cart_count_detected_count = 0
     button_no_response_candidates = 0
+    raw_anomaly_candidate_count = 0
+    duplicate_anomaly_count = 0
+    anomaly_seen_keys = set()
+    latest_metrics: Dict[str, Any] = {}
 
     for row in transitions:
         episode_id = str(row.get("episode_id") or "")
@@ -238,7 +321,94 @@ def _summarize_transitions(transitions: List[Mapping[str, Any]]) -> Dict[str, An
                 reward_totals[str(key)] += float(value or 0.0)
             except (TypeError, ValueError):
                 pass
-        anomalies = row.get("anomalies", []) if isinstance(row.get("anomalies"), list) else []
+        for key in (
+            "generated_opportunity_count",
+            "required_opportunity_count",
+            "executed_opportunity_count",
+            "verified_opportunity_count",
+            "failed_opportunity_count",
+            "remaining_required_opportunity_count",
+            "action_opportunity_coverage_rate",
+            "required_opportunity_completion_rate",
+            "unverified_anomaly_count",
+            "verified_finding_count",
+            "anomaly_verification_required",
+            "anomaly_verification_completed",
+            "finish_allowed",
+            "finish_blocked_reason",
+            "opportunity_diagnostics",
+            "completed_reason",
+            "valid_scan_run",
+            "action_budget_status",
+            "page_type",
+            "raw_event_log_count",
+            "executed_action_count",
+            "successful_action_count",
+            "failed_action_count",
+            "runner_failed_action_count",
+            "timeline_failed_action_count",
+            "summary_failed_action_count",
+            "exploration_failed_action_count",
+            "failed_action_count_mismatch",
+            "failed_action_count_mismatch_reason",
+            "valid_report_metrics",
+            "report_metric_warning",
+            "action_log_count",
+            "state_log_count",
+            "network_log_count",
+            "issue_log_count",
+            "network_failure_count",
+            "console_error_count",
+            "runtime_error_count",
+            "warning_issue_count",
+            "critical_issue_count",
+            "total_problem_signal_count",
+            "missing_failure_reason_count",
+            "network_failure_detected",
+            "network_verification_required",
+            "network_verification_performed",
+            "network_verification_success",
+            "console_error_detected",
+            "console_verification_required",
+            "console_verification_performed",
+            "console_verification_success",
+            "has_login_form",
+            "has_username_or_email_input",
+            "has_password_input",
+            "has_login_submit",
+            "username_or_email_filled",
+            "password_filled",
+            "login_submit_clicked",
+            "login_result_checked",
+            "login_flow_attempted",
+            "login_flow_completed",
+            "login_flow_status",
+            "raw_anomaly_candidate_count",
+            "filtered_false_positive_count",
+            "duplicate_anomaly_count",
+            "anomaly_filter_reason_counts",
+            "finding_promotion_reason",
+            "finding_rejection_reason",
+            "action_diversity_score",
+            "unique_action_type_count",
+            "repeated_action_type_count",
+            "repeated_strategy_count",
+            "consecutive_same_strategy_count",
+            "repeated_inspect_dom_count",
+            "repeated_inspect_dom_penalty_applied",
+            "repeated_inspect_dom_blocked",
+        ):
+            if key in row:
+                latest_metrics[key] = row.get(key)
+        anomalies = row.get("anomalies", []) if isinstance(row.get("anomalies"), list) else row.get("detected_anomalies", []) if isinstance(row.get("detected_anomalies"), list) else []
+        raw_anomaly_candidate_count += len(anomalies)
+        for anomaly in anomalies:
+            if not isinstance(anomaly, Mapping):
+                continue
+            key = str(anomaly.get("type") or "") + "|" + str((anomaly.get("evidence") or {}).get("clicked_text") if isinstance(anomaly.get("evidence"), Mapping) else "")
+            if key in anomaly_seen_keys:
+                duplicate_anomaly_count += 1
+            anomaly_seen_keys.add(key)
         button_no_response_candidates += sum(1 for item in anomalies if item.get("type") == "button-no-response")
 
     average_reward = _safe_div(sum(episode_rewards.values()), max(1, len(episodes)))
@@ -252,7 +422,20 @@ def _summarize_transitions(transitions: List[Mapping[str, Any]]) -> Dict[str, An
         "purchase_click_count": purchase_click_count,
         "cart_count_detected_count": cart_count_detected_count,
         "button_no_response_candidates": button_no_response_candidates,
+        "raw_anomaly_candidate_count": raw_anomaly_candidate_count,
+        "duplicate_anomaly_count": duplicate_anomaly_count,
+        "filtered_false_positive_count": max(0, raw_anomaly_candidate_count - len(anomaly_seen_keys)),
+        "anomaly_filter_reason_counts": {"duplicate_anomaly": duplicate_anomaly_count} if duplicate_anomaly_count else {},
+        **latest_metrics,
     }
+
+
+def _summary_value(training_summary: Mapping[str, Any], transition_summary: Mapping[str, Any], key: str, default: Any) -> Any:
+    if key in training_summary:
+        return training_summary.get(key)
+    if key in transition_summary:
+        return transition_summary.get(key)
+    return default
 
 
 def _actions_by_bug(transitions: List[Mapping[str, Any]]) -> Dict[str, List[str]]:

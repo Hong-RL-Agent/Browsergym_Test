@@ -1,0 +1,96 @@
+{
+  "shared_model_path": "artifacts/models/jaws_ppo_v4_blind_gru_memory.pt",
+  "output_dir": "artifacts/multisite/real_qa_practice_batch3",
+  "sites": [
+    {
+      "site_id": "coffeecart",
+      "base_url": "https://coffee-cart.app/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "quotestoscrapelogin",
+      "base_url": "https://quotes.toscrape.com/login",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "webscraperstatic",
+      "base_url": "https://webscraper.io/test-sites/e-commerce/static",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "webscraperajax",
+      "base_url": "https://webscraper.io/test-sites/e-commerce/ajax",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "webscraperlogin",
+      "base_url": "https://webscraper.io/test-sites/e-commerce/login",
+      "has_bug_catalog": false,
+      "reward_scale": 0.5
+    },
+    {
+      "site_id": "crawlertest",
+      "base_url": "https://crawler-test.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "guru99paymentgateway",
+      "base_url": "https://demo.guru99.com/payment-gateway/index.php",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "guru99deletecustomer",
+      "base_url": "https://demo.guru99.com/test/delete_customer.php",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "techlisticform",
+      "base_url": "https://www.techlistic.com/p/selenium-practice-form.html",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "protractorcalculator",
+      "base_url": "http://juliemr.github.io/protractor-demo/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "bugeatertasks",
+      "base_url": "https://bugeater.web.app/app/list",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "parkcalc",
+      "base_url": "https://www.shino.de/parkcalc/",
+      "has_bug_catalog": false,
+      "reward_scale": 0.5
+    },
+    {
+      "site_id": "adminlte",
+      "base_url": "https://adminlte.io/themes/v3/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "tablerpreview",
+      "base_url": "https://preview.tabler.io/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "coreuibootstrap",
+      "base_url": "https://coreui.io/demos/bootstrap/5/free/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    }
+  ]
+}

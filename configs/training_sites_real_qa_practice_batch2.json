@@ -1,0 +1,84 @@
+{
+  "shared_model_path": "artifacts/models/jaws_ppo_v4_blind_gru_memory.pt",
+  "output_dir": "artifacts/multisite/real_qa_practice_batch2",
+  "sites": [
+    {
+      "site_id": "magentoluma",
+      "base_url": "https://magento.softwaretestingboard.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "expandtesting",
+      "base_url": "https://practice.expandtesting.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "globalsqabanking",
+      "base_url": "https://www.globalsqa.com/angularJs-protractor/BankingProject/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "letcode",
+      "base_url": "https://letcode.in/test",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "practicetestautomation",
+      "base_url": "https://practicetestautomation.com/practice-test-login/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "automationteststore",
+      "base_url": "https://automationteststore.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "greenkart",
+      "base_url": "https://rahulshettyacademy.com/seleniumPractise/#/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "lambdatestecommerce",
+      "base_url": "https://ecommerce-playground.lambdatest.io/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "acmedemobanking",
+      "base_url": "https://demo.applitools.com/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "agilewaytravel",
+      "base_url": "https://travel.agileway.net/login",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "bookcart",
+      "base_url": "https://bookcart.azurewebsites.net/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "guru99newtours",
+      "base_url": "https://demo.guru99.com/test/newtours/",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    },
+    {
+      "site_id": "way2automationregistration",
+      "base_url": "https://www.way2automation.com/angularjs-protractor/registeration/#/login",
+      "has_bug_catalog": false,
+      "reward_scale": 1.0
+    }
+  ]
+}

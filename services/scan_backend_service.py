@@ -34,7 +34,7 @@ def start_browsergym_scan(
     scan_id: str,
     target_url: str,
     episodes: int = 1,
-    max_steps: int = 30,
+    max_steps: int = 0,
     site_timeout_seconds: int = 300,
     episode_timeout_seconds: int = 0,
     reset_timeout_ms: int = 60000,
@@ -56,10 +56,14 @@ def start_browsergym_scan(
     site_id = _site_id_from_url(normalized_url)
     agent_config = agent_config if isinstance(agent_config, dict) else {}
     observability_config = _observability_config(agent_config)
+    effective_max_steps = _effective_max_steps(max_steps)
     config = {
         "run_id": scan_id,
         "eval_episodes": episodes,
-        "max_steps": max_steps,
+        "min_steps": int(agent_config.get("min_steps") or agent_config.get("minSteps") or 0),
+        "max_steps": effective_max_steps,
+        "action_loop_mode": "observation_driven",
+        "action_count_limit_enabled": True,
         "site_timeout_seconds": site_timeout_seconds,
         "episode_timeout_seconds": episode_timeout_seconds,
         "reset_timeout_ms": reset_timeout_ms,
@@ -111,7 +115,7 @@ def start_browsergym_scan(
         "--episodes",
         str(episodes),
         "--max-steps",
-        str(max_steps),
+        str(effective_max_steps),
         "--site-timeout-seconds",
         str(site_timeout_seconds),
         "--episode-timeout-seconds",
@@ -224,6 +228,18 @@ def _site_id_from_url(target_url: str) -> str:
         return f"site{parsed.port}"
     host = "".join(ch for ch in parsed.hostname or "target" if ch.isalnum())
     return f"site{host or 'target'}"
+
+
+def _default_min_steps_for_url(target_url: str) -> int:
+    return 0
+
+
+def _effective_max_steps(max_steps: int) -> int:
+    try:
+        value = int(max_steps or 0)
+    except (TypeError, ValueError):
+        value = 0
+    return value if value > 0 else 60
 
 
 def _allowed_hosts(target_url: str, agent_config: dict[str, Any]) -> list[str]:

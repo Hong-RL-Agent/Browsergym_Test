@@ -62,6 +62,31 @@ FEEDBACK_TOKENS = (
     "?꾨즺",
 )
 BOOK_CONTEXT_TOKENS = ("추천", "베스트셀러", "recommended", "bestseller", "rc-card", "book")
+FORUM_MORE_TEXT = "\ub354\ubcf4\uae30"
+FORUM_COMMUNITY_TEXT = "\ucee4\ubba4\ub2c8\ud2f0"
+FORUM_SEARCH_PLACEHOLDER = "\uc81c\ubaa9, \uc791\uc131\uc790, \uce74\ud14c\uace0\ub9ac\ub85c \uac80\uc0c9"
+FORUM_BUG_TYPES = {
+    "forum-comment-duplicated",
+    "forum-comment-delete-failed",
+    "forum-post-detail-not-opened",
+    "forum-save-feedback-missing",
+    "forum-empty-post-validation-missing",
+}
+# Deliberately narrow to tokens that are distinctly forum/community vocabulary.
+# The previous list also included "post", "comment", and generic Korean UI
+# words (title/content/save/delete) that show up on ordinary e-commerce pages
+# too (a cart's "\uc0ad\uc81c" button, a review section's "comment"/"\ub313\uae00 X\uac1c") -- on a
+# site with no explicit bug catalog those alone were enough to misclassify an
+# e-commerce page as forum context and fire forum-* detectors on it.
+FORUM_SURFACE_TOKENS = (
+    "forumworks",
+    "forum",
+    "\uac8c\uc2dc\ud310",  # \uac8c\uc2dc\ud310
+    "\ucee4\ubba4\ub2c8\ud2f0",  # \ucee4\ubba4\ub2c8\ud2f0
+    "\uac8c\uc2dc\uae00",  # \uac8c\uc2dc\uae00
+    "\uae00\uc4f0\uae30",  # \uae00\uc4f0\uae30
+    "\ub313\uae00",  # \ub313\uae00
+)
 
 
 def detect_anomalies(
@@ -69,7 +94,18 @@ def detect_anomalies(
     after_observation: Mapping[str, Any],
     action_info: Mapping[str, Any],
     site_profile: Mapping[str, Any] | None = None,
+    history: Dict[str, Any] | None = None,
 ) -> List[Dict[str, Any]]:
+    # history is the same per-episode dict the training/eval loop already
+    # threads through the reward and opportunity systems. It's optional here
+    # (defaults to a throwaway dict) because most anomaly types only need the
+    # immediate before/after diff -- but a few genuinely can't be judged from
+    # one transition alone (a saved value only turns out stale once the page
+    # is revisited later; a duplicate booking only shows up by comparing two
+    # separate submit attempts), so those detectors read/write into it across
+    # calls within the same episode.
+    if history is None:
+        history = {}
     anomalies: List[Dict[str, Any]] = []
     action = action_info.get("action", action_info)
     action_type = str(action.get("action_type", action_info.get("action_type", "")))
@@ -160,8 +196,54 @@ def detect_anomalies(
             modal_opened = _has_modal_or_dialog(after_observation) and not _has_modal_or_dialog(before_observation)
             form_opened = _has_form_signal(after_observation) and not _has_form_signal(before_observation)
             semantic_no_effect_emitted = False
+            semantic_type = str(clicked_candidate.get("semantic_action_type") or "")
 
-            if _is_high_value_semantic_action(clicked_candidate) and _is_semantic_no_effect_click(
+            if (
+                is_purchase_action
+                and semantic_type in {"cart", "add"}
+                and before_url == after_url
+                and not last_action_error
+                and no_feedback
+                and not modal_opened
+                and not form_opened
+                and not cart_state_changed
+            ):
+                anomalies.append(
+                    {
+                        "type": "button-no-response",
+                        "confidence": 0.84,
+                        "classification": "exploratory_anomaly",
+                        **_human_review_metadata("button-no-response", clicked_candidate, before_url, after_url, route_changed=False),
+                        "evidence": {
+                            "clicked_text": target_text,
+                            "clicked_name": clicked_candidate.get("name"),
+                            "clicked_bid": clicked_candidate.get("bid"),
+                            "semantic_action_type": semantic_type,
+                            "semantic_no_effect_click": True,
+                            "functional_no_effect_anomaly": True,
+                            "cart_no_effect": semantic_type == "cart",
+                            "add_no_effect": semantic_type == "add",
+                            "before_url": before_url,
+                            "after_url": after_url,
+                            "page_text_delta": page_text_delta,
+                            "candidate_delta": candidate_delta,
+                            "cart_count_before": cart_before,
+                            "cart_count_after": cart_after,
+                            "cart_text_before": before_cart_text,
+                            "cart_text_after": after_cart_text,
+                            "cart_count_detected": has_cart_counts,
+                            "cart_state_changed": cart_state_changed,
+                            "toast_visible": False,
+                            "network_request_delta": not no_network_change,
+                            "runtime_signal_delta": not no_runtime_signal_delta,
+                            "target": _target_evidence(clicked_candidate),
+                            "is_purchase_action": True,
+                        },
+                    }
+                )
+                semantic_no_effect_emitted = True
+
+            if not semantic_no_effect_emitted and _is_high_value_semantic_action(clicked_candidate) and _is_semantic_no_effect_click(
                 before_observation=before_observation,
                 after_observation=after_observation,
                 before_url=before_url,
@@ -359,7 +441,7 @@ def detect_anomalies(
                             },
                         }
                     )
-    elif action_type in {"fill_input", "press_enter", "submit_form"} and clicked_candidate:
+    elif action_type in {"press_enter", "submit_form"} and clicked_candidate:
         page_text_delta = abs(_page_text_length(after_observation) - _page_text_length(before_observation))
         candidate_delta = abs(len(after_candidates) - len(before_candidates))
         no_feedback = not (
@@ -443,10 +525,46 @@ def detect_anomalies(
             confidence = 0.75 if overlap_count >= 5 else 0.65
         else:
             confidence = 0.4
+        layout_bugs = [
+            bug for bug in site_profile.get("bugs", []) or []
+            if isinstance(bug, Mapping) and str(bug.get("type") or "") in {"layout-overlap", "layout-overflow", "css-layout"}
+        ]
+        layout_detail = _best_layout_detail(after_candidates, layout_bugs) or _catalog_layout_fallback(after_observation, layout_bugs)
+        layout_detail = layout_detail or {}
+        detail_text = " ".join(str(layout_detail.get(key) or "") for key in ("text", "selector", "selector_hint", "data_bug_id"))
+        target_keywords = _bug_values(layout_bugs, "target_keywords")
+        target_matches = sorted(set(_keyword_matches(detail_text, target_keywords) + _keyword_matches(_page_text(after_observation), target_keywords)))
+        specific_element_identified = bool(layout_detail)
+        # layout_overlap_count only ever proved *how many* candidate pairs
+        # intersect, not *which two* -- evidence used to report a single
+        # "candidate_text"/"selector" (whichever element the catalog/priority
+        # heuristics picked, e.g. the header cart icon) with no indication of
+        # what it actually overlapped with. Surface the actual overlapping
+        # pair (largest-area overlap, or the one matching target_keywords if a
+        # catalog hint is available) so a reviewer can tell "price label
+        # overlaps add-to-cart button" from "two unrelated header elements
+        # happen to intersect."
+        overlap_details_list = after_observation.get("layout_signals", {}).get("layout_overlap_details", []) or []
+        best_overlap_pair: Dict[str, Any] = {}
+        if target_keywords:
+            for pair in overlap_details_list:
+                combined = " ".join(
+                    str(pair.get(key) or "")
+                    for key in ("element1_text", "element1_selector", "element2_text", "element2_selector")
+                )
+                if _keyword_matches(combined, target_keywords):
+                    best_overlap_pair = pair
+                    break
+        if not best_overlap_pair and overlap_details_list:
+            best_overlap_pair = overlap_details_list[0]
         anomalies.append(
             {
                 "type": "layout-overlap",
                 "confidence": confidence,
+                "classification": "exploratory_anomaly",
+                "human_review_status": "needs_review",
+                "ground_truth_match_status": "unconfirmed_layout_signal",
+                "review_question": "Overlap count alone does not prove a specific overflow bug; verify the affected element and whether it overflows or overlaps.",
                 "evidence": {
                     "layout_overlap_count": overlap_count,
                     "viewport_width": after_observation.get("page_state", {}).get("viewport_width", 0),
@@ -454,6 +572,18 @@ def detect_anomalies(
                     "viewport_type": viewport_type,
                     "mobile_viewport": viewport_type == "mobile",
                     "action_type": action_type,
+                    "specific_element_identified": specific_element_identified,
+                    "candidate_text": layout_detail.get("text", ""),
+                    "selector": layout_detail.get("selector") or layout_detail.get("selector_hint") or "",
+                    "selector_hint": layout_detail.get("selector") or layout_detail.get("selector_hint") or "",
+                    "data_bug_id": layout_detail.get("data_bug_id") or "",
+                    "catalog_bug_id_matches": _profile_list(layout_detail.get("catalog_bug_id_matches")),
+                    "target_keyword_matches": target_matches,
+                    "overlapping_elements_identified": bool(best_overlap_pair),
+                    "element1_text": best_overlap_pair.get("element1_text", ""),
+                    "element1_selector": best_overlap_pair.get("element1_selector", ""),
+                    "element2_text": best_overlap_pair.get("element2_text", ""),
+                    "element2_selector": best_overlap_pair.get("element2_selector", ""),
                 },
             }
         )
@@ -465,11 +595,17 @@ def detect_anomalies(
         anomalies.append(
             {
                 "type": "action-error",
-                "confidence": 0.9,
+                "confidence": 0.55,
+                "classification": "action_execution_diagnostic",
+                "human_review_status": "needs_verification",
                 "evidence": {
                     "action_type": action_type,
                     "error": error_message,
                     "action_result_failed": action_result_failed,
+                    "failure_reason": error_message or "action executor reported failure",
+                    "infra_failure_possible": True,
+                    "user_visible_failure_possible": False,
+                    "requires_followup_verification": True,
                 },
             }
         )
@@ -491,6 +627,60 @@ def detect_anomalies(
     page_text_after = _page_text(after_observation).lower()
     anomalies.extend(detect_web_error_findings(before_observation, after_observation, action_info))
     anomalies.extend(detect_extended_policy_findings(before_observation, after_observation, action_info))
+    quantity_anomaly = _detect_invalid_quantity_allowed(
+        before_observation,
+        after_observation,
+        action_info,
+        clicked_candidate,
+        action_type,
+    )
+    if quantity_anomaly:
+        anomalies.append(quantity_anomaly)
+    total_anomaly = _detect_cart_total_mismatch(after_observation, action_type)
+    if total_anomaly:
+        anomalies.append(total_anomaly)
+    redirect_anomaly = _detect_login_redirect_mismatch(before_observation, after_observation, action_type)
+    if redirect_anomaly:
+        anomalies.append(redirect_anomaly)
+    filter_anomaly = _detect_filter_no_effect(before_observation, after_observation, clicked_candidate, action_type, candidate_delta)
+    if filter_anomaly:
+        anomalies.append(filter_anomaly)
+    delete_js_error_anomaly = _detect_js_error_on_destructive_action(before_observation, after_observation, clicked_candidate, action_type)
+    if delete_js_error_anomaly:
+        anomalies.append(delete_js_error_anomaly)
+    stale_data_anomaly = _detect_stale_data_rendering(before_observation, after_observation, action_info, clicked_candidate, action_type, history)
+    if stale_data_anomaly:
+        anomalies.append(stale_data_anomaly)
+    double_submit_anomaly = _detect_double_submit(before_observation, after_observation, action_info, clicked_candidate, action_type, history)
+    if double_submit_anomaly:
+        anomalies.append(double_submit_anomaly)
+    weak_password_anomaly = _detect_weak_password_validation(before_observation, after_observation, action_info, clicked_candidate, action_type, history)
+    if weak_password_anomaly:
+        anomalies.append(weak_password_anomaly)
+    detail_nav_anomaly = _detect_detail_navigation_no_effect(
+        before_observation,
+        after_observation,
+        clicked_candidate,
+        action_type,
+        before_url,
+        after_url,
+        candidate_delta,
+        last_action_error,
+    )
+    if detail_nav_anomaly:
+        anomalies.append(detail_nav_anomaly)
+    detail_mismatch_anomaly = _detect_product_detail_mismatch(
+        before_observation,
+        after_observation,
+        clicked_candidate,
+        action_type,
+        before_url,
+        after_url,
+        last_action_error,
+    )
+    if detail_mismatch_anomaly:
+        anomalies.append(detail_mismatch_anomaly)
+    anomalies.extend(_detect_forum_findings(before_observation, after_observation, action_info, clicked_candidate, action_type, before_url, after_url, candidate_delta, last_action_error, site_profile))
     if action_type == "inspect_network":
         api_403_count = int(action_info.get("api_403_count", 0) or 0)
         network_entries = action_info.get("network_entries", []) or []
@@ -512,14 +702,25 @@ def detect_anomalies(
                 }
             )
     if "403" in page_text_after or "forbidden" in page_text_after or "access denied" in page_text_after:
+        # Deliberately low confidence: this is a bare substring match against
+        # whatever text happens to be visible on the page (which can include
+        # unrelated content that merely mentions "forbidden"/"403"), with no
+        # HTTP status code or request evidence behind it -- unlike the
+        # network-entry-based api-forbidden finding above, which has real
+        # response.status == 403 evidence. _is_reportable_anomaly requires
+        # confidence >= 0.5 for this type, so this stays a low-confidence
+        # diagnostic signal rather than an independently reportable finding.
         anomalies.append(
             {
                 "type": "api-forbidden",
-                "confidence": 0.8,
+                "confidence": 0.35,
+                "classification": "exploratory_anomaly",
+                "human_review_status": "needs_verification",
                 "evidence": {
                     "before_url": before_url,
                     "after_url": after_url,
                     "page_text_contains_forbidden": True,
+                    "http_status_evidence": False,
                     "target": _target_evidence(clicked_candidate) if clicked_candidate else {},
                 },
             }
@@ -811,6 +1012,8 @@ def _should_emit_openended_interaction_anomaly(
 ) -> bool:
     if anomaly_type == "button-no-response" and _is_low_value_generic_candidate(candidate):
         return False
+    if anomaly_type == "button-no-response" and _is_forum_noise_candidate(candidate):
+        return False
     if anomaly_type == "button-no-response" and str(candidate.get("semantic_action_type") or "") in NON_EXECUTING_SEMANTIC_ACTION_TYPES:
         return False
     if anomaly_type != "form-no-feedback":
@@ -854,6 +1057,19 @@ def _is_low_value_generic_candidate(candidate: Mapping[str, Any]) -> bool:
         and not high_value
         and re.fullmatch(r"element-\d+", text or "")
     )
+
+
+def _is_forum_noise_candidate(candidate: Mapping[str, Any]) -> bool:
+    text = " ".join(_candidate_text(candidate).split()).strip().lower()
+    return text in {
+        FORUM_MORE_TEXT,
+        f"{FORUM_MORE_TEXT} {FORUM_MORE_TEXT}",
+        "more",
+        "forumworks",
+        f"forumworks {FORUM_COMMUNITY_TEXT}",
+        f"forumworks {FORUM_COMMUNITY_TEXT} forumworks{FORUM_COMMUNITY_TEXT}",
+        FORUM_COMMUNITY_TEXT,
+    } or FORUM_SEARCH_PLACEHOLDER in text
 
 
 def _context_review_adjustments(
@@ -1500,6 +1716,983 @@ def _cart_text(observation: Mapping[str, Any]) -> str:
     return ""
 
 
+def _detect_invalid_quantity_allowed(
+    before_observation: Mapping[str, Any],
+    after_observation: Mapping[str, Any],
+    action_info: Mapping[str, Any],
+    candidate: Mapping[str, Any] | None,
+    action_type: str,
+) -> Dict[str, Any] | None:
+    if action_type not in {"fill_input", "press_enter", "click_element"}:
+        return None
+    target = candidate or {}
+    target_text = _candidate_text(target)
+    is_quantity_target = bool(
+        target.get("is_quantity_control")
+        # is_cart_quantity_related is deliberately NOT trusted here: the
+        # observation adapter sets it on any element whose text merely
+        # contains "cart"/"장바구니" (see COMMERCE priority-boost usage), which
+        # includes a plain header cart *icon* with no quantity control at all
+        # -- confirmed on a real scan where clicking the header cart button
+        # fired this detector purely because its label contained "장바구니".
+        or any(
+            token in target_text
+            for token in (
+                "quantity", "qty", "수량", "subtotal", "total", "합계", "소계", "총액", "plus", "minus", "증가", "감소",
+                # booking/reservation headcount uses the same "is this number
+                # valid" shape as cart quantity (negative/zero/over-limit
+                # accepted without validation), just different vocabulary.
+                "인원", "인원수", "guest", "guests", "capacity", "참가", "참가자", "명",
+            )
+        )
+        or target_text.strip() in {"+", "-", "＋", "－"}
+    )
+    action = action_info.get("action", action_info)
+    input_text = " ".join(
+        str(action.get(key) or action_info.get(key) or "")
+        for key in ("input_value", "value", "text", "typed_text", "fill_value")
+    )
+    after_text_raw = " ".join([_cart_text(after_observation), _page_text(after_observation)])
+    after_text = after_text_raw.lower()
+    invalid_input = _contains_invalid_quantity(input_text)
+    invalid_visible = _contains_invalid_quantity(after_text)
+    capacity_exceeded = _capacity_exceeded(after_text_raw)
+    if not is_quantity_target:
+        return None
+    if action_type == "click_element" and _is_low_value_generic_candidate(target):
+        return None
+    if not (invalid_input or invalid_visible or capacity_exceeded):
+        return None
+    if _state_signature(before_observation) == _state_signature(after_observation) and not (invalid_visible or capacity_exceeded):
+        return None
+    before_cart_text = _cart_text(before_observation)
+    after_cart_text = _cart_text(after_observation)
+    quantity_before = _extract_quantity_value(before_cart_text)
+    quantity_after = _extract_quantity_value(after_cart_text)
+    total_amounts = _currency_amounts(after_cart_text)
+    expected_total = sum(total_amounts[:-1]) if len(total_amounts) >= 2 else None
+    actual_total = total_amounts[-1] if total_amounts else None
+    return {
+        "type": "cart-quantity-mismatch",
+        "confidence": 0.86 if (invalid_visible or capacity_exceeded) else 0.74,
+        "classification": "exploratory_anomaly",
+        "human_review_status": "likely_true_positive" if (invalid_visible or capacity_exceeded) else "needs_review",
+        "evidence": {
+            "action_type": action_type,
+            "invalid_quantity_input": input_text.strip(),
+            "invalid_quantity_visible": invalid_visible,
+            "capacity_exceeded": capacity_exceeded,
+            "quantity_before": quantity_before,
+            "quantity_after": quantity_after,
+            "expected_total": expected_total,
+            "actual_total": actual_total,
+            "cart_text_before": before_cart_text,
+            "cart_text_after": after_cart_text,
+            "target": _target_evidence(target) if target else {},
+        },
+    }
+
+
+def _capacity_exceeded(text: str) -> bool:
+    # Booking/reservation forms often display their own declared limit ("최대
+    # 4명" / "max 10 guests") right next to the headcount control -- if the
+    # accepted value exceeds that stated maximum, the validation is missing,
+    # the same class of bug as a negative/zero cart quantity just phrased as
+    # an upper bound instead of a lower one.
+    lowered = str(text or "").lower()
+    max_match = re.search(r"(?:최대|max(?:imum)?)\D{0,6}(\d+)", lowered)
+    if not max_match:
+        return False
+    try:
+        max_value = int(max_match.group(1))
+    except ValueError:
+        return False
+    if max_value <= 0:
+        return False
+    for match in re.finditer(r"(?:인원수?|guests?|참가자?|명|quantity|qty|수량)\D{0,6}(\d+)", lowered):
+        try:
+            value = int(match.group(1))
+        except ValueError:
+            continue
+        if value > max_value:
+            return True
+    return False
+
+
+def _extract_quantity_value(text: str) -> float | None:
+    value = str(text or "").lower()
+    patterns = (
+        "(?:quantity|qty|\\uc218\\ub7c9|guests?)\\s*[:=]?\\s*(-?\\d+)",
+        # A bare "N\uac1c"/"N items" is only trustworthy as a *cart* quantity when a
+        # cart/quantity keyword sits close by -- matched with zero required
+        # context, it grabs unrelated page copy just as readily (e.g. a "6\uac1c
+        # \uc0c1\ud488" recommended-products counter), which is exactly what produced a
+        # false cart-quantity-mismatch reading (quantity 6 -> 0) from a product
+        # *listing* count on a real scan, not any actual cart state.
+        "(?:cart|basket|\\uc7a5\\ubc14\\uad6c\\ub2c8|\\uce74\\ud2b8|\\uc218\\ub7c9)[^\\d-]{0,20}(-?\\d+)\\s*(?:items?|pcs?|ea|\\uac1c)?\\b",
+        "(-?\\d+)\\s*(?:items?|pcs?|ea|\\uac1c)?[^\\d]{0,20}(?:\\uc7a5\\ubc14\\uad6c\\ub2c8|\\uce74\\ud2b8|cart|basket|\\uc218\\ub7c9)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, value)
+        if not match:
+            continue
+        try:
+            return float(match.group(1))
+        except ValueError:
+            return None
+    return None
+
+
+def _contains_invalid_quantity(text: str) -> bool:
+    value = str(text or "").lower()
+    if not value:
+        return False
+    if re.search("(?:quantity|qty|\\uc218\\ub7c9)\\s*[:=]?\\s*(-\\d+|0)\\b", value):
+        return True
+    # Same proximity requirement as _extract_quantity_value above: a negative
+    # number or a bare 0 only counts as an "invalid quantity visible" signal
+    # when it sits next to an actual cart/quantity keyword, not merely
+    # somewhere in the same broad cart_text blob as one.
+    if re.search(
+        "(?:cart|basket|\\uc7a5\\ubc14\\uad6c\\ub2c8|\\uce74\\ud2b8|\\uc218\\ub7c9)[^\\d-]{0,20}(-\\d+|0)\\s*(?:items?|pcs?|ea|\\uac1c)?\\b",
+        value,
+    ):
+        return True
+    if re.search(
+        "(-\\d+|0)\\s*(?:items?|pcs?|ea|\\uac1c)?[^\\d]{0,20}(?:\\uc7a5\\ubc14\\uad6c\\ub2c8|\\uce74\\ud2b8|cart|basket|\\uc218\\ub7c9)",
+        value,
+    ):
+        return True
+    return bool(
+        re.search("\\b(?:nan|null|undefined)\\b", value)
+        and any(token in value for token in ("quantity", "qty", "\uc218\ub7c9", "cart", "basket", "\uc7a5\ubc14\uad6c\ub2c8"))
+    )
+
+
+def _detect_cart_total_mismatch(observation: Mapping[str, Any], action_type: str) -> Dict[str, Any] | None:
+    if action_type not in {"inspect_cart", "inspect_dom", "click_element", "fill_input", "press_enter"}:
+        return None
+    cart_text = _cart_text(observation)
+    text = (cart_text or _page_text(observation)).lower()
+    # The underlying check (sum of visible line items vs. a displayed total)
+    # is domain-agnostic -- it applies just as well to a booking headcount
+    # summary or a stats dashboard's totals row as to a shopping cart, so the
+    # trigger vocabulary isn't restricted to commerce-specific words.
+    if not any(
+        token in text
+        for token in ("cart", "basket", "subtotal", "total", "장바구니", "카트", "소계", "합계", "총액", "통계", "stats", "statistics", "예약", "인원")
+    ):
+        return None
+    amounts = _currency_amounts(text)
+    if len(amounts) < 3:
+        return None
+    if len(amounts) > 8:
+        return None
+    if not cart_text and action_type not in {"inspect_cart", "inspect_dom"}:
+        return None
+    displayed_total = amounts[-1]
+    expected_total = sum(amounts[:-1])
+    if expected_total <= 0:
+        return None
+    if abs(displayed_total - expected_total) <= max(1.0, expected_total * 0.02):
+        return None
+    return {
+        "type": "cart-total-mismatch",
+        "confidence": 0.78,
+        "classification": "exploratory_anomaly",
+        "human_review_status": "likely_true_positive",
+        "evidence": {
+            "action_type": action_type,
+            "line_item_amounts": amounts[:-1],
+            "displayed_total": displayed_total,
+            "expected_total_from_visible_amounts": expected_total,
+            "cart_text": _cart_text(observation),
+        },
+    }
+
+
+def _detect_login_redirect_mismatch(
+    before_observation: Mapping[str, Any],
+    after_observation: Mapping[str, Any],
+    action_type: str,
+) -> Dict[str, Any] | None:
+    if action_type not in {"click_submit", "submit_form", "press_enter", "click_element", "login_as_user", "login_as_admin"}:
+        return None
+    before_runtime = before_observation.get("runtime_signals", {}) if isinstance(before_observation, Mapping) else {}
+    after_runtime = after_observation.get("runtime_signals", {}) if isinstance(after_observation, Mapping) else {}
+    if not isinstance(before_runtime, Mapping):
+        before_runtime = {}
+    if not isinstance(after_runtime, Mapping):
+        after_runtime = {}
+    was_logged_in = bool(before_runtime.get("logged_in") or before_runtime.get("login_success"))
+    is_logged_in = bool(after_runtime.get("logged_in") or after_runtime.get("login_success"))
+    if not is_logged_in or was_logged_in:
+        return None
+    before_url = _url(before_observation)
+    after_url = _url(after_observation)
+    after_path = after_url.lower()
+    still_on_auth_page = any(token in after_path for token in ("login", "signin", "sign-in", "auth", "logon"))
+    no_navigation = before_url == after_url
+    if not (still_on_auth_page or no_navigation):
+        return None
+    return {
+        "type": "login-redirect-mismatch",
+        "confidence": 0.7 if still_on_auth_page else 0.55,
+        "classification": "exploratory_anomaly",
+        "human_review_status": "needs_review",
+        "evidence": {
+            "before_url": before_url,
+            "after_url": after_url,
+            "still_on_auth_page": still_on_auth_page,
+            "no_navigation_despite_login_success": no_navigation,
+        },
+    }
+
+
+def _detect_filter_no_effect(
+    before_observation: Mapping[str, Any],
+    after_observation: Mapping[str, Any],
+    candidate: Mapping[str, Any] | None,
+    action_type: str,
+    candidate_delta: int,
+) -> Dict[str, Any] | None:
+    if action_type not in {"click_element", "select_option", "fill_input", "press_enter"}:
+        return None
+    target = candidate or {}
+    if not target:
+        return None
+    semantic_type = str(target.get("semantic_action_type") or "").lower()
+    if semantic_type == "search_input" and action_type == "click_element":
+        return None
+    is_filter_target = bool(
+        target.get("is_filter_related")
+        or semantic_type in {"filter", "category", "tab", "sort"}
+        or any(token in _candidate_text(target).lower() for token in ("filter", "sort", "필터", "정렬", "카테고리"))
+    )
+    if not is_filter_target or _is_low_value_generic_candidate(target):
+        return None
+    page_text_delta = abs(_page_text_length(after_observation) - _page_text_length(before_observation))
+    no_state_change = _state_signature(before_observation) == _state_signature(after_observation)
+    if not (no_state_change and candidate_delta == 0 and page_text_delta <= 5):
+        return None
+    return {
+        "type": "filter-no-effect",
+        "confidence": 0.72,
+        "classification": "exploratory_anomaly",
+        "human_review_status": "needs_review",
+        "evidence": {
+            "action_type": action_type,
+            "target": _target_evidence(target),
+            "candidate_delta": candidate_delta,
+            "page_text_delta": page_text_delta,
+        },
+    }
+
+
+def _detect_js_error_on_destructive_action(
+    before_observation: Mapping[str, Any],
+    after_observation: Mapping[str, Any],
+    candidate: Mapping[str, Any] | None,
+    action_type: str,
+) -> Dict[str, Any] | None:
+    if action_type != "click_element" or not candidate:
+        return None
+    target_text = _candidate_text(candidate).lower()
+    is_destructive = any(token in target_text for token in ("삭제", "delete", "remove", "취소", "cancel"))
+    if not is_destructive:
+        return None
+    before_runtime = before_observation.get("runtime_signals", {}) if isinstance(before_observation, Mapping) else {}
+    after_runtime = after_observation.get("runtime_signals", {}) if isinstance(after_observation, Mapping) else {}
+    if not isinstance(before_runtime, Mapping):
+        before_runtime = {}
+    if not isinstance(after_runtime, Mapping):
+        after_runtime = {}
+
+    def _count(source: Mapping[str, Any]) -> int:
+        total = 0
+        for key in ("playwright_console_error_count", "console_error_count", "page_error_count", "runtime_exception_count"):
+            try:
+                total += int(source.get(key) or 0)
+            except (TypeError, ValueError):
+                continue
+        return total
+
+    before_errors = _count(before_runtime)
+    after_errors = _count(after_runtime)
+    if after_errors <= before_errors:
+        return None
+    return {
+        "type": "runtime-exception",
+        "confidence": 0.82,
+        "classification": "exploratory_anomaly",
+        "human_review_status": "likely_true_positive",
+        "evidence": {
+            "action_type": action_type,
+            "target": _target_evidence(candidate),
+            "console_error_count_before": before_errors,
+            "console_error_count_after": after_errors,
+            "correlated_destructive_action": True,
+            "destructive_action_text": _candidate_text(candidate).strip(),
+        },
+    }
+
+
+def _field_identity_key(candidate: Mapping[str, Any]) -> str:
+    # Prefer identifiers that survive a page reload/revisit (a bid usually
+    # doesn't); fall back to visible text only as a last resort.
+    for key in ("name", "aria_label", "placeholder", "label", "id"):
+        value = str(candidate.get(key) or "").strip()
+        if value:
+            return value.lower()
+    text = _candidate_text(candidate).strip()
+    return text.lower() if text else ""
+
+
+def _detect_stale_data_rendering(
+    before_observation: Mapping[str, Any],
+    after_observation: Mapping[str, Any],
+    action_info: Mapping[str, Any],
+    candidate: Mapping[str, Any] | None,
+    action_type: str,
+    history: Dict[str, Any],
+) -> Dict[str, Any] | None:
+    # Needs memory across steps: a saved value only turns out stale once the
+    # field is seen again *after* a save was confirmed, not on the very next
+    # transition (which would just be comparing the field to itself).
+    entered = history.setdefault("entered_field_values", {})
+    action = action_info.get("action", action_info)
+    target = candidate or {}
+
+    if action_type == "fill_input" and target:
+        field_key = _field_identity_key(target)
+        typed_value = _first_action_text(action, action_info)
+        if field_key and typed_value:
+            entered[field_key] = {"value": typed_value, "confirmed_saved": False, "resolved": False}
+        return None
+
+    if action_type in {"click_element", "click_submit", "submit_form"} and target and _is_forum_save_target(target):
+        for record in entered.values():
+            if isinstance(record, dict) and not record.get("confirmed_saved"):
+                record["confirmed_saved"] = True
+        return None
+
+    candidates = after_observation.get("candidate_elements", []) if isinstance(after_observation, Mapping) else []
+    if not isinstance(candidates, list):
+        return None
+    for other in candidates:
+        if not isinstance(other, Mapping):
+            continue
+        field_key = _field_identity_key(other)
+        record = entered.get(field_key) if field_key else None
+        if not isinstance(record, dict) or not record.get("confirmed_saved") or record.get("resolved"):
+            continue
+        displayed_value = str(other.get("value") or other.get("input_value") or "").strip()
+        if not displayed_value:
+            continue
+        record["resolved"] = True
+        entered_value = str(record.get("value") or "").strip()
+        if displayed_value != entered_value:
+            return {
+                "type": "stale-data-rendering",
+                "confidence": 0.75,
+                "classification": "exploratory_anomaly",
+                "human_review_status": "needs_review",
+                "evidence": {
+                    "field": field_key,
+                    "entered_value": entered_value,
+                    "displayed_value": displayed_value,
+                    "target": _target_evidence(other),
+                },
+            }
+    return None
+
+
+def _detect_double_submit(
+    before_observation: Mapping[str, Any],
+    after_observation: Mapping[str, Any],
+    action_info: Mapping[str, Any],
+    candidate: Mapping[str, Any] | None,
+    action_type: str,
+    history: Dict[str, Any],
+) -> Dict[str, Any] | None:
+    if action_type not in {"click_element", "click_submit", "submit_form", "press_enter"}:
+        return None
+    target = candidate or {}
+    if not target:
+        return None
+    text = _candidate_text(target).lower()
+    is_submit_like = bool(
+        target.get("is_submit")
+        or any(token in text for token in ("예약", "reserve", "booking", "신청", "등록", "제출", "submit", "book now", "확정"))
+    )
+    if not is_submit_like:
+        return None
+    action = action_info.get("action", action_info)
+    signature = str(action.get("action_signature") or "") or _field_identity_key(target) or text
+    if not signature:
+        return None
+    # _state_signature is structural (DOM shape/candidate count) and won't
+    # change for a booking counter that just increments its own text, so use
+    # a content-level diff instead to confirm this click actually did
+    # something rather than counting a no-effect click as a submission.
+    no_content_change = (
+        _state_signature(before_observation) == _state_signature(after_observation)
+        and _page_text(before_observation) == _page_text(after_observation)
+    )
+    if no_content_change:
+        # This click didn't actually do anything -- don't count it as a
+        # successful (duplicate-creating) submission.
+        return None
+    counts = history.setdefault("submit_click_success_counts", {})
+    counts[signature] = int(counts.get(signature, 0) or 0) + 1
+    if counts[signature] < 2:
+        return None
+    return {
+        "type": "duplicate-submission",
+        "confidence": 0.7,
+        "classification": "exploratory_anomaly",
+        "human_review_status": "needs_review",
+        "evidence": {
+            "action_signature": signature,
+            "submit_success_count_this_episode": counts[signature],
+            "target": _target_evidence(target),
+        },
+    }
+
+
+def _detect_weak_password_validation(
+    before_observation: Mapping[str, Any],
+    after_observation: Mapping[str, Any],
+    action_info: Mapping[str, Any],
+    candidate: Mapping[str, Any] | None,
+    action_type: str,
+    history: Dict[str, Any],
+) -> Dict[str, Any] | None:
+    # Blind (no ground-truth credentials) so there's no way to know a
+    # password is "wrong" from a single attempt. The only signal available
+    # without a real password oracle is internal consistency: the same
+    # account accepting two different passwords in the same episode is
+    # unambiguously broken regardless of which (if either) was "correct".
+    action = action_info.get("action", action_info)
+    target = candidate or {}
+    if action_type == "fill_input" and target:
+        typed_value = _first_action_text(action, action_info)
+        if typed_value:
+            input_type = str(target.get("type") or target.get("input_type") or "").lower()
+            role = str(target.get("role") or "").lower()
+            if bool(target.get("is_password")) or input_type == "password":
+                history["last_typed_password"] = typed_value
+            elif input_type == "email" or "email" in (str(target.get("name") or "") + str(target.get("placeholder") or "")).lower():
+                history["last_typed_email"] = typed_value.strip().lower()
+        return None
+    if action_type not in {"click_submit", "submit_form", "press_enter", "click_element"}:
+        return None
+    after_runtime = after_observation.get("runtime_signals", {}) if isinstance(after_observation, Mapping) else {}
+    before_runtime = before_observation.get("runtime_signals", {}) if isinstance(before_observation, Mapping) else {}
+    if not isinstance(after_runtime, Mapping):
+        after_runtime = {}
+    if not isinstance(before_runtime, Mapping):
+        before_runtime = {}
+    was_logged_in = bool(before_runtime.get("logged_in") or before_runtime.get("login_success"))
+    is_logged_in = bool(after_runtime.get("logged_in") or after_runtime.get("login_success"))
+    if not is_logged_in or was_logged_in:
+        return None
+    email = str(history.get("last_typed_email") or "").strip()
+    password = str(history.get("last_typed_password") or "").strip()
+    if not email or not password:
+        return None
+    attempts = history.setdefault("login_attempts_by_email", {})
+    seen_passwords = attempts.setdefault(email, set())
+    seen_passwords.add(password)
+    if len(seen_passwords) < 2:
+        return None
+    return {
+        "type": "weak-password-validation",
+        "confidence": 0.8,
+        "classification": "exploratory_anomaly",
+        "human_review_status": "likely_true_positive",
+        "evidence": {
+            "email": email,
+            "distinct_passwords_accepted_this_episode": len(seen_passwords),
+            "password_length": len(password),
+        },
+    }
+
+
+def _currency_amounts(text: str) -> List[float]:
+    amounts: List[float] = []
+    for match in re.finditer(r"(?:[$₩]\s*|krw\s*)?(-?\d[\d,]*(?:\.\d{1,2})?)\s*(?:원|usd|krw)?", str(text or ""), re.IGNORECASE):
+        raw = match.group(1).replace(",", "")
+        try:
+            value = float(raw)
+        except ValueError:
+            continue
+        if abs(value) >= 1:
+            amounts.append(value)
+    return amounts
+
+
+def _currency_amounts(text: str) -> List[float]:
+    amounts: List[float] = []
+    value = str(text or "")
+    patterns = (
+        r"(?:[$\u20a9]\s*|krw\s+|usd\s+)(-?\d[\d,]*(?:\.\d{1,2})?)",
+        r"(-?\d[\d,]*(?:\.\d{1,2})?)\s*(?:\uc6d0|won|usd|krw)\b",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, value, re.IGNORECASE):
+            raw = match.group(1).replace(",", "")
+            try:
+                amount = float(raw)
+            except ValueError:
+                continue
+            if abs(amount) >= 1:
+                amounts.append(amount)
+    if amounts:
+        return amounts
+    for match in re.finditer(r"\b(?:price|subtotal|total|amount)\D{0,12}(-?\d[\d,]*(?:\.\d{1,2})?)", value, re.IGNORECASE):
+        raw = match.group(1).replace(",", "")
+        try:
+            amount = float(raw)
+        except ValueError:
+            continue
+        if abs(amount) >= 1:
+            amounts.append(amount)
+    return amounts
+
+
+def _detect_product_detail_mismatch(
+    before_observation: Mapping[str, Any],
+    after_observation: Mapping[str, Any],
+    candidate: Mapping[str, Any] | None,
+    action_type: str,
+    before_url: str,
+    after_url: str,
+    last_action_error: bool,
+) -> Dict[str, Any] | None:
+    if action_type != "click_element" or not candidate or last_action_error:
+        return None
+    target_text = _candidate_text(candidate)
+    target_product = _product_name_from_text(target_text)
+    if not target_product:
+        return None
+    role = str(candidate.get("role") or "").lower()
+    href = str(candidate.get("href") or "").strip()
+    semantic_type = str(candidate.get("semantic_action_type") or "").lower()
+    detail_target = bool(candidate.get("is_detail_trigger")) or bool(href) or role == "link" or semantic_type in {"detail", "details", "product_detail", "navigation"}
+    if not detail_target:
+        return None
+    after_text = _page_text(after_observation)
+    actual_product = _product_name_from_text(after_text[:500])
+    if not actual_product:
+        return None
+    if target_product == actual_product:
+        return None
+    before_text = _page_text(before_observation)
+    if target_product in _product_tokens(before_text) and actual_product in _product_tokens(before_text) and target_product not in _product_tokens(after_text[:300]):
+        confidence = 0.88 if before_url != after_url or "detail" in after_url.lower() or "product" in after_url.lower() else 0.76
+        return {
+            "type": "product-detail-mismatch",
+            "confidence": confidence,
+            "classification": "exploratory_anomaly",
+            "human_review_status": "likely_true_positive" if confidence >= 0.8 else "needs_review",
+            "evidence": {
+                "before_url": before_url,
+                "after_url": after_url,
+                "clicked_text": target_text,
+                "expected_product": target_product,
+                "actual_product": actual_product,
+                "detail_content_mismatch": True,
+                "target": _target_evidence(candidate),
+            },
+        }
+    return None
+
+
+def _product_name_from_text(text: str) -> str:
+    tokens = _product_tokens(text)
+    return tokens[0] if tokens else ""
+
+
+def _product_tokens(text: str) -> List[str]:
+    lowered = " ".join(str(text or "").lower().split())
+    products = (
+        "wireless headphones",
+        "smart watch",
+        "smartwatch",
+        "headphones",
+        "watch",
+        "\ubb34\uc120 \ud5e4\ub4dc\ud3f0",
+        "\ud5e4\ub4dc\ud3f0",
+        "\uc2a4\ub9c8\ud2b8\uc6cc\uce58",
+    )
+    return [product for product in products if product in lowered]
+
+
+def _detect_detail_navigation_no_effect(
+    before_observation: Mapping[str, Any],
+    after_observation: Mapping[str, Any],
+    candidate: Mapping[str, Any] | None,
+    action_type: str,
+    before_url: str,
+    after_url: str,
+    candidate_delta: int,
+    last_action_error: bool,
+) -> Dict[str, Any] | None:
+    if action_type != "click_element" or not candidate or last_action_error:
+        return None
+    target_text = _candidate_text(candidate)
+    role = str(candidate.get("role") or "").lower()
+    href = str(candidate.get("href") or "").strip()
+    semantic_type = str(candidate.get("semantic_action_type") or "").lower()
+    expects_navigation = bool(href) or role == "link" or semantic_type in {"detail", "details", "product_detail", "navigation"}
+    if not expects_navigation:
+        return None
+    detail_target = bool(candidate.get("is_detail_trigger")) or any(
+        token in target_text
+        for token in ("detail", "details", "product", "상세", "상품", "제품", "자세히")
+    )
+    if not detail_target:
+        return None
+    page_text_delta = abs(_page_text_length(after_observation) - _page_text_length(before_observation))
+    modal_opened = _has_modal_or_dialog(after_observation) and not _has_modal_or_dialog(before_observation)
+    if before_url == after_url and page_text_delta <= 20 and candidate_delta <= 1 and not modal_opened:
+        return {
+            "type": "broken-navigation",
+            "confidence": 0.76,
+            "classification": "exploratory_anomaly",
+            "evidence": {
+                "before_url": before_url,
+                "after_url": after_url,
+                "page_text_delta": page_text_delta,
+                "candidate_delta": candidate_delta,
+                "target": _target_evidence(candidate),
+                "detail_click_no_effect": True,
+            },
+        }
+    return None
+
+
+def _detect_forum_findings(
+    before_observation: Mapping[str, Any],
+    after_observation: Mapping[str, Any],
+    action_info: Mapping[str, Any],
+    candidate: Mapping[str, Any] | None,
+    action_type: str,
+    before_url: str,
+    after_url: str,
+    candidate_delta: int,
+    last_action_error: bool,
+    site_profile: Mapping[str, Any] | None = None,
+) -> List[Dict[str, Any]]:
+    if not _forum_context_allowed(before_observation, site_profile) and not _forum_context_allowed(after_observation, site_profile):
+        return []
+    target = candidate or {}
+    target_text = _candidate_text(target).lower()
+    before_text = _forum_visible_text(before_observation)
+    after_text = _forum_visible_text(after_observation)
+    findings: List[Dict[str, Any]] = []
+    action = action_info.get("action", action_info)
+    input_text = _first_action_text(action, action_info)
+
+    if action_type == "click_element" and _is_forum_post_detail_target(target) and not last_action_error:
+        page_text_delta = abs(_page_text_length(after_observation) - _page_text_length(before_observation))
+        modal_opened = _has_modal_or_dialog(after_observation) and not _has_modal_or_dialog(before_observation)
+        if before_url == after_url and page_text_delta <= 20 and candidate_delta <= 1 and not modal_opened:
+            findings.append(
+                {
+                    "type": "forum-post-detail-not-opened",
+                    "confidence": 0.82,
+                    "classification": "exploratory_anomaly",
+                    "human_review_status": "likely_true_positive",
+                    "ground_truth_match_status": "site003-post-detail-open-failure",
+                    "evidence": {
+                        "target": _target_evidence(target),
+                        "before_url": before_url,
+                        "after_url": after_url,
+                        "page_text_delta": page_text_delta,
+                        "candidate_delta": candidate_delta,
+                        "modal_opened": modal_opened,
+                    },
+                }
+            )
+
+    if action_type in {"click_element", "submit_form", "press_enter"} and _is_forum_comment_submit_target(target):
+        comment_text = _last_meaningful_input(input_text, before_observation)
+        if comment_text:
+            before_count = _visible_text_count(before_text, comment_text)
+            after_count = _visible_text_count(after_text, comment_text)
+            if after_count >= before_count + 2:
+                findings.append(
+                    {
+                        "type": "forum-comment-duplicated",
+                        "confidence": 0.94,
+                        "classification": "exploratory_anomaly",
+                        "human_review_status": "likely_true_positive",
+                        "ground_truth_match_status": "site003-comment-duplicate",
+                        "evidence": {
+                            "comment_text": comment_text,
+                            "comment_count_before": before_count,
+                            "comment_count_after": after_count,
+                            "target": _target_evidence(target),
+                        },
+                    }
+                )
+
+    if action_type == "click_element" and _is_forum_delete_target(target):
+        comment_text = _deleted_forum_comment_text(target, action_info, before_observation)
+        before_count = _visible_text_count(before_text, comment_text) if comment_text else 0
+        after_count = _visible_text_count(after_text, comment_text) if comment_text else 0
+        has_body_evidence = bool(comment_text and before_count > 0)
+        no_state_delta = before_url == after_url and _state_signature(before_observation) == _state_signature(after_observation)
+        if (has_body_evidence and after_count >= before_count) or (not has_body_evidence and no_state_delta and not _has_feedback_message(after_observation)):
+            confidence = 0.88 if has_body_evidence else 0.49
+            findings.append(
+                {
+                    "type": "forum-comment-delete-failed",
+                    "confidence": confidence,
+                    "classification": "exploratory_anomaly",
+                    "human_review_status": "likely_true_positive" if has_body_evidence else "needs_review",
+                    "ground_truth_match_status": "site003-comment-delete-failure" if has_body_evidence else "requires_deleted_comment_body_evidence",
+                    "evidence": {
+                        "comment_text": comment_text,
+                        "comment_text_count_before": before_count,
+                        "comment_text_count_after": after_count,
+                        "comment_body_evidence": has_body_evidence,
+                        "delete_button_text": _candidate_text(target).strip(),
+                        "target": _target_evidence(target),
+                    },
+                }
+            )
+
+    if action_type in {"click_element", "submit_form", "press_enter"} and _is_forum_save_target(target):
+        post_count_before = _forum_post_count(before_observation)
+        post_count_after = _forum_post_count(after_observation)
+        empty_title_or_content = _forum_empty_required_fields(before_observation)
+        success_after = _success_message_visible(after_observation)
+        validation_after = _validation_message_visible(after_observation)
+        if post_count_after > post_count_before and empty_title_or_content and not validation_after:
+            findings.append(
+                {
+                    "type": "forum-empty-post-validation-missing",
+                    "confidence": 0.93,
+                    "classification": "exploratory_anomaly",
+                    "human_review_status": "likely_true_positive",
+                    "ground_truth_match_status": "site003-empty-post-validation",
+                    "evidence": {
+                        "post_count_before": post_count_before,
+                        "post_count_after": post_count_after,
+                        "empty_required_fields": empty_title_or_content,
+                        "validation_message_visible": validation_after,
+                        "target": _target_evidence(target),
+                    },
+                }
+            )
+        elif not success_after and not validation_after and before_url == after_url:
+            findings.append(
+                {
+                    "type": "forum-save-feedback-missing",
+                    "confidence": 0.82,
+                    "classification": "exploratory_anomaly",
+                    "human_review_status": "likely_true_positive",
+                    "ground_truth_match_status": "site003-save-feedback",
+                    "evidence": {
+                        "success_message_visible": success_after,
+                        "validation_message_visible": validation_after,
+                        "before_url": before_url,
+                        "after_url": after_url,
+                        "target": _target_evidence(target),
+                    },
+                }
+            )
+
+    return findings
+
+
+def _has_forum_surface(observation: Mapping[str, Any]) -> bool:
+    text = " ".join([_page_text(observation), _cart_text(observation)]).lower()
+    candidates = observation.get("candidate_elements", []) or []
+    if isinstance(candidates, list):
+        text += " " + " ".join(_candidate_text(candidate) for candidate in candidates if isinstance(candidate, Mapping)).lower()
+    return any(token in text for token in FORUM_SURFACE_TOKENS)
+
+
+def _forum_context_allowed(observation: Mapping[str, Any], site_profile: Mapping[str, Any] | None) -> bool:
+    profile_bug_types = {
+        str(item).lower()
+        for item in (site_profile or {}).get("bug_types", []) or []
+    }
+    if profile_bug_types:
+        # The site profile explicitly declares which bug types this site was
+        # built with (e.g. SITE001 is a commerce catalog with no forum types
+        # at all) -- trust that over guessing from page text, which is how a
+        # commerce site's own "댓글"/"삭제" vocabulary (product review counts,
+        # a cart line's remove button) previously got misclassified as a
+        # forum page and triggered forum-post-detail-not-opened on SITE001.
+        return bool(FORUM_BUG_TYPES.intersection(profile_bug_types))
+    # No catalog configured (an arbitrary external site) -- fall back to the
+    # narrower keyword heuristic.
+    return _has_forum_surface(observation)
+
+
+def _is_forum_post_detail_target(candidate: Mapping[str, Any]) -> bool:
+    if _is_forum_noise_candidate(candidate):
+        return False
+    role = str(candidate.get("role") or "").lower()
+    tag = str(candidate.get("tag") or "").lower()
+    if bool(candidate.get("fillable")) or role in {"textbox", "searchbox"} or tag in {"input", "textarea", "select"}:
+        return False
+    text = _candidate_text(candidate).lower()
+    if _is_forum_comment_submit_target(candidate) or _is_forum_save_target(candidate) or _is_forum_delete_target(candidate):
+        return False
+    if any(token in text for token in ("\uae00\uc4f0\uae30", "\uac80\uc0c9", FORUM_MORE_TEXT, "forumworks")):
+        return False
+    return len(text.strip()) >= 8 and bool(candidate.get("clickable") or str(candidate.get("role") or "").lower() in CLICKABLE_ROLES)
+
+
+def _is_forum_comment_submit_target(candidate: Mapping[str, Any]) -> bool:
+    text = _candidate_text(candidate).lower()
+    return any(token in text for token in ("\ub313\uae00 \uc791\uc131", "\ub313\uae00 \ub4f1\ub85d", "comment", "post comment"))
+
+
+def _is_forum_delete_target(candidate: Mapping[str, Any]) -> bool:
+    text = _candidate_text(candidate).lower()
+    return any(token in text for token in ("\uc0ad\uc81c", "delete", "remove"))
+
+
+def _is_forum_save_target(candidate: Mapping[str, Any]) -> bool:
+    text = _candidate_text(candidate).lower()
+    return any(token in text for token in ("\uc800\uc7a5", "\ub4f1\ub85d", "\uc791\uc131 \uc644\ub8cc", "submit", "save"))
+
+
+def _last_meaningful_input(input_text: str, observation: Mapping[str, Any]) -> str:
+    value = str(input_text or "").strip()
+    if value:
+        return value
+    return str(observation.get("runtime_signals", {}).get("last_input_text") or "").strip()
+
+
+def _first_action_text(action: Mapping[str, Any], action_info: Mapping[str, Any]) -> str:
+    for key in ("input_value", "value", "typed_text", "fill_value", "text"):
+        value = action.get(key)
+        if value:
+            return str(value).strip()
+        value = action_info.get(key)
+        if value:
+            return str(value).strip()
+    return ""
+
+
+def _visible_text_count(text: str, needle: str) -> int:
+    needle = str(needle or "").strip()
+    if not needle:
+        return 0
+    return str(text or "").count(needle)
+
+
+def _deleted_forum_comment_text(candidate: Mapping[str, Any], action_info: Mapping[str, Any], observation: Mapping[str, Any] | None = None) -> str:
+    action = action_info.get("action", action_info)
+    for source in (action, action_info, candidate):
+        if not isinstance(source, Mapping):
+            continue
+        for key in ("comment_text", "deleted_comment_text", "target_comment_text", "related_comment_text", "context_text"):
+            value = str(source.get(key) or "").strip()
+            if value and not _is_forum_delete_label(value):
+                return value
+    # Nothing upstream (observation adapter / action adapter) ever attaches those
+    # keys, so the lookup above is dead in practice. Fall back to finding the
+    # candidate positionally nearest the delete button (same row/card in a
+    # typical comment-list layout) whose own text isn't just another
+    # delete/save/submit control label -- that's the actual comment body being
+    # deleted, not the button that deletes it.
+    if isinstance(observation, Mapping):
+        nearby = _nearest_forum_comment_body_text(candidate, observation)
+        if nearby:
+            return nearby
+    return ""
+
+
+def _nearest_forum_comment_body_text(target: Mapping[str, Any], observation: Mapping[str, Any]) -> str:
+    target_bbox = _bbox(target)
+    if not target_bbox:
+        return ""
+    candidates = observation.get("candidate_elements", []) if isinstance(observation, Mapping) else []
+    if not isinstance(candidates, list):
+        return ""
+    target_x, target_y, target_w, target_h = target_bbox
+    target_center_x = target_x + target_w / 2.0
+    target_center_y = target_y + target_h / 2.0
+    best_text = ""
+    best_distance: float | None = None
+    for other in candidates:
+        if not isinstance(other, Mapping) or other is target:
+            continue
+        text = " ".join(_candidate_text(other).split()).strip()
+        if len(text) < 4 or _is_forum_delete_label(text):
+            continue
+        if _is_forum_delete_target(other) or _is_forum_comment_submit_target(other) or _is_forum_save_target(other) or _is_forum_noise_candidate(other):
+            continue
+        bbox = _bbox(other)
+        if not bbox:
+            continue
+        center_x = bbox[0] + bbox[2] / 2.0
+        center_y = bbox[1] + bbox[3] / 2.0
+        # Same comment card/row only: close vertically, and not further below
+        # than the delete button (the comment body sits above or beside its
+        # own delete control, not several comments away).
+        if abs(center_y - target_center_y) > 120:
+            continue
+        distance = ((center_x - target_center_x) ** 2 + (center_y - target_center_y) ** 2) ** 0.5
+        if best_distance is None or distance < best_distance:
+            best_distance = distance
+            best_text = text
+    return best_text
+
+
+def _is_forum_delete_label(value: str) -> bool:
+    text = " ".join(str(value or "").split()).strip().lower()
+    return not text or text in {"\uc0ad\uc81c", f"\ub313\uae00 \uc0ad\uc81c", "delete", "remove", "comment delete"}
+
+
+def _forum_visible_text(observation: Mapping[str, Any]) -> str:
+    page_state = observation.get("page_state", {})
+    if isinstance(page_state, Mapping):
+        return str(page_state.get("page_text") or page_state.get("page_text_sample") or "")
+    return _page_text(observation)
+
+
+def _forum_post_count(observation: Mapping[str, Any]) -> int:
+    candidates = observation.get("candidate_elements", []) or []
+    count = 0
+    if isinstance(candidates, list):
+        for candidate in candidates:
+            if isinstance(candidate, Mapping) and _is_forum_post_detail_target(candidate):
+                count += 1
+    if count:
+        return count
+    text = _page_text(observation)
+    return max(0, len(re.findall(r"(?:운영|토론|공유|공지|post|게시글)", text, re.IGNORECASE)))
+
+
+def _forum_empty_required_fields(observation: Mapping[str, Any]) -> List[str]:
+    empty: List[str] = []
+    candidates = observation.get("candidate_elements", []) or []
+    if isinstance(candidates, list):
+        for candidate in candidates:
+            if not isinstance(candidate, Mapping):
+                continue
+            text = _candidate_text(candidate).lower()
+            value = str(candidate.get("value") or candidate.get("input_value") or "").strip()
+            if not value and any(token in text for token in ("\uac8c\uc2dc\uae00 \uc81c\ubaa9", "\uc81c\ubaa9", "\ub0b4\uc6a9", "title", "content")):
+                empty.append(str(candidate.get("name") or candidate.get("text") or "field"))
+    return empty[:4]
+
+
+def _success_message_visible(observation: Mapping[str, Any]) -> bool:
+    text = _page_text(observation).lower()
+    return any(token in text for token in ("\uc800\uc7a5\ub418\uc5c8\uc2b5\ub2c8\ub2e4", "\ub4f1\ub85d\ub418\uc5c8\uc2b5\ub2c8\ub2e4", "\uc644\ub8cc", "\uc131\uacf5", "saved", "success"))
+
+
 def _has_feedback_message(observation: Mapping[str, Any]) -> bool:
     page_state = observation.get("page_state", {})
     text = str(page_state.get("page_text_sample", "") or "").lower()
@@ -1613,7 +2806,7 @@ def _detect_duplicated_rendering(
         title: count for title, count in visible_overlapping_duplicates.items() if count > 0
     }
     common_repeated_titles = {title for title in duplicated if _is_common_repeated_action_title(title)}
-    if common_repeated_titles and common_repeated_titles == set(duplicated) and not visible_overlapping_duplicates:
+    if common_repeated_titles and common_repeated_titles == set(duplicated):
         return None
     page_text = str(observation.get("page_state", {}).get("page_text_sample", "") or "").lower()
     has_book_context = any(token.lower() in page_text for token in BOOK_CONTEXT_TOKENS)
@@ -1639,11 +2832,15 @@ def _detect_duplicated_rendering(
     return {
         "type": "duplicated-rendering",
         "confidence": confidence,
+        "classification": "exploratory_anomaly",
+        "human_review_status": "needs_review" if not visible_overlapping_duplicates else "",
+        "ground_truth_match_status": "requires_component_evidence",
         "evidence": {
             "duplicated_titles": duplicated,
             "visible_duplicate_candidates": visible_overlapping_duplicates,
             "book_context": has_book_context,
             "axtree_or_text_only": not bool(visible_overlapping_duplicates),
+            "empty_state_and_chart_both_visible": False,
         },
     }
 
@@ -1674,6 +2871,10 @@ def _is_common_repeated_action_title(title: str) -> bool:
         "action logs",
         "action logs action logs",
         "logs logs",
+        FORUM_MORE_TEXT,
+        f"{FORUM_MORE_TEXT} {FORUM_MORE_TEXT}",
+        FORUM_SEARCH_PLACEHOLDER,
+        f"{FORUM_SEARCH_PLACEHOLDER} {FORUM_SEARCH_PLACEHOLDER}",
     }
 
 

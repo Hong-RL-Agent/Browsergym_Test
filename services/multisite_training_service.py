@@ -28,6 +28,7 @@ from services.browsergym_training_service import (
     _enrich_action,
     _target_bid,
     _update_login_flow_state,
+    _update_page_verification_state,
     _update_history,
 )
 from services.episode_csv_logger import EpisodeCsvLogger, infer_run_id
@@ -144,6 +145,16 @@ class MultiSiteTrainingService:
             if fail_on_episode_exception is None
             else fail_on_episode_exception
         )
+        # NOTE: there is deliberately no episode-level watchdog/timeout here.
+        # Playwright's sync API must run on the process's actual main thread;
+        # routing _collect_episode through a worker thread (tried twice, both
+        # a fresh thread per episode and a single persistent thread) breaks
+        # every episode outright ("no running event loop"). A real fix would
+        # need process-level isolation (subprocess), which would require
+        # serializing the PPO agent/encoder/rollout buffer across a process
+        # boundary -- out of scope here. A hung reset()/step() can still
+        # freeze this loop; if that happens, stop and resume training from
+        # the last saved checkpoint.
 
         self.encoder = ObservationEncoder(max_candidates=max_candidates)
         self.action_space = ActionSpace(max_candidates=max_candidates)
@@ -174,7 +185,7 @@ class MultiSiteTrainingService:
             known_bugs = [] if self.blind_url_training else _load_known_bugs_for_site(site)
             site_profile = build_site_profile(
                 site_id,
-                known_bugs,
+                [],
                 exploration_profile=site.get("exploration_profile"),
             )
             site_profile.update(_reward_mode_config(self.config, site))
@@ -413,6 +424,8 @@ class MultiSiteTrainingService:
         try:
             observation, _ = env.reset()
             for step in range(1, self.max_steps + 1):
+                history["step_index"] = step
+                history["min_steps"] = int(self.config.get("min_steps") or 0)
                 _attach_action_history_to_observation(observation, history)
                 obs_vector = self.encoder.encode_observation(observation)
                 action_mask = self.action_space.build_action_mask(observation)
@@ -426,7 +439,7 @@ class MultiSiteTrainingService:
                 policy_action = self.action_space.decode(policy_action_id)
                 policy_action["action_id"] = policy_action_id
                 policy_action["site_id"] = site_id
-                _enrich_action(policy_action, observation)
+                _enrich_action(policy_action, observation, history)
                 action_id = policy_action_id
                 fallback_reason = ""
                 if self.enable_guided_actions:
@@ -461,7 +474,7 @@ class MultiSiteTrainingService:
                 action = self.action_space.decode(action_id)
                 action["action_id"] = action_id
                 action["site_id"] = site_id
-                _enrich_action(action, observation)
+                _enrich_action(action, observation, history)
                 _attach_policy_execution_fields(
                     action,
                     policy_action_id=policy_action_id,
@@ -500,6 +513,7 @@ class MultiSiteTrainingService:
                     next_observation,
                     {"action": action, "site_profile": state["site_profile"], **step_info},
                     site_profile=state["site_profile"],
+                    history=history,
                 )
                 infra_anomalies = detect_infra_anomalies(
                     next_observation,
@@ -617,8 +631,7 @@ class MultiSiteTrainingService:
                     semantic_type = str(action.get("semantic_action_type") or "")
                     if semantic_type:
                         state.setdefault("clicked_semantic_action_types", Counter())[semantic_type] += 1
-                if bool(state["site_profile"].get("use_known_bug_for_evaluation", False)):
-                    self._record_detected_bug(state, episode_id, step, anomalies, known_matches)
+                self._record_detected_bug(state, episode_id, step, anomalies, known_matches)
                 self._append_transition(
                     state["transition_log_path"],
                     {
@@ -728,7 +741,7 @@ class MultiSiteTrainingService:
         match_by_type = {match.get("type"): match for match in known_matches}
         for anomaly in anomalies:
             confidence = float(anomaly.get("confidence", 0.0) or 0.0)
-            if confidence < 0.6 and not anomaly.get("matched_bug_id"):
+            if not _is_reportable_training_anomaly(anomaly):
                 continue
             match = match_by_type.get(anomaly.get("type"), {})
             matched_bug_id = anomaly.get("matched_bug_id") or match.get("matched_bug_id")
@@ -856,6 +869,8 @@ class MultiSiteTrainingService:
             "reward_submit_result_checked": float(state.get("reward_submit_result_checked", 0.0) or 0.0),
             "penalty_login_flow_incomplete_early_stop": float(state.get("penalty_login_flow_incomplete_early_stop", 0.0) or 0.0),
             "penalty_targetless_action_success": float(state.get("penalty_targetless_action_success", 0.0) or 0.0),
+            "api_page_coverage_reward_total": float(state.get("api_page_coverage_reward_total", 0.0) or 0.0),
+            "penalty_repeated_inspect_layout_same_context": float(state.get("penalty_repeated_inspect_layout_same_context", 0.0) or 0.0),
             **_state_signal_summary(state),
             "first_click_reward_count": int(state.get("first_click_reward_count", 0) or 0),
             "new_action_type_reward_count": int(state.get("new_action_type_reward_count", 0) or 0),
@@ -1465,6 +1480,7 @@ def _attach_action_history_to_observation(observation: Mapping[str, Any], histor
     if not isinstance(observation, dict):
         return
     _update_login_flow_state(history, observation=observation, action=None, after_observation=None)
+    _update_page_verification_state(history, observation=observation, action=None, after_observation=None)
     obs_history = observation.setdefault("history", {})
     if not isinstance(obs_history, dict):
         obs_history = {}
@@ -1472,6 +1488,9 @@ def _attach_action_history_to_observation(observation: Mapping[str, Any], histor
     counts = history.get("action_type_counts", {})
     obs_history["action_type_counts"] = dict(counts) if isinstance(counts, Mapping) else {}
     obs_history["login_flow"] = dict(history.get("login_flow", {}) or {})
+    obs_history["page_verification"] = dict(history.get("page_verification", {}) or {})
+    obs_history["step_index"] = int(history.get("step_index", 0) or 0)
+    obs_history["min_steps"] = int(history.get("min_steps", 0) or 0)
 
 
 def _masked_action_id(
@@ -1745,6 +1764,12 @@ def _accumulate_reward_breakdown(state: Dict[str, Any], reward_breakdown: Mappin
         "penalty_login_flow_incomplete_early_stop",
         "penalty_targetless_action_success",
         "penalty_inspect_dom_failure_completed",
+        "reward_api_response_checked",
+        "reward_api_schema_checked",
+        "reward_api_console_checked",
+        "reward_failed_action_followup_verification",
+        "api_page_coverage_reward_total",
+        "penalty_repeated_inspect_layout_same_context",
     ):
         state[key] = float(state.get(key, 0.0) or 0.0) + float(reward_breakdown.get(key, 0.0) or 0.0)
     for key in (
@@ -2055,6 +2080,69 @@ def _canonical_detected_key(record: Mapping[str, Any]) -> tuple[str, str, str, s
     selector = str(evidence.get("selector_hint") or evidence.get("selector") or evidence.get("data_bug_id") or "")
     text = _normalize_text(str(evidence.get("candidate_text") or evidence.get("clicked_text") or _target_bid(evidence)))[:80]
     return (anomaly_type, primary_catalog, selector or text, "")
+
+
+def _is_reportable_training_anomaly(anomaly: Mapping[str, Any]) -> bool:
+    confidence = float(anomaly.get("confidence", 0.0) or 0.0)
+    anomaly_type = str(anomaly.get("type") or "")
+    status = str(anomaly.get("human_review_status") or "")
+    evidence = anomaly.get("evidence", {}) if isinstance(anomaly.get("evidence"), Mapping) else {}
+    if anomaly.get("matched_bug_id"):
+        return confidence >= 0.4
+    if status == "likely_false_positive":
+        return False
+    if status == "likely_true_positive" and confidence >= 0.65:
+        return True
+    if anomaly_type in {"api-5xx", "api-4xx", "network-error", "runtime-exception", "console-error", "security-token-leak", "sensitive-data-exposure"}:
+        return confidence >= 0.5
+    if anomaly_type == "button-no-response":
+        target = evidence.get("target") if isinstance(evidence.get("target"), Mapping) else {}
+        semantic = str(target.get("semantic_action_type") or evidence.get("semantic_action_type") or "").lower()
+        target_text = " ".join(
+            str(value or "")
+            for value in (
+                evidence.get("clicked_text"),
+                evidence.get("clicked_name"),
+                target.get("text") if isinstance(target, Mapping) else "",
+                target.get("name") if isinstance(target, Mapping) else "",
+            )
+        ).lower()
+        has_target = bool(evidence.get("clicked_text") or evidence.get("clicked_name") or evidence.get("target"))
+        has_state_check = bool(
+            evidence.get("semantic_no_effect_click")
+            or evidence.get("functional_no_effect_anomaly")
+            or evidence.get("cart_count_before") is not None
+            or evidence.get("cart_text_before") is not None
+        )
+        meaningful_target = semantic in {"add", "cart", "checkout", "submit", "save", "detail", "details"} or any(
+            token in target_text for token in ("add", "cart", "checkout", "submit", "save", "order", "buy", "detail")
+        )
+        return confidence >= 0.7 and has_target and (has_state_check or meaningful_target)
+    if anomaly_type == "cart-total-mismatch":
+        amounts = evidence.get("line_item_amounts") if isinstance(evidence.get("line_item_amounts"), list) else []
+        if len(amounts) > 8 or (not evidence.get("cart_text") and str(evidence.get("action_type") or "") not in {"inspect_cart", "inspect_dom"}):
+            return False
+        return confidence >= 0.65
+    if anomaly_type in {"cart-quantity-mismatch", "product-detail-mismatch", "api-ui-mismatch"}:
+        return confidence >= 0.65
+    if anomaly_type in {"form-no-feedback", "async-hang", "timeout-no-feedback"}:
+        return confidence >= 0.7 and bool(evidence.get("target") or evidence.get("clicked_text") or evidence.get("action_type"))
+    if anomaly_type in {"layout-overlap", "layout-overflow"}:
+        if not bool(evidence.get("specific_element_identified") or evidence.get("child_bbox") or evidence.get("overlapping_elements_identified")):
+            return False
+        if str(evidence.get("viewport_type") or "") == "desktop" and confidence < 0.75:
+            return False
+        return confidence >= 0.65
+    if anomaly_type == "duplicated-rendering":
+        return confidence >= 0.8 and bool(evidence.get("visible_duplicate_candidates"))
+    if anomaly_type == "filter-no-effect":
+        target = evidence.get("target") if isinstance(evidence.get("target"), Mapping) else {}
+        if str(target.get("semantic_action_type") or "") == "search_input" and str(evidence.get("action_type") or "") == "click_element":
+            return False
+        return confidence >= 0.7
+    if anomaly_type in {"broken-navigation", "stale-data-rendering", "duplicate-submission", "weak-password-validation"}:
+        return confidence >= 0.7
+    return confidence >= 0.8 and status in {"needs_review", "needs_verification", "likely_true_positive"}
 
 
 def _is_catalog_related(evidence: Any) -> bool:

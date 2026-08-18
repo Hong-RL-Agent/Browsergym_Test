@@ -66,6 +66,7 @@ def calculate_autonomous_reward(
     reward_new_target = 0.0
     reward_first_inspect_dom = 0.0
     reward_first_inspect_network = 0.0
+    reward_first_viewport_check = 0.0
     reward_state_change = 0.0
     penalty_repeat_action = 0.0
     penalty_same_target_click = 0.0
@@ -101,6 +102,21 @@ def calculate_autonomous_reward(
     penalty_login_flow_incomplete_early_stop = 0.0
     penalty_targetless_action_success = 0.0
     penalty_inspect_dom_failure_completed = 0.0
+    reward_api_response_checked = 0.0
+    reward_api_schema_checked = 0.0
+    reward_api_console_checked = 0.0
+    reward_failed_action_followup_verification = 0.0
+    penalty_repeated_inspect_layout_same_context = 0.0
+    reward_required_opportunity_executed = 0.0
+    reward_required_opportunity_verified = 0.0
+    reward_action_coverage_increase = 0.0
+    reward_anomaly_verification_executed = 0.0
+    penalty_finish_required_opportunity_remaining = 0.0
+    penalty_finish_blocked_repeat = 0.0
+    penalty_repeated_opportunity_selected = 0.0
+    penalty_verified_opportunity_repeated = 0.0
+    penalty_failed_action_missing_reason = 0.0
+    reward_finish_episode_when_allowed = 0.0
     signal_counts = collect_multi_signal_counts(before_observation, after_observation, action, anomalies)
 
     valid_anomalies: List[Dict[str, Any]] = []
@@ -179,6 +195,57 @@ def calculate_autonomous_reward(
         reward_first_inspect_dom = 0.2
     if action_type == "inspect_network" and current_action_type_count == 0:
         reward_first_inspect_network = 0.2
+    page_verification = history.get("page_verification", {}) if isinstance(history, Mapping) else {}
+    if not isinstance(page_verification, Mapping):
+        page_verification = {}
+    page_type = str(page_verification.get("page_type") or "")
+    is_api_page = page_type in {"api_json_page", "data_endpoint_page"}
+    if is_api_page:
+        if action_type in {"inspect_last_api_response", "inspect_api_response", "inspect_network"} and not bool(page_verification.get("api_response_checked")):
+            reward_api_response_checked = 0.1
+        if action_type in {"validate_last_api_schema", "validate_response_contract", "check_required_fields"} and not bool(page_verification.get("schema_contract_checked")):
+            reward_api_schema_checked = 0.1
+        if action_type in {"inspect_console", "inspect_console_errors"} and not bool(page_verification.get("console_checked")):
+            reward_api_console_checked = 0.1
+        if action_type == "inspect_layout" and int(history.get("repeated_inspect_layout_same_context_count", 0) or 0) > 0:
+            penalty_repeated_inspect_layout_same_context -= 0.2
+    if bool(history.get("last_action_failed")) and action_type in {"inspect_network", "inspect_console", "inspect_dom", "validate_last_api_schema"}:
+        reward_failed_action_followup_verification = 0.1
+    opportunity_summary = _opportunity_summary(before_observation, history)
+    selected_opportunity = _selected_opportunity(before_observation, action)
+    selected_opportunity_id = str(selected_opportunity.get("opportunity_id") or "")
+    selected_required = bool(selected_opportunity.get("required"))
+    selected_executed_before = bool(selected_opportunity.get("executed"))
+    selected_verified_before = bool(selected_opportunity.get("verified"))
+    action_success = bool(action.get("action_success") or action.get("clicked") or action.get("filled") or action.get("pressed")) and not bool(action.get("failed") or action.get("invalid"))
+    if selected_opportunity_id and selected_required and not selected_executed_before and action_success:
+        reward_required_opportunity_executed = 0.1
+    if selected_opportunity_id and selected_required and not selected_verified_before and (action_success or state_changed or bool(valid_anomalies)):
+        reward_required_opportunity_verified = 0.2
+    if selected_opportunity_id and not selected_executed_before:
+        reward_action_coverage_increase = 0.05
+    if str(selected_opportunity.get("opportunity_type") or "").startswith("verify_") and action_success:
+        reward_anomaly_verification_executed = 0.2
+    if action_type == "finish_episode":
+        remaining_required_for_finish = int(opportunity_summary.get("remaining_required_opportunity_count", 0) or 0)
+        finish_allowed_for_finish = opportunity_summary.get("finish_allowed")
+        if remaining_required_for_finish > 0:
+            penalty_finish_required_opportunity_remaining -= 0.5
+        if finish_allowed_for_finish is False:
+            penalty_finish_blocked_repeat -= 0.3
+        # Deliberately no positive reward here even when this summary looks
+        # allowed: the summary and the runner's own end-of-episode acceptance
+        # check are separate systems that can disagree, and a reward keyed only
+        # to this summary previously turned that gap into an actively
+        # incentivized infinite finish/reject loop on a real site. Leave
+        # finish_episode reward-neutral; the removed penalty above is the part
+        # that was actually unjust.
+    if selected_opportunity_id and selected_executed_before:
+        penalty_repeated_opportunity_selected -= 0.2
+    if selected_opportunity_id and selected_verified_before:
+        penalty_verified_opportunity_repeated -= 0.2
+    if bool(action.get("failed") or action.get("invalid")) and not str(action.get("failure_reason") or action.get("invalid_action_reason") or ""):
+        penalty_failed_action_missing_reason -= 0.5
 
     login_flow = history.get("login_flow", {}) if isinstance(history, Mapping) else {}
     if not isinstance(login_flow, Mapping):
@@ -260,6 +327,17 @@ def calculate_autonomous_reward(
             penalty_retry_button_repeat -= 0.6
         if functional_action_count == 0 and int(history.get("step_index", 0) or 0) >= 2:
             penalty_no_functional_action_episode -= 0.4
+    elif action_type in {"change_viewport_mobile", "change_viewport_desktop"}:
+        # Neither functional nor debug-meta, and with no reward of its own this
+        # fell through to the same "no functional action yet" penalty as truly
+        # idle actions -- so the policy learned to essentially never switch to
+        # mobile viewport. layout-overlap/layout-overflow findings require
+        # confidence >= 0.75 to ever be reported (see browsergym_api_server.py
+        # _is_reportable_anomaly), which desktop-viewport overlaps can never
+        # reach (fixed at 0.4); only a mobile-viewport check can surface them.
+        # Reward the first switch instead of penalizing it.
+        if action_type == "change_viewport_mobile" and current_action_type_count == 0:
+            reward_first_viewport_check = 0.3
     elif functional_action_count == 0 and int(history.get("step_index", 0) or 0) >= 2:
         penalty_no_functional_action_episode -= 0.4
 
@@ -268,20 +346,27 @@ def calculate_autonomous_reward(
         penalty_repeat_action -= 0.1
     if action_type == "noop" and history.get("last_action_type") == "noop":
         penalty_repeat_action -= 0.05
+    signature = _action_signature(before_observation, action, clicked_candidate)
+    signature_counts = history.get("action_signature_counts", {})
+    legacy_signature = _legacy_action_signature(before_observation, action, clicked_candidate)
+    signature_seen = False
+    if signature and isinstance(signature_counts, Mapping):
+        signature_seen = int(signature_counts.get(signature, 0) or 0) >= 1 or int(signature_counts.get(legacy_signature, 0) or 0) >= 1
+        if signature_seen:
+            penalty_same_action_signature_repeat -= 0.7
+    target_seen = bool(target_signature and target_signature in seen_targets)
+    # Reusing an action type is normal for broad exploration (for example
+    # clicking many different elements). Penalize type repetition only when it
+    # is not attached to a new target/signature; exact target/signature repeats
+    # are handled by the more specific penalties above and below.
     if isinstance(action_counts, Mapping) and current_action_type_count >= 2:
         penalty_repeat_action -= 0.1
-        penalty_same_action_type_repeat -= 0.5
+        if (not target_signature or target_seen) and (not signature or signature_seen):
+            penalty_same_action_type_repeat -= 0.5
     if action_type == "click_element" and history.get("last_action_type") == "click_element":
         consecutive = int(history.get("consecutive_action_count", 0) or 0)
         if consecutive >= 4:
             penalty_repeat_action -= 0.2
-
-    signature = _action_signature(before_observation, action, clicked_candidate)
-    signature_counts = history.get("action_signature_counts", {})
-    if signature and isinstance(signature_counts, Mapping):
-        legacy_signature = _legacy_action_signature(before_observation, action, clicked_candidate)
-        if int(signature_counts.get(signature, 0) or 0) >= 1 or int(signature_counts.get(legacy_signature, 0) or 0) >= 1:
-            penalty_same_action_signature_repeat -= 0.7
     if action_type == "open_detail_panel" and current_action_type_count >= 2:
         penalty_open_detail_panel_repeat -= 0.5
     elif action_type == "open_detail_panel" and current_action_type_count >= 1:
@@ -302,8 +387,37 @@ def calculate_autonomous_reward(
     if int(after_observation.get("history", {}).get("no_change_steps", 0) or 0) >= 2:
         penalty_no_effect -= 0.3
     made_new_signal = state_changed or bool(new_types) or bool(matched_ids) or _signal_delta_count(signal_counts) > 0
-    if not made_new_signal:
+    made_opportunity_progress = (
+        reward_required_opportunity_executed > 0.0
+        or reward_required_opportunity_verified > 0.0
+        or reward_action_coverage_increase > 0.0
+        or reward_anomaly_verification_executed > 0.0
+        or reward_email_input_filled > 0.0
+        or reward_password_input_filled > 0.0
+        or reward_submit_clicked > 0.0
+        or reward_submit_result_checked > 0.0
+    )
+    if not made_new_signal and not made_opportunity_progress:
         penalty_no_effect -= 0.3
+        # A "first time trying this action type/target" bonus must not survive on
+        # its own when the action provably did nothing (no state change, no new
+        # anomaly/signal, no opportunity progress) -- otherwise the policy learns
+        # to farm untried elements instead of exploring toward real outcomes.
+        # Claw back exactly what was granted so a true no-op nets a small negative
+        # reward, never a positive one.
+        no_effect_bonus_clawback = (
+            reward_first_click_element
+            + reward_new_action_type
+            + reward_new_target
+            + reward_first_functional_action
+            + reward_new_functional_action_type
+            + reward_new_functional_target
+            + reward_first_inspect_dom
+            + reward_first_inspect_network
+            + reward_first_viewport_check
+        )
+        if no_effect_bonus_clawback > 0.0:
+            penalty_no_effect -= no_effect_bonus_clawback
         if action_type == "open_detail_panel":
             penalty_no_effect_open_detail -= 0.5
 
@@ -341,6 +455,27 @@ def calculate_autonomous_reward(
         + reward_submit_clicked
         + reward_submit_result_checked
     )
+    api_page_coverage_reward_total = (
+        reward_api_response_checked
+        + reward_api_schema_checked
+        + reward_api_console_checked
+        + reward_failed_action_followup_verification
+    )
+    opportunity_shaping_reward_total = (
+        reward_required_opportunity_executed
+        + reward_required_opportunity_verified
+        + reward_action_coverage_increase
+        + reward_anomaly_verification_executed
+        + reward_failed_action_followup_verification
+        + reward_finish_episode_when_allowed
+    )
+    opportunity_shaping_penalty_total = (
+        penalty_finish_required_opportunity_remaining
+        + penalty_finish_blocked_repeat
+        + penalty_repeated_opportunity_selected
+        + penalty_verified_opportunity_repeated
+        + penalty_failed_action_missing_reason
+    )
     login_flow_penalty_total = (
         penalty_repeated_same_input_fill
         + penalty_email_repeated_password_pending
@@ -356,6 +491,7 @@ def calculate_autonomous_reward(
         + reward_new_target
         + reward_first_inspect_dom
         + reward_first_inspect_network
+        + reward_first_viewport_check
     )
     ui_dom_signal_reward_total = sum(
         signal_rewards[key]
@@ -418,6 +554,8 @@ def calculate_autonomous_reward(
         + penalty_repeated_meta_action
         + penalty_retry_button_repeat
         + penalty_no_functional_action_episode
+        + penalty_repeated_inspect_layout_same_context
+        + opportunity_shaping_penalty_total
     )
 
     reward_total = (
@@ -433,8 +571,11 @@ def calculate_autonomous_reward(
         + reward_new_target
         + reward_first_inspect_dom
         + reward_first_inspect_network
+        + reward_first_viewport_check
         + reward_functional_action_total
         + login_form_coverage_reward_total
+        + api_page_coverage_reward_total
+        + opportunity_shaping_reward_total
         + reward_state_change
         + penalty_repeat_action
         + penalty_same_target_click
@@ -450,6 +591,8 @@ def calculate_autonomous_reward(
         + penalty_retry_button_repeat
         + penalty_no_functional_action_episode
         + login_flow_penalty_total
+        + penalty_repeated_inspect_layout_same_context
+        + opportunity_shaping_penalty_total
         + penalty_step_cost
     )
     breakdown = {
@@ -468,6 +611,7 @@ def calculate_autonomous_reward(
         "reward_new_target": reward_new_target,
         "reward_first_inspect_dom": reward_first_inspect_dom,
         "reward_first_inspect_network": reward_first_inspect_network,
+        "reward_first_viewport_check": reward_first_viewport_check,
         "reward_state_change": reward_state_change,
         "reward_verified_finding": reward_verified_finding,
         "reward_finding_evidence": reward_finding_evidence,
@@ -497,6 +641,24 @@ def calculate_autonomous_reward(
         "penalty_targetless_action_success": penalty_targetless_action_success,
         "penalty_inspect_dom_failure_completed": penalty_inspect_dom_failure_completed,
         "login_flow_penalty_total": login_flow_penalty_total,
+        "reward_api_response_checked": reward_api_response_checked,
+        "reward_api_schema_checked": reward_api_schema_checked,
+        "reward_api_console_checked": reward_api_console_checked,
+        "reward_failed_action_followup_verification": reward_failed_action_followup_verification,
+        "api_page_coverage_reward_total": api_page_coverage_reward_total,
+        "penalty_repeated_inspect_layout_same_context": penalty_repeated_inspect_layout_same_context,
+        "reward_required_opportunity_executed": reward_required_opportunity_executed,
+        "reward_required_opportunity_verified": reward_required_opportunity_verified,
+        "reward_action_coverage_increase": reward_action_coverage_increase,
+        "reward_anomaly_verification_executed": reward_anomaly_verification_executed,
+        "reward_finish_episode_when_allowed": reward_finish_episode_when_allowed,
+        "opportunity_shaping_reward_total": opportunity_shaping_reward_total,
+        "penalty_finish_required_opportunity_remaining": penalty_finish_required_opportunity_remaining,
+        "penalty_finish_blocked_repeat": penalty_finish_blocked_repeat,
+        "penalty_repeated_opportunity_selected": penalty_repeated_opportunity_selected,
+        "penalty_verified_opportunity_repeated": penalty_verified_opportunity_repeated,
+        "penalty_failed_action_missing_reason": penalty_failed_action_missing_reason,
+        "opportunity_shaping_penalty_total": opportunity_shaping_penalty_total,
         "penalty_timeout": penalty_timeout,
         "penalty_step_cost": penalty_step_cost,
         "reward_first_functional_action": reward_first_functional_action,
@@ -544,6 +706,7 @@ def calculate_autonomous_reward(
             + reward_new_target
             + reward_first_inspect_dom
             + reward_first_inspect_network
+            + reward_first_viewport_check
         ),
         "repeated_action_penalty": (
             penalty_repeat_action
@@ -553,6 +716,8 @@ def calculate_autonomous_reward(
             + penalty_open_detail_panel_repeat
             + penalty_no_effect_open_detail
             + login_flow_penalty_total
+            + penalty_repeated_inspect_layout_same_context
+            + opportunity_shaping_penalty_total
         ),
         "first_click_reward_count": 1.0 if reward_first_click_element > 0.0 else 0.0,
         "new_action_type_reward_count": 1.0 if reward_new_action_type > 0.0 else 0.0,
@@ -675,12 +840,30 @@ def _signal_rewards(signal_counts: Mapping[str, int], anomalies: List[Mapping[st
 
 
 def _verified_finding_reward(anomaly: Mapping[str, Any]) -> float:
-    if str(anomaly.get("classification") or "") != "verified_browser_signal":
+    classification = str(anomaly.get("classification") or "")
+    status = str(anomaly.get("human_review_status") or "")
+    anomaly_type = str(anomaly.get("type") or "")
+    strong_ui_types = {
+        "cart-quantity-mismatch",
+        "cart-total-mismatch",
+        "product-detail-mismatch",
+        "api-ui-mismatch",
+        "layout-overlap",
+        "layout-overflow",
+        "button-no-response",
+        "duplicate-submission",
+        "weak-password-validation",
+    }
+    if classification != "verified_browser_signal" and status != "likely_true_positive" and anomaly_type not in strong_ui_types:
         return 0.0
     if anomaly.get("verified") is False:
         return 0.0
     confidence = max(0.0, min(1.0, float(anomaly.get("confidence", 0.0) or 0.0)))
     severity = str(anomaly.get("severity") or "").lower()
+    if not severity and anomaly_type in {"api-5xx", "network-error", "runtime-exception"}:
+        severity = "high"
+    elif not severity and status == "likely_true_positive":
+        severity = "medium"
     severity_score = {
         "critical": 10.0,
         "high": 8.0,
@@ -795,6 +978,63 @@ def _post_action_matched_ids(anomalies: List[Mapping[str, Any]], known_matches: 
         for anomaly in anomalies
         if isinstance(anomaly, Mapping) and anomaly.get("matched_bug_id")
     }
+
+
+def _opportunity_summary(observation: Mapping[str, Any], history: Mapping[str, Any]) -> Mapping[str, Any]:
+    obs_history = observation.get("history", {}) if isinstance(observation, Mapping) else {}
+    if isinstance(obs_history, Mapping) and isinstance(obs_history.get("opportunity_summary"), Mapping):
+        return obs_history.get("opportunity_summary", {})
+    summary = history.get("opportunity_summary", {}) if isinstance(history, Mapping) else {}
+    return summary if isinstance(summary, Mapping) else {}
+
+
+def _selected_opportunity(observation: Mapping[str, Any], action: Mapping[str, Any]) -> Mapping[str, Any]:
+    obs_history = observation.get("history", {}) if isinstance(observation, Mapping) else {}
+    opportunities = obs_history.get("action_opportunities", []) if isinstance(obs_history, Mapping) else []
+    if not isinstance(opportunities, list):
+        return {}
+    action_type = str(action.get("action_type") or "")
+    candidate_index = int(action.get("candidate_index", 0) or 0)
+    for opportunity in opportunities:
+        if not isinstance(opportunity, Mapping):
+            continue
+        if _opportunity_action_type(opportunity) != action_type:
+            continue
+        if action_type in {"click_element", "click_submit", "fill_input", "press_enter"}:
+            if int(opportunity.get("candidate_index", 0) or 0) != candidate_index:
+                continue
+        return opportunity
+    return {}
+
+
+def _opportunity_action_type(opportunity: Mapping[str, Any]) -> str:
+    return {
+        "fill_text_input": "fill_input",
+        "fill_email_input": "fill_input",
+        "fill_password_input": "fill_input",
+        "fill_username_or_email": "fill_input",
+        "fill_password": "fill_input",
+        "submit_form": "click_submit",
+        "click_login_submit": "click_submit",
+        "click_button": "click_element",
+        "click_link": "click_element",
+        "inspect_network": "inspect_network",
+        "inspect_console": "inspect_console",
+        "inspect_dom": "inspect_dom",
+        "inspect_layout": "inspect_layout",
+        "check_api_response": "inspect_last_api_response",
+        "check_json_schema": "validate_last_api_schema",
+        "verify_no_effect": "inspect_dom",
+        "verify_anomaly_reproduction": "inspect_dom",
+        "verify_duplicated_rendering": "inspect_dom",
+        "verify_runtime_error": "inspect_console",
+        "verify_form_no_feedback": "inspect_dom",
+        "verify_action_result": "inspect_network",
+        "verify_login_result": "inspect_network",
+        "change_viewport_once": "change_viewport_mobile",
+        "restore_viewport": "change_viewport_desktop",
+        "finish_episode": "finish_episode",
+    }.get(str(opportunity.get("opportunity_type") or ""), "")
 
 
 def _is_new_interactive_click(

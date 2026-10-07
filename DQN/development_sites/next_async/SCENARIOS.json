@@ -1,0 +1,18 @@
+{
+  "site_id": "dev_next",
+  "framework": "Next.js behavior fixture",
+  "framework_version": "not-installed; controlled Next-style route/prefetch/RSC simulator v1",
+  "runtime_policy": "post-hoc evaluation only; do not pass this catalog into PPO, DQN, Detector, reward, candidate generation, or Hybrid controller",
+  "scenarios": [
+    {"scenario_id": "N-N01", "framework": "Next", "scenario_type": "NORMAL", "trigger_action": "click [data-testid=nn01-trigger]", "expected_intermediate_behavior": "framework prefetch request", "expected_final_behavior": "prefetch completes without visible functional failure", "expected_detector_result": "NO_DEFECT"},
+    {"scenario_id": "N-N02", "framework": "Next", "scenario_type": "NORMAL", "trigger_action": "click [data-testid=nn02-trigger]", "expected_intermediate_behavior": "client route transition and RSC-like request", "expected_final_behavior": "Reports route ready", "expected_detector_result": "NO_DEFECT"},
+    {"scenario_id": "N-N03", "framework": "Next", "scenario_type": "NORMAL", "trigger_action": "click [data-testid=nn03-trigger]", "expected_intermediate_behavior": "loading fallback", "expected_final_behavior": "Suspense content ready", "expected_detector_result": "NO_DEFECT"},
+    {"scenario_id": "N-N04", "framework": "Next", "scenario_type": "NORMAL", "trigger_action": "click [data-testid=nn04-trigger]", "expected_intermediate_behavior": "partial progressive content", "expected_final_behavior": "Final progressive content", "expected_detector_result": "NO_DEFECT"},
+    {"scenario_id": "N-N05", "framework": "Next", "scenario_type": "NORMAL", "trigger_action": "click [data-testid=nn05-trigger]", "expected_intermediate_behavior": "background framework prefetch plus user functional request", "expected_final_behavior": "Functional request complete", "expected_detector_result": "NO_DEFECT"},
+    {"scenario_id": "N-D01", "framework": "Next", "scenario_type": "DEFECT", "trigger_action": "click [data-testid=nd01-trigger]", "expected_intermediate_behavior": "no navigation", "expected_final_behavior": "route remains unchanged", "expected_detector_result": "R02"},
+    {"scenario_id": "N-D02", "framework": "Next", "scenario_type": "DEFECT", "trigger_action": "click [data-testid=nd02-trigger]", "expected_intermediate_behavior": "API 500", "expected_final_behavior": "visible API failure", "expected_detector_result": "R13"},
+    {"scenario_id": "N-D03", "framework": "Next", "scenario_type": "DEFECT", "trigger_action": "inspect clipping/overlap", "expected_intermediate_behavior": "layout clipping and overlap", "expected_final_behavior": "layout remains broken", "expected_detector_result": "R05/R06"},
+    {"scenario_id": "N-D04", "framework": "Next", "scenario_type": "DEFECT", "trigger_action": "click [data-testid=nd04-trigger]", "expected_intermediate_behavior": "no response", "expected_final_behavior": "no UI change", "expected_detector_result": "R01"},
+    {"scenario_id": "N-D05", "framework": "Next", "scenario_type": "DEFECT", "trigger_action": "click [data-testid=nd05-trigger]", "expected_intermediate_behavior": "save response restores previous draft", "expected_final_behavior": "save persistence failure visible", "expected_detector_result": "R12"}
+  ]
+}

@@ -1,0 +1,97 @@
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #f4f6f8;
+  color: #19202d;
+}
+
+#app {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+nav {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+a, button {
+  min-height: 36px;
+  border-radius: 6px;
+  border: 1px solid #7b879c;
+  background: #1f2937;
+  color: white;
+  padding: 8px 10px;
+  text-decoration: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.scenario {
+  min-height: 190px;
+  border: 1px solid #d9deea;
+  border-radius: 8px;
+  background: #fff;
+  padding: 14px;
+}
+
+.status {
+  min-height: 40px;
+  margin-top: 10px;
+  background: #edf1f7;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.fallback {
+  padding: 10px;
+  border: 1px dashed #99a5b8;
+  background: #fff;
+}
+
+.clip-box {
+  width: 190px;
+  height: 28px;
+  overflow: hidden;
+  border: 1px solid #b91c1c;
+}
+
+.clip-box span {
+  display: inline-block;
+  width: 360px;
+}
+
+.overlap {
+  position: relative;
+  height: 42px;
+}
+
+.overlap span {
+  position: absolute;
+  top: 14px;
+  left: 20px;
+  background: rgba(185, 28, 28, 0.9);
+  color: white;
+  padding: 8px;
+}
+
+.overlap strong {
+  position: absolute;
+  top: 16px;
+  left: 34px;
+  background: rgba(31, 41, 55, 0.9);
+  color: white;
+  padding: 8px;
+}
+
+.bad {
+  color: #b91c1c;
+}

@@ -281,6 +281,8 @@ class ActionSpace:
                         continue
             if action_type == "inspect_dom" and _inspect_dom_repeated_same_context(raw_observation, history):
                 continue
+            if action_type in {"scroll_down", "scroll_up"} and _scroll_action_suppressed(action_type, history):
+                continue
             if self.is_element_action(action_type):
                 for idx in range(min(candidate_count, self.max_candidates)):
                     candidate = candidates[idx] if isinstance(candidates, list) else {}
@@ -319,6 +321,7 @@ class ActionSpace:
         _apply_api_json_priority(mask, self, raw_observation)
         _apply_action_opportunity_mask(mask, self, raw_observation)
         _restore_finish_when_allowed(mask, self, raw_observation)
+        _sanitize_executable_action_mask(mask, self, raw_observation)
 
         if not mask.any():
             mask[self.encode("noop", 0)] = 1.0
@@ -554,6 +557,82 @@ def _is_clickable_candidate(candidate: Mapping[str, Any]) -> bool:
 
 def _is_submit_candidate(candidate: Mapping[str, Any]) -> bool:
     return _is_visible_enabled(candidate) and bool(candidate.get("is_submit")) and bool(candidate.get("clickable", True))
+
+
+def _scroll_action_suppressed(action_type: str, history: Mapping[str, Any]) -> bool:
+    if not isinstance(history, Mapping):
+        return False
+    counts = history.get("action_type_counts", {})
+    if not isinstance(counts, Mapping):
+        counts = {}
+    consecutive_counts = history.get("consecutive_action_type_counts", {})
+    if not isinstance(consecutive_counts, Mapping):
+        consecutive_counts = {}
+    failed_counts = history.get("failed_action_type_counts", {})
+    if not isinstance(failed_counts, Mapping):
+        failed_counts = {}
+
+    total = int(counts.get(action_type, 0) or 0)
+    consecutive = int(consecutive_counts.get(action_type, 0) or 0)
+    failed = int(failed_counts.get(action_type, 0) or 0)
+    if failed >= 1:
+        return True
+    if consecutive >= 2:
+        return True
+    return total >= 3
+
+
+def _sanitize_executable_action_mask(mask: np.ndarray, action_space: ActionSpace, raw_observation: Mapping[str, Any]) -> None:
+    """Keep element actions aligned with the current executable DOM candidates.
+
+    Several priority layers can narrow or restore action ids after the base mask
+    is built. This final pass makes the executable-candidate contract explicit:
+    if an action points at a missing or incompatible candidate, the policy never
+    sees it.
+    """
+
+    candidates = raw_observation.get("candidate_elements", []) if isinstance(raw_observation, Mapping) else []
+    if not isinstance(candidates, list):
+        candidates = []
+    candidate_limit = min(len(candidates), action_space.max_candidates)
+    history = raw_observation.get("history", {}) if isinstance(raw_observation, Mapping) else {}
+    if not isinstance(history, Mapping):
+        history = {}
+
+    for action_type in action_space.action_types:
+        if not action_space.is_element_action(action_type):
+            continue
+        for index in range(action_space.max_candidates):
+            action_id = action_space.encode(action_type, index)
+            if action_id >= len(mask) or float(mask[action_id]) <= 0.0:
+                continue
+            candidate = candidates[index] if index < candidate_limit else None
+            if not isinstance(candidate, Mapping) or not _is_executable_candidate_action(action_type, candidate, history):
+                mask[action_id] = 0.0
+
+
+def _is_executable_candidate_action(action_type: str, candidate: Mapping[str, Any], history: Mapping[str, Any]) -> bool:
+    if action_type == "fill_input":
+        return _is_input_candidate(candidate) and not _candidate_previously_failed(candidate, history)
+    if action_type == "press_enter":
+        return _is_input_candidate(candidate) and not _candidate_previously_failed(candidate, history)
+    if action_type == "click_submit":
+        return (
+            _is_submit_candidate(candidate)
+            and not _submit_candidate_already_attempted(candidate, history)
+            and not _candidate_previously_failed(candidate, history)
+        )
+    if action_type == "click_element":
+        return _is_clickable_candidate(candidate) and not _candidate_previously_failed(candidate, history)
+    if action_type == "click_trigger_button":
+        return _is_clickable_candidate(candidate) and bool(candidate.get("is_api_trigger"))
+    if action_type == "click_retry_button":
+        return _is_clickable_candidate(candidate) and bool(candidate.get("is_retry_button"))
+    if action_type == "click_recovery_button":
+        return _is_clickable_candidate(candidate) and bool(candidate.get("is_recovery_button"))
+    if action_type == "open_detail_panel":
+        return _is_clickable_candidate(candidate) and bool(candidate.get("is_detail_trigger"))
+    return False
 
 
 def _has_unprocessed_login_form(history: Mapping[str, Any]) -> bool:

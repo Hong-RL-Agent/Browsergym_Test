@@ -1,0 +1,13 @@
+{
+  "name": "rawd-v3-eval004-next-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "frameworkMetadata": {
+    "framework": "Next.js",
+    "mode": "evaluation-only dashboard shell",
+    "port": 9234
+  }
+}

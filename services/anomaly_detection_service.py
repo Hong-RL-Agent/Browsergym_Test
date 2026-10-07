@@ -636,7 +636,7 @@ def detect_anomalies(
     )
     if quantity_anomaly:
         anomalies.append(quantity_anomaly)
-    total_anomaly = _detect_cart_total_mismatch(after_observation, action_type)
+    total_anomaly = _detect_cart_total_mismatch(after_observation, action_type, clicked_candidate)
     if total_anomaly:
         anomalies.append(total_anomaly)
     redirect_anomaly = _detect_login_redirect_mismatch(before_observation, after_observation, action_type)
@@ -1328,6 +1328,15 @@ def _page_text(observation: Mapping[str, Any]) -> str:
     )
 
 
+def _primary_page_text(observation: Mapping[str, Any]) -> str:
+    page_state = observation.get("page_state", {}) if isinstance(observation, Mapping) else {}
+    runtime_signals = observation.get("runtime_signals", {}) if isinstance(observation, Mapping) else {}
+    for source, key in ((page_state, "page_text"), (page_state, "page_text_sample"), (runtime_signals, "page_text")):
+        if isinstance(source, Mapping) and source.get(key):
+            return str(source.get(key) or "")
+    return ""
+
+
 def _has_modal_or_dialog(observation: Mapping[str, Any]) -> bool:
     for section_name in ("runtime_signals", "page_state"):
         section = observation.get(section_name, {})
@@ -1767,9 +1776,11 @@ def _detect_invalid_quantity_allowed(
         return None
     before_cart_text = _cart_text(before_observation)
     after_cart_text = _cart_text(after_observation)
-    quantity_before = _extract_quantity_value(before_cart_text)
-    quantity_after = _extract_quantity_value(after_cart_text)
-    total_amounts = _currency_amounts(after_cart_text)
+    before_quantity_text = before_cart_text or _primary_page_text(before_observation)
+    after_quantity_text = after_cart_text or _primary_page_text(after_observation)
+    quantity_before = _extract_quantity_value(before_quantity_text)
+    quantity_after = _extract_quantity_value(after_quantity_text)
+    total_amounts = _currency_amounts(after_cart_text or _primary_page_text(after_observation))
     expected_total = sum(total_amounts[:-1]) if len(total_amounts) >= 2 else None
     actual_total = total_amounts[-1] if total_amounts else None
     return {
@@ -1869,11 +1880,15 @@ def _contains_invalid_quantity(text: str) -> bool:
     )
 
 
-def _detect_cart_total_mismatch(observation: Mapping[str, Any], action_type: str) -> Dict[str, Any] | None:
+def _detect_cart_total_mismatch(
+    observation: Mapping[str, Any],
+    action_type: str,
+    candidate: Mapping[str, Any] | None = None,
+) -> Dict[str, Any] | None:
     if action_type not in {"inspect_cart", "inspect_dom", "click_element", "fill_input", "press_enter"}:
         return None
     cart_text = _cart_text(observation)
-    text = (cart_text or _page_text(observation)).lower()
+    text = (cart_text or _primary_page_text(observation)).lower()
     # The underlying check (sum of visible line items vs. a displayed total)
     # is domain-agnostic -- it applies just as well to a booking headcount
     # summary or a stats dashboard's totals row as to a shopping cart, so the
@@ -1888,7 +1903,7 @@ def _detect_cart_total_mismatch(observation: Mapping[str, Any], action_type: str
         return None
     if len(amounts) > 8:
         return None
-    if not cart_text and action_type not in {"inspect_cart", "inspect_dom"}:
+    if not cart_text and action_type not in {"inspect_cart", "inspect_dom"} and not _cart_total_context_candidate(candidate or {}):
         return None
     displayed_total = amounts[-1]
     expected_total = sum(amounts[:-1])
@@ -1907,8 +1922,22 @@ def _detect_cart_total_mismatch(observation: Mapping[str, Any], action_type: str
             "displayed_total": displayed_total,
             "expected_total_from_visible_amounts": expected_total,
             "cart_text": _cart_text(observation),
+            "cart_text_source": "cart_text" if cart_text else "page_text",
+            "target": _target_evidence(candidate or {}) if candidate else {},
         },
     }
+
+
+def _cart_total_context_candidate(candidate: Mapping[str, Any]) -> bool:
+    if not isinstance(candidate, Mapping):
+        return False
+    semantic_type = str(candidate.get("semantic_action_type") or "").lower()
+    if semantic_type in {"cart", "add", "purchase", "checkout", "quantity"}:
+        return True
+    if bool(candidate.get("is_purchase_action") or candidate.get("is_quantity_control") or candidate.get("is_checkout_related")):
+        return True
+    text = _candidate_text(candidate).lower()
+    return any(token in text for token in ("cart", "basket", "checkout", "quantity", "qty", "subtotal", "total", "add to cart"))
 
 
 def _detect_login_redirect_mismatch(

@@ -1,0 +1,13 @@
+{
+  "name": "rawd-v3-eval001-react-commerce",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "frameworkMetadata": {
+    "framework": "React",
+    "mode": "evaluation-only static shell",
+    "port": 9231
+  }
+}

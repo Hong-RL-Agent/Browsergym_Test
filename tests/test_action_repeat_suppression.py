@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
 from models.action_space import ActionSpace
 from runners.evaluate_multisite_browsergym_agent import (
     _apply_eval_fallback_mask,
+    _apply_policy_selection_mask,
     _functional_priority_action_ids,
     _restore_pending_required_opportunity_action,
 )
@@ -51,6 +52,26 @@ class ActionRepeatSuppressionTests(unittest.TestCase):
         )
         self.assertEqual(1, repeated)
         self.assertIn("no-effect click", warning)
+        self.assertEqual(0.0, float(filtered[action_space.encode("click_element", 0)]))
+        self.assertGreater(float(filtered[action_space.encode("click_element", 1)]), 0.0)
+
+    def test_policy_selection_mask_filters_repeated_non_executing_click(self) -> None:
+        action_space = ActionSpace(max_candidates=3)
+        category = _candidate("category", high=False)
+        category["functional_priority_candidate"] = False
+        category["functional_priority"] = False
+        category["is_non_executing_semantic"] = True
+        add = _candidate("add", high=True)
+        observation = _observation([category, add])
+        mask = action_space.build_action_mask(observation)
+
+        filtered = _apply_policy_selection_mask(
+            action_space,
+            mask,
+            observation,
+            {"click_target_counts": {"category": 1}},
+        )
+
         self.assertEqual(0.0, float(filtered[action_space.encode("click_element", 0)]))
         self.assertGreater(float(filtered[action_space.encode("click_element", 1)]), 0.0)
 
@@ -157,6 +178,55 @@ class ActionRepeatSuppressionTests(unittest.TestCase):
 
         self.assertEqual(1, repeated)
         self.assertEqual(0.0, float(filtered[action_space.encode("inspect_dom", 0)]))
+
+    def test_failed_scroll_empty_mask_does_not_get_reenabled(self) -> None:
+        action_space = ActionSpace(max_candidates=3)
+        observation = _observation([_candidate("fresh", high=True)])
+        mask = np.zeros(action_space.get_action_dim(), dtype=np.float32)
+        mask[action_space.encode("scroll_down", 0)] = 1.0
+        history = {
+            "last_action_type": "scroll_down",
+            "consecutive_action_type_counts": {"scroll_down": 3},
+            "action_type_counts": {"scroll_down": 3},
+            "failed_action_type_counts": {"scroll_down": 1},
+        }
+
+        filtered, _warning, repeated = _apply_eval_fallback_mask(action_space, mask, observation, history)
+
+        self.assertEqual(1, repeated)
+        self.assertEqual(0.0, float(filtered[action_space.encode("scroll_down", 0)]))
+        self.assertGreater(float(filtered.sum()), 0.0)
+
+    def test_failed_scroll_suppressed_in_action_space_mask(self) -> None:
+        action_space = ActionSpace(max_candidates=3)
+        observation = _observation([_candidate("fresh", high=True)])
+        observation["history"] = {
+            "action_type_counts": {"scroll_down": 1},
+            "failed_action_type_counts": {"scroll_down": 1},
+        }
+
+        mask = action_space.build_action_mask(observation)
+
+        self.assertEqual(0.0, float(mask[action_space.encode("scroll_down", 0)]))
+
+    def test_disallowed_finish_empty_mask_does_not_get_reenabled(self) -> None:
+        action_space = ActionSpace(max_candidates=3)
+        observation = _observation([_candidate("fresh", high=True)])
+        mask = np.zeros(action_space.get_action_dim(), dtype=np.float32)
+        mask[action_space.encode("finish_episode", 0)] = 1.0
+        history = {
+            "opportunity_summary": {
+                "finish_allowed": False,
+                "remaining_required_opportunity_count": 1,
+                "finish_blocked_reason": "required_opportunity_remaining",
+            }
+        }
+
+        filtered, _warning, repeated = _apply_eval_fallback_mask(action_space, mask, observation, history)
+
+        self.assertEqual(1, repeated)
+        self.assertEqual(0.0, float(filtered[action_space.encode("finish_episode", 0)]))
+        self.assertGreater(float(filtered.sum()), 0.0)
 
 
 def _candidate(bid: str, *, high: bool) -> dict:

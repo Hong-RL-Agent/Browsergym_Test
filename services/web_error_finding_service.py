@@ -173,6 +173,25 @@ def _network_findings(
                 {"message": "network request failed count increased", "action_signature": _action_signature(action_info)},
             )
         )
+    after_api_5xx = _int(runtime.get("api_5xx_count")) + _int(action_info.get("api_5xx_count"))
+    before_api_5xx = _int(before_runtime.get("api_5xx_count"))
+    delta_api_5xx = _int(runtime.get("delta_api_5xx_count")) + _int(action_info.get("delta_api_5xx_count"))
+    if after_api_5xx > before_api_5xx or delta_api_5xx > 0:
+        findings.append(
+            _finding(
+                "api-5xx",
+                "high",
+                0.86,
+                {
+                    "status": 500,
+                    "message": "api 5xx count increased",
+                    "api_5xx_count_before": before_api_5xx,
+                    "api_5xx_count_after": after_api_5xx,
+                    "delta_api_5xx_count": max(delta_api_5xx, after_api_5xx - before_api_5xx),
+                    "action_signature": _action_signature(action_info),
+                },
+            )
+        )
     return findings
 
 

@@ -805,8 +805,15 @@ def _make_candidate(
         name=name,
         semantic_action_type=semantic_action_type,
     )
-    is_functional_priority_candidate = bool(clickable and enabled and visibility > 0.0 and semantic_action_type)
     is_high_value_functional_candidate = semantic_action_type in HIGH_VALUE_SEMANTIC_ACTION_TYPES
+    is_non_executing_semantic = semantic_action_type in NON_EXECUTING_SEMANTIC_ACTION_TYPES
+    is_functional_priority_candidate = bool(
+        clickable
+        and enabled
+        and visibility > 0.0
+        and semantic_action_type
+        and not is_non_executing_semantic
+    )
     is_login_related = _contains_keyword(openended_text, ("sign in", "login", "로그인"))
     is_cart_related_openended = _contains_keyword(openended_text, ("cart", "basket", "장바구니", "카트", "담기"))
     is_checkout_related = _contains_keyword(openended_text, ("checkout", "payment", "결제", "주문", "주문하기", "구매"))
@@ -870,6 +877,9 @@ def _make_candidate(
     if is_low_value_generic_candidate:
         priority -= 1.0
         openended_priority = max(0.0, openended_priority - 0.5)
+    if is_non_executing_semantic:
+        priority -= 0.6
+        openended_priority = max(0.0, openended_priority - 0.35)
     if visibility <= 0.0:
         priority -= 0.2
     element_text_norm = _normalize_element_text(text or name or aria_label or title)
@@ -943,6 +953,7 @@ def _make_candidate(
         "is_filter_related": is_filter_related,
         "is_submit_related": is_submit_related,
         "semantic_action_type": semantic_action_type,
+        "is_non_executing_semantic": is_non_executing_semantic,
         "is_low_value_generic_candidate": is_low_value_generic_candidate,
         "element_key": element_key,
         "element_key_source": "role|semantic|text|context|position",

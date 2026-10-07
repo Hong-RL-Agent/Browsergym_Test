@@ -2114,7 +2114,7 @@ def _is_reportable_training_anomaly(anomaly: Mapping[str, Any]) -> bool:
             or evidence.get("cart_count_before") is not None
             or evidence.get("cart_text_before") is not None
         )
-        meaningful_target = semantic in {"add", "cart", "checkout", "submit", "save", "detail", "details"} or any(
+        meaningful_target = semantic in {"add", "cart", "checkout", "submit", "save", "detail", "details", "quantity", "purchase", "enroll", "workout_add"} or any(
             token in target_text for token in ("add", "cart", "checkout", "submit", "save", "order", "buy", "detail")
         )
         return confidence >= 0.7 and has_target and (has_state_check or meaningful_target)

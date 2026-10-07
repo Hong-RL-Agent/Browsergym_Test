@@ -1,0 +1,14 @@
+{
+  "name": "dev-next-async-testbed",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Development-only Next.js behavior testbed for frozen Detector v1 baseline.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "frameworkMetadata": {
+    "framework": "Next.js behavior fixture",
+    "nextVersion": "not-installed; controlled Next-style route/prefetch/RSC simulator v1",
+    "mode": "production-like static framework behavior simulation"
+  }
+}

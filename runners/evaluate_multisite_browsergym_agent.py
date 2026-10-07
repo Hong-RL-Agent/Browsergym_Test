@@ -32,7 +32,7 @@ if ROOT not in sys.path:
 
 from agents.ppo_agent import PPOAgent
 from envs.browsergym_jaws_env import BrowserGymJAWSEnv, _active_page
-from models.action_space import ActionSpace
+from models.action_space import ActionSpace, _scroll_action_suppressed
 from models.observation_encoder import ObservationEncoder
 from services.anomaly_detection_service import detect_anomalies
 from services.action_opportunity_service import action_ids_for_opportunities, build_action_opportunities
@@ -465,7 +465,16 @@ def main() -> int:
     write_json(per_site_metrics_path, {"version": VERSION, "evaluated_at": output["evaluated_at"], "sites": per_site_metrics})
     write_comparison_note(comparison_note_path)
     _emit_stage("result_written", output=args.output)
-    print(json.dumps(output, ensure_ascii=False, indent=2))
+    _emit_event(
+        event="scan_summary",
+        status=output.get("status"),
+        run_id=output.get("run_id"),
+        output=str(output_path),
+        executed_action_count=output.get("executed_action_count"),
+        failed_action_count=output.get("failed_action_count"),
+        detected_anomaly_count=output.get("detected_anomaly_count"),
+        completed_reason=output.get("completed_reason"),
+    )
     if args.min_recall is not None:
         failed = [
             site_id for site_id, result in site_results.items()
@@ -1540,13 +1549,18 @@ def _evaluate_site(
                 _attach_action_history_to_observation(observation, history)
                 obs_vector = encoder.encode_observation(observation)
                 action_mask = action_space.build_action_mask(observation)
-                policy_selected = agent.select_greedy_action(obs_vector, action_mask, memory_state=memory_state)
+                policy_mask = (
+                    action_mask
+                    if str(fallback_mode or "eval") == "strict"
+                    else _apply_policy_selection_mask(action_space, action_mask, observation, history)
+                )
+                policy_selected = agent.select_greedy_action(obs_vector, policy_mask, memory_state=memory_state)
                 policy_action_id = int(policy_selected["action_id"])
                 policy_action = action_space.decode(policy_action_id)
                 policy_action["action_id"] = policy_action_id
                 policy_action["site_id"] = site_id
                 _enrich_action(policy_action, observation, history)
-                if 0 <= policy_action_id < len(action_mask) and float(action_mask[policy_action_id]) > 0.0:
+                if 0 <= policy_action_id < len(policy_mask) and float(policy_mask[policy_action_id]) > 0.0:
                     policy_selected_valid_action_count += 1
                 else:
                     policy_selected_invalid_action_count += 1
@@ -1555,7 +1569,7 @@ def _evaluate_site(
                 if _policy_action_low_priority(policy_action):
                     policy_selected_low_priority_action_count += 1
                 fallback_before = _history_counter_snapshot(history)
-                executed_mask = np.asarray(action_mask, dtype=np.float32).copy()
+                executed_mask = np.asarray(policy_mask, dtype=np.float32).copy()
                 fallback_warning = ""
                 repeated = 0
                 if str(fallback_mode or "eval") != "strict":
@@ -1601,11 +1615,13 @@ def _evaluate_site(
                     selected = {"action_id": int(opportunity_action_id), "memory_state": policy_selected.get("memory_state", memory_state), "memory_state_norm": policy_selected.get("memory_state_norm", 0.0)}
                     history["dom_exhaustive_action_mode"] = True
                 else:
-                    selected = (
-                        policy_selected
-                        if str(fallback_mode or "eval") == "strict"
-                        else agent.select_greedy_action(obs_vector, executed_mask, memory_state=memory_state)
-                    )
+                    if str(fallback_mode or "eval") == "strict" or (
+                        0 <= policy_action_id < len(executed_mask)
+                        and float(executed_mask[policy_action_id]) > 0.0
+                    ):
+                        selected = policy_selected
+                    else:
+                        selected = agent.select_greedy_action(obs_vector, executed_mask, memory_state=memory_state)
                 selected_memory_state = selected.get("memory_state", memory_state)
                 memory_state_norm_values.append(float(selected.get("memory_state_norm", 0.0) or 0.0))
                 action_id = int(selected["action_id"])
@@ -3053,6 +3069,8 @@ def _apply_eval_fallback_mask(
         history["_fallback_reasons_step"] = []
     if site_id not in {"site001", "site9800"}:
         mask[action_space.encode("inspect_cart", 0)] = 0.0
+    if _finish_action_suppressed(history):
+        _disable_action_type(action_space, mask, "finish_episode")
     if _prefer_verification_action(action_space, mask, history):
         repeated = 1
         _record_fallback_reason(history, "exploration_redirect")
@@ -3374,8 +3392,10 @@ def _policy_action_visited(action: Mapping[str, Any], history: Mapping[str, Any]
 
 def _policy_action_low_priority(action: Mapping[str, Any]) -> bool:
     action_type = str(action.get("action_type") or "")
+    semantic_type = str(action.get("semantic_action_type") or "").lower()
     return bool(
         action.get("is_low_value_generic_candidate")
+        or semantic_type in _NON_EXECUTING_SEMANTIC_ACTION_TYPES
         or action_type in {"open_detail_panel", "click_retry_button", "click_recovery_button", "inspect_console", "inspect_network", "inspect_dom"}
     )
 
@@ -3395,6 +3415,185 @@ def _safe_visibility(candidate: Mapping[str, Any]) -> float:
     return max(0.0, min(1.0, value))
 
 
+_NON_EXECUTING_SEMANTIC_ACTION_TYPES = {"filter", "category", "tab", "search_input"}
+
+
+def _candidate_semantic_type(candidate: Mapping[str, Any]) -> str:
+    return str(candidate.get("semantic_action_type") or "").lower()
+
+
+def _is_actionable_priority_candidate(candidate: Mapping[str, Any]) -> bool:
+    semantic_type = _candidate_semantic_type(candidate)
+    if semantic_type in _NON_EXECUTING_SEMANTIC_ACTION_TYPES or bool(candidate.get("is_non_executing_semantic")):
+        return False
+    return bool(
+        candidate.get("functional_priority_candidate")
+        or candidate.get("functional_priority")
+        or candidate.get("is_high_value_functional_candidate")
+        or candidate.get("is_purchase_action")
+        or candidate.get("is_quantity_control")
+        or candidate.get("is_cart_quantity_related")
+        or candidate.get("is_checkout_related")
+        or semantic_type in {"add", "cart", "purchase", "checkout", "detail", "details", "product_detail", "quantity", "submit", "login", "save", "search", "workout_add", "enroll"}
+    )
+
+
+def _apply_policy_selection_mask(
+    action_space: ActionSpace,
+    action_mask: np.ndarray,
+    observation: Mapping[str, Any],
+    history: Mapping[str, Any],
+) -> np.ndarray:
+    """Mirror non-mutating fallback filters before PPO action selection."""
+    mask = np.asarray(action_mask, dtype=np.float32).copy()
+    original_mask = mask.copy()
+    site_id = _site_id_from_observation(observation)
+    if site_id not in {"site001", "site9800"}:
+        mask[action_space.encode("inspect_cart", 0)] = 0.0
+    if _finish_action_suppressed(history):
+        _disable_action_type(action_space, mask, "finish_episode")
+    for action_type in _meta_action_exhausted(history):
+        _disable_action_type(action_space, mask, action_type)
+    action_counts = history.get("action_type_counts", {}) if isinstance(history, Mapping) else {}
+    if not isinstance(action_counts, Mapping):
+        action_counts = {}
+    for action_type in ("inspect_console", "inspect_network", "inspect_dom"):
+        if int(action_counts.get(action_type, 0) or 0) >= 1:
+            _disable_action_type(action_space, mask, action_type)
+    for action_type in ("open_detail_panel", "click_retry_button", "click_trigger_button", "click_recovery_button"):
+        if int(action_counts.get(action_type, 0) or 0) >= 1:
+            _disable_action_type(action_space, mask, action_type)
+    last_action_type = str(history.get("last_action_type") or "") if isinstance(history, Mapping) else ""
+    counts = history.get("consecutive_action_type_counts", {}) if isinstance(history, Mapping) else {}
+    consecutive = int(counts.get(last_action_type, 0) or 0) if isinstance(counts, Mapping) and last_action_type else 0
+    if consecutive >= 2 and last_action_type and last_action_type not in {"click_element", "fill_input", "press_enter"}:
+        _disable_action_type(action_space, mask, last_action_type)
+    _suppress_policy_low_value_generic_candidates(action_space, mask, observation)
+    _suppress_policy_repeated_clicks(action_space, mask, observation, history)
+    temp_history = dict(history) if isinstance(history, Mapping) else {}
+    candidates = observation.get("candidate_elements", []) if isinstance(observation, Mapping) else []
+    temp_history["current_candidates"] = candidates if isinstance(candidates, list) else []
+    _suppress_repeated_action_signatures(action_space, mask, temp_history)
+    if not mask.any():
+        _restore_policy_safe_action(action_space, mask, original_mask, observation, history)
+    return mask
+
+
+def _suppress_policy_low_value_generic_candidates(
+    action_space: ActionSpace,
+    mask: np.ndarray,
+    observation: Mapping[str, Any],
+) -> int:
+    candidates = observation.get("candidate_elements", []) if isinstance(observation, Mapping) else []
+    if not isinstance(candidates, list):
+        return 0
+    has_better_candidate = any(
+        isinstance(candidate, Mapping)
+        and not candidate.get("is_low_value_generic_candidate")
+        and bool(candidate.get("clickable"))
+        and _safe_visibility(candidate) > 0.0
+        and _is_actionable_priority_candidate(candidate)
+        for candidate in candidates[: action_space.max_candidates]
+    )
+    if not has_better_candidate:
+        return 0
+    suppressed = 0
+    for index, candidate in enumerate(candidates[: action_space.max_candidates]):
+        if not isinstance(candidate, Mapping) or not candidate.get("is_low_value_generic_candidate"):
+            continue
+        try:
+            action_id = action_space.encode("click_element", index)
+        except ValueError:
+            continue
+        if action_id < len(mask) and float(mask[action_id]) > 0.0:
+            mask[action_id] = 0.0
+            suppressed += 1
+    return suppressed
+
+
+def _suppress_policy_repeated_clicks(
+    action_space: ActionSpace,
+    mask: np.ndarray,
+    observation: Mapping[str, Any],
+    history: Mapping[str, Any],
+) -> int:
+    candidates = observation.get("candidate_elements", []) if isinstance(observation, Mapping) else []
+    if not isinstance(candidates, list):
+        return 0
+    click_counts = history.get("click_target_counts", {}) if isinstance(history, Mapping) else {}
+    element_counts = history.get("element_key_click_counts", {}) if isinstance(history, Mapping) else {}
+    if not isinstance(click_counts, Mapping):
+        click_counts = {}
+    if not isinstance(element_counts, Mapping):
+        element_counts = {}
+    has_unclicked_actionable = any(
+        isinstance(candidate, Mapping)
+        and _is_actionable_priority_candidate(candidate)
+        and _candidate_click_count(candidate, click_counts, element_counts) <= 0
+        for candidate in candidates[: action_space.max_candidates]
+    )
+    suppressed = 0
+    for index, candidate in enumerate(candidates[: action_space.max_candidates]):
+        if not isinstance(candidate, Mapping):
+            continue
+        try:
+            action_id = action_space.encode("click_element", index)
+        except ValueError:
+            continue
+        if action_id >= len(mask) or float(mask[action_id]) <= 0.0:
+            continue
+        clicked_count = _candidate_click_count(candidate, click_counts, element_counts)
+        actionable = _is_actionable_priority_candidate(candidate)
+        if clicked_count >= 2 or (has_unclicked_actionable and clicked_count > 0) or (not actionable and clicked_count > 0):
+            mask[action_id] = 0.0
+            suppressed += 1
+    return suppressed
+
+
+def _restore_policy_safe_action(
+    action_space: ActionSpace,
+    mask: np.ndarray,
+    original_mask: np.ndarray,
+    observation: Mapping[str, Any],
+    history: Mapping[str, Any],
+) -> bool:
+    candidates = observation.get("candidate_elements", []) if isinstance(observation, Mapping) else []
+    click_counts = history.get("click_target_counts", {}) if isinstance(history, Mapping) else {}
+    element_counts = history.get("element_key_click_counts", {}) if isinstance(history, Mapping) else {}
+    if not isinstance(click_counts, Mapping):
+        click_counts = {}
+    if not isinstance(element_counts, Mapping):
+        element_counts = {}
+    if isinstance(candidates, list):
+        for index, candidate in enumerate(candidates[: action_space.max_candidates]):
+            if not isinstance(candidate, Mapping) or not _is_actionable_priority_candidate(candidate):
+                continue
+            if _candidate_click_count(candidate, click_counts, element_counts) > 0:
+                continue
+            try:
+                action_id = action_space.encode("click_element", index)
+            except ValueError:
+                continue
+            if action_id < len(original_mask) and float(original_mask[action_id]) > 0.0:
+                mask[action_id] = 1.0
+                return True
+    exhausted_meta = _meta_action_exhausted(history)
+    for action_type in ("fill_input", "press_enter", "inspect_dom", "inspect_network", "noop", "scroll_down"):
+        if action_type in exhausted_meta:
+            continue
+        if action_type in {"scroll_down", "scroll_up"} and _scroll_action_suppressed(action_type, history):
+            continue
+        for index in range(action_space.max_candidates):
+            try:
+                action_id = action_space.encode(action_type, index)
+            except ValueError:
+                continue
+            if action_id < len(original_mask) and float(original_mask[action_id]) > 0.0:
+                mask[action_id] = 1.0
+                return True
+    return False
+
+
 def _suppress_low_value_generic_candidates(
     action_space: ActionSpace,
     mask: np.ndarray,
@@ -3409,12 +3608,7 @@ def _suppress_low_value_generic_candidates(
         and not candidate.get("is_low_value_generic_candidate")
         and bool(candidate.get("clickable"))
         and _safe_visibility(candidate) > 0.0
-        and (
-            candidate.get("functional_priority_candidate")
-            or candidate.get("functional_priority")
-            or candidate.get("is_high_value_functional_candidate")
-            or candidate.get("semantic_action_type")
-        )
+        and _is_actionable_priority_candidate(candidate)
         for candidate in candidates[: action_space.max_candidates]
     )
     if not has_better_candidate:
@@ -3635,11 +3829,16 @@ def _apply_global_fallback(
     observation: Mapping[str, Any] | None = None,
     history: Mapping[str, Any] | None = None,
 ) -> None:
-    exhausted_meta = _meta_action_exhausted(history or {})
+    history = history or {}
+    exhausted_meta = _meta_action_exhausted(history)
     if observation is not None and history is not None and _prefer_functional_actions(action_space, mask, observation, history):
         return
-    for action_type in ("inspect_dom", "inspect_network", "scroll_down", "finish_episode", "noop"):
+    for action_type in ("inspect_dom", "inspect_network", "finish_episode", "noop", "scroll_down"):
         if action_type in exhausted_meta:
+            continue
+        if action_type == "finish_episode" and _finish_action_suppressed(history):
+            continue
+        if action_type in {"scroll_down", "scroll_up"} and _scroll_action_suppressed(action_type, history):
             continue
         try:
             action_id = action_space.encode(action_type, 0)
@@ -3648,6 +3847,27 @@ def _apply_global_fallback(
         if action_id < len(mask):
             mask[action_id] = 1.0
             return
+
+
+def _finish_action_suppressed(history: Mapping[str, Any]) -> bool:
+    if not isinstance(history, Mapping):
+        return False
+    summary = history.get("opportunity_summary", {})
+    if not isinstance(summary, Mapping):
+        return False
+    if bool(summary.get("finish_allowed", False)):
+        return False
+    remaining_required = int(summary.get("remaining_required_opportunity_count", 0) or 0)
+    pending_required = int(summary.get("pending_required_opportunity_count", 0) or 0)
+    blocked_reason = str(summary.get("finish_blocked_reason") or "")
+    if remaining_required > 0 or pending_required > 0:
+        return True
+    return blocked_reason in {
+        "required_opportunity_remaining",
+        "required_verification",
+        "login_flow_incomplete",
+        "opportunity_coverage_below_threshold",
+    }
 
 
 def _suppress_visited_click_targets(
@@ -5109,8 +5329,8 @@ def _meaningful_no_response_target(evidence: Mapping[str, Any]) -> bool:
             target.get("name") if isinstance(target, Mapping) else "",
         )
     ).lower()
-    return semantic in {"add", "cart", "checkout", "submit", "save", "detail", "details"} or any(
-        token in text for token in ("add", "cart", "checkout", "submit", "save", "order", "buy", "detail")
+    return semantic in {"add", "cart", "checkout", "submit", "save", "detail", "details", "quantity", "purchase", "enroll", "workout_add"} or any(
+        token in text for token in ("add", "cart", "checkout", "submit", "save", "order", "buy", "detail", "quantity", "purchase", "enroll")
     )
 
 
@@ -5401,7 +5621,7 @@ def _suggested_decision(anomaly: Mapping[str, Any]) -> str:
 
 
 def _candidate_should_be_promoted(anomaly: Mapping[str, Any]) -> bool:
-    return str(anomaly.get("human_review_status") or "") == "likely_true_positive"
+    return _strong_finding_evidence(anomaly) or str(anomaly.get("human_review_status") or "") == "likely_true_positive"
 
 
 def _md(value: str) -> str:

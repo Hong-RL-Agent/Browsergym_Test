@@ -1,0 +1,19 @@
+{
+  "site_id": "dev_react",
+  "framework": "React",
+  "framework_version": "18.2.0",
+  "runtime_policy": "post-hoc evaluation only; do not pass this catalog into PPO, DQN, Detector, reward, candidate generation, or Hybrid controller",
+  "strict_mode": false,
+  "scenarios": [
+    {"scenario_id": "R-N01", "framework": "React", "scenario_type": "NORMAL", "trigger_action": "click [data-testid=rn01-trigger]", "expected_intermediate_behavior": "loading text before delayed state update", "expected_final_behavior": "Delayed React state update completed", "expected_detector_result": "NO_DEFECT"},
+    {"scenario_id": "R-N02", "framework": "React", "scenario_type": "NORMAL", "trigger_action": "click [data-testid=rn02-trigger]", "expected_intermediate_behavior": "disabled button and spinner", "expected_final_behavior": "Loaded 3 rows", "expected_detector_result": "NO_DEFECT"},
+    {"scenario_id": "R-N03", "framework": "React", "scenario_type": "NORMAL", "trigger_action": "click [data-testid=rn03-trigger]", "expected_intermediate_behavior": "skeleton then temporary empty container", "expected_final_behavior": "Final content restored after skeleton and empty container", "expected_detector_result": "NO_DEFECT"},
+    {"scenario_id": "R-N04", "framework": "React", "scenario_type": "NORMAL", "trigger_action": "click [data-testid=rn04-trigger]", "expected_intermediate_behavior": "validating text while mock API resolves", "expected_final_behavior": "Async validation passed", "expected_detector_result": "NO_DEFECT"},
+    {"scenario_id": "R-N05", "framework": "React", "scenario_type": "NORMAL", "trigger_action": "click [data-testid=rn05-trigger]", "expected_intermediate_behavior": "multiple render-safe count updates", "expected_final_behavior": "counter increments without functional failure", "expected_detector_result": "NO_DEFECT"},
+    {"scenario_id": "R-D01", "framework": "React", "scenario_type": "DEFECT", "trigger_action": "click [data-testid=rd01-trigger]", "expected_intermediate_behavior": "no response", "expected_final_behavior": "no UI change", "expected_detector_result": "R01"},
+    {"scenario_id": "R-D02", "framework": "React", "scenario_type": "DEFECT", "trigger_action": "inspect layout overlap region", "expected_intermediate_behavior": "overlapped label and badge", "expected_final_behavior": "overlap remains", "expected_detector_result": "R05"},
+    {"scenario_id": "R-D03", "framework": "React", "scenario_type": "DEFECT", "trigger_action": "submit invalid input", "expected_intermediate_behavior": "no validation feedback", "expected_final_behavior": "validation message missing", "expected_detector_result": "R08"},
+    {"scenario_id": "R-D04", "framework": "React", "scenario_type": "DEFECT", "trigger_action": "click [data-testid=rd04-trigger]", "expected_intermediate_behavior": "API 500", "expected_final_behavior": "visible API failure", "expected_detector_result": "R13"},
+    {"scenario_id": "R-D05", "framework": "React", "scenario_type": "DEFECT", "trigger_action": "click [data-testid=rd05-trigger]", "expected_intermediate_behavior": "save request returns old value", "expected_final_behavior": "Persistence mismatch visible", "expected_detector_result": "R12"}
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "rawd-v3-eval002-next-booking",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "frameworkMetadata": {
+    "framework": "Next.js",
+    "mode": "evaluation-only server-rendered shell",
+    "port": 9232
+  }
+}

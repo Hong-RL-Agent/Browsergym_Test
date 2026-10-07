@@ -209,6 +209,7 @@ class BrowserGymApiHandler(BaseHTTPRequestHandler):
                     "jobId": job_id,
                     "sessionId": session_id,
                     "status": status,
+                    "targetUrl": target_url,
                     "requestedEpisodes": requested_episodes,
                     "episodes": episodes,
                     "requestedMaxSteps": requested_max_steps,
@@ -303,7 +304,7 @@ class BrowserGymApiHandler(BaseHTTPRequestHandler):
         return value if isinstance(value, dict) else {}
 
     def _json(self, payload: dict[str, Any], status: int = HTTPStatus.OK) -> None:
-        data = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+        data = json.dumps(_repair_mojibake_tree(payload), ensure_ascii=False, default=str).encode("utf-8")
         self.send_response(int(status))
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
@@ -324,6 +325,45 @@ def _resolve_model_path(model_path: str) -> str:
         if candidate and (ROOT / candidate).exists():
             return candidate
     return model_path or DEFAULT_MODEL_PATH
+
+
+def _repair_mojibake_tree(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _repair_mojibake_tree(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_repair_mojibake_tree(item) for item in value]
+    if isinstance(value, str):
+        return _repair_mojibake_text(value)
+    return value
+
+
+def _repair_mojibake_text(value: str) -> str:
+    if not value or not _looks_like_korean_mojibake(value):
+        return value
+    best = value
+    best_score = _korean_text_score(value)
+    for source_encoding in ("cp949", "euc_kr"):
+        try:
+            repaired = value.encode(source_encoding).decode("utf-8")
+        except UnicodeError:
+            continue
+        score = _korean_text_score(repaired)
+        if score > best_score:
+            best = repaired
+            best_score = score
+    return best
+
+
+def _looks_like_korean_mojibake(value: str) -> bool:
+    markers = ("諛", "援", "怨", "臾", "遺", "李", "留", "쒖", "щ", "λ", "ㅽ", "숈", "�")
+    return any(marker in value for marker in markers)
+
+
+def _korean_text_score(value: str) -> int:
+    hangul = sum(1 for char in value if "\uac00" <= char <= "\ud7a3")
+    mojibake = sum(1 for char in value if char in "諛援怨臾遺李留쒖щλㅽ숈�")
+    replacement = value.count("?") + value.count("\ufffd")
+    return hangul * 3 - mojibake * 2 - replacement
 
 
 def _get_job(job_id: str) -> ExplorationJob | None:
@@ -1086,8 +1126,8 @@ def _is_reportable_anomaly(anomaly: dict[str, Any]) -> bool:
     if anomaly_type in {"layout-overlap", "layout-overflow"}:
         return confidence >= 0.75
     if anomaly_type == "button-no-response":
-        semantic = str(evidence.get("semantic_action_type") or "")
         target = evidence.get("target") if isinstance(evidence.get("target"), dict) else {}
+        semantic = str(evidence.get("semantic_action_type") or target.get("semantic_action_type") or "")
         high_value = any(
             bool(evidence.get(key))
             for key in (
@@ -1095,11 +1135,16 @@ def _is_reportable_anomaly(anomaly: dict[str, Any]) -> bool:
                 "high_value_button_no_response",
                 "add_no_effect",
                 "cart_no_effect",
+                "functional_no_effect_anomaly",
                 "workout_add_no_effect",
                 "enroll_no_effect",
             )
         )
-        high_value = high_value or bool(target.get("is_high_value_functional_candidate"))
+        high_value = high_value or bool(
+            target.get("is_high_value_functional_candidate")
+            or target.get("functional_priority_candidate")
+            or target.get("is_purchase_action")
+        )
         return confidence >= 0.75 or (confidence >= 0.6 and bool(semantic or high_value))
     return confidence >= 0.8
 

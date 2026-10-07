@@ -9,7 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from runners.evaluate_multisite_browsergym_agent import _progress_policy_allows_finish
+from runners.browsergym_api_server import _is_reportable_anomaly
+from runners.evaluate_multisite_browsergym_agent import _candidate_should_be_promoted, _progress_policy_allows_finish
 from services.action_opportunity_service import build_action_opportunities
 from services.anomaly_detection_service import detect_anomalies
 from services.known_bug_matcher import load_known_bugs, match_anomalies_to_known_bugs
@@ -270,6 +271,17 @@ class EcommerceErrorDetectionTests(unittest.TestCase):
 
         self.assertIn("api-5xx", [item["type"] for item in anomalies])
 
+    def test_api_5xx_count_without_entries_is_detected_and_reportable(self) -> None:
+        after = _obs(text="Checkout")
+        after["runtime_signals"]["api_5xx_count"] = 1
+        after["runtime_signals"]["delta_api_5xx_count"] = 1
+
+        anomalies = detect_anomalies(_obs(text="Checkout"), after, {"action_type": "click_element"})
+        api = next(item for item in anomalies if item["type"] == "api-5xx")
+
+        self.assertEqual(500, api["evidence"]["status"])
+        self.assertTrue(_is_reportable_anomaly(api))
+
     def test_detail_add_to_cart_without_cart_count_is_button_no_response(self) -> None:
         candidate = _candidate(
             name="Add to cart",
@@ -311,6 +323,28 @@ class EcommerceErrorDetectionTests(unittest.TestCase):
         self.assertEqual(1.0, quantity["evidence"]["quantity_before"])
         self.assertEqual(0.0, quantity["evidence"]["quantity_after"])
 
+    def test_invalid_quantity_values_fall_back_to_page_text_when_cart_text_missing(self) -> None:
+        candidate = _candidate(
+            name="Decrease quantity",
+            text="Decrease quantity",
+            semantic_action_type="quantity",
+            is_quantity_control=True,
+            is_purchase_action=False,
+        )
+        before = _obs(text="Cart quantity 1 item $10 total $10", candidates=[candidate])
+        after = _obs(text="Cart quantity 0 items $0 total $0", candidates=[candidate])
+        before["page_state"]["cart_text"] = ""
+        before["runtime_signals"]["cart_text"] = ""
+        after["page_state"]["cart_text"] = ""
+        after["runtime_signals"]["cart_text"] = ""
+
+        anomalies = detect_anomalies(before, after, {"action": {"action_type": "click_element", "candidate_index": 0}})
+        quantity = next(item for item in anomalies if item["type"] == "cart-quantity-mismatch")
+
+        self.assertEqual(1.0, quantity["evidence"]["quantity_before"])
+        self.assertEqual(0.0, quantity["evidence"]["quantity_after"])
+        self.assertTrue(_candidate_should_be_promoted(quantity))
+
     def test_cart_total_mismatch_uses_currency_amounts_not_quantities(self) -> None:
         after = _obs(text="Cart quantity 2 Item A $10 Item B $20 Total $36")
 
@@ -320,6 +354,27 @@ class EcommerceErrorDetectionTests(unittest.TestCase):
         self.assertEqual([10.0, 20.0], total["evidence"]["line_item_amounts"])
         self.assertEqual(30.0, total["evidence"]["expected_total_from_visible_amounts"])
         self.assertEqual(36.0, total["evidence"]["displayed_total"])
+
+    def test_cart_total_mismatch_from_click_uses_page_text_when_cart_text_missing(self) -> None:
+        candidate = _candidate(
+            name="Open cart",
+            text="Open cart",
+            semantic_action_type="cart",
+            is_purchase_action=True,
+            is_cart_related=True,
+        )
+        before = _obs(text="Cart Item A $10 Item B $20 Total $30", candidates=[candidate])
+        after = _obs(text="Cart Item A $10 Item B $20 Total $36", candidates=[candidate])
+        after["page_state"]["cart_text"] = ""
+        after["runtime_signals"]["cart_text"] = ""
+
+        anomalies = detect_anomalies(before, after, {"action": {"action_type": "click_element", "candidate_index": 0}})
+        total = next(item for item in anomalies if item["type"] == "cart-total-mismatch")
+
+        self.assertEqual("page_text", total["evidence"]["cart_text_source"])
+        self.assertEqual(30.0, total["evidence"]["expected_total_from_visible_amounts"])
+        self.assertEqual(36.0, total["evidence"]["displayed_total"])
+        self.assertTrue(_is_reportable_anomaly(total))
 
     def test_wrong_product_detail_page_is_detected(self) -> None:
         candidate = _candidate(

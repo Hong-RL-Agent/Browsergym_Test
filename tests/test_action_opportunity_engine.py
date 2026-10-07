@@ -237,6 +237,26 @@ class ActionOpportunityEngineTests(unittest.TestCase):
         self.assertEqual(0, state["summary"]["remaining_blocking_opportunity_count"])
         self.assertTrue(state["summary"]["finish_allowed"])
 
+    def test_non_executing_semantic_click_opportunity_is_optional(self):
+        obs = _observation([
+            _candidate(
+                element_key="button|category|programming",
+                text="Programming",
+                semantic_action_type="category",
+                functional_priority_candidate=True,
+                functional_priority=True,
+                is_non_executing_semantic=True,
+            )
+        ])
+        history = {"step_index": 3, "executed_action_signatures": {"inspect_dom::global"}}
+        state = build_action_opportunities(obs, history)
+        click_ops = [item for item in state["opportunities"] if item["opportunity_type"] == "click_button"]
+
+        self.assertEqual(1, len(click_ops))
+        self.assertFalse(click_ops[0]["required"])
+        self.assertEqual(0, state["summary"]["remaining_blocking_opportunity_count"])
+        self.assertTrue(state["summary"]["finish_allowed"])
+
     def test_high_value_click_button_opportunity_prioritized_but_does_not_block_finish(self):
         obs = _observation([_candidate(element_key="button|add|main", text="Add", semantic_action_type="add")])
         history = {"step_index": 3, "executed_action_signatures": {"inspect_dom::global"}}
@@ -273,6 +293,54 @@ class ActionOpportunityEngineTests(unittest.TestCase):
         _attach_action_history_to_observation(obs, obs["history"])
         mask_after_fill = space.build_action_mask(obs)
         self.assertGreater(mask_after_fill[space.encode("finish_episode", 0)], 0.0)
+
+    def test_action_mask_sanitizes_non_executable_candidate_actions(self):
+        obs = _observation([
+            _candidate(
+                element_key="button|disabled|0",
+                tag="button",
+                role="button",
+                text="Disabled",
+                clickable=True,
+                enabled=False,
+            ),
+            _candidate(
+                element_key="input|hidden|1",
+                tag="input",
+                role="textbox",
+                type="hidden",
+                input_type="hidden",
+                fillable=True,
+                clickable=False,
+            ),
+            _candidate(
+                element_key="button|plain|2",
+                tag="button",
+                role="button",
+                text="Plain",
+                clickable=True,
+                enabled=True,
+                is_submit=False,
+            ),
+        ])
+        obs["history"] = {
+            "action_opportunities": [
+                {"opportunity_type": "click_button", "candidate_index": 0, "required": True},
+                {"opportunity_type": "fill_text_input", "candidate_index": 1, "required": True},
+                {"opportunity_type": "click_submit", "candidate_index": 2, "required": True},
+            ],
+            "opportunity_summary": {
+                "finish_allowed": False,
+                "remaining_required_opportunity_count": 3,
+            },
+        }
+        space = ActionSpace(max_candidates=4)
+        mask = space.build_action_mask(obs)
+
+        self.assertEqual(0.0, float(mask[space.encode("click_element", 0)]))
+        self.assertEqual(0.0, float(mask[space.encode("fill_input", 1)]))
+        self.assertEqual(0.0, float(mask[space.encode("click_submit", 2)]))
+        self.assertGreater(float(mask[space.encode("click_element", 2)]), 0.0)
 
     def test_rule_engine_does_not_execute_actions_directly(self):
         history = {"step_index": 1}

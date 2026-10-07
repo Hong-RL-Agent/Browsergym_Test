@@ -13,6 +13,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 
 OPPORTUNITY_COVERAGE_THRESHOLD_DEFAULT = 0.7
+NON_EXECUTING_SEMANTIC_ACTION_TYPES = {"filter", "category", "tab", "search_input"}
 COMMERCE_TOKENS = (
     "cart",
     "basket",
@@ -855,6 +856,11 @@ def _is_clickable(candidate: Mapping[str, Any]) -> bool:
 
 
 def _is_functional_priority_candidate(candidate: Mapping[str, Any]) -> bool:
+    semantic_type = str(candidate.get("semantic_action_type") or "").lower()
+    if semantic_type in NON_EXECUTING_SEMANTIC_ACTION_TYPES:
+        return False
+    if bool(candidate.get("is_non_executing_semantic")):
+        return False
     return bool(candidate.get("functional_priority_candidate") or candidate.get("functional_priority"))
 
 
@@ -974,6 +980,8 @@ def _is_forum_detail_candidate(candidate: Mapping[str, Any]) -> bool:
 
 def _is_required_commerce_candidate(candidate: Mapping[str, Any]) -> bool:
     semantic_type = str(candidate.get("semantic_action_type") or "").lower()
+    if semantic_type in NON_EXECUTING_SEMANTIC_ACTION_TYPES or bool(candidate.get("is_non_executing_semantic")):
+        return False
     if semantic_type in {"cart", "purchase", "add", "checkout", "detail", "details", "product_detail", "quantity"}:
         return True
     return bool(

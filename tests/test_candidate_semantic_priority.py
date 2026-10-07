@@ -33,6 +33,20 @@ class CandidateSemanticPriorityTests(unittest.TestCase):
         self.assertEqual("add", add["semantic_action_type"])
         self.assertTrue(add["functional_priority_candidate"])
 
+    def test_category_filter_and_search_input_are_not_functional_priority(self) -> None:
+        category = _candidate("Chicken", role="button")
+        filter_button = _candidate("Filter", role="button")
+        search_input = _candidate("Search", role="textbox", tag="input")
+
+        self.assertEqual("category", category["semantic_action_type"])
+        self.assertEqual("filter", filter_button["semantic_action_type"])
+        self.assertEqual("search_input", search_input["semantic_action_type"])
+        for candidate in (category, filter_button, search_input):
+            self.assertTrue(candidate["is_non_executing_semantic"])
+            self.assertFalse(candidate["functional_priority_candidate"])
+            self.assertFalse(candidate["functional_priority"])
+            self.assertFalse(candidate["is_high_value_functional_candidate"])
+
     def test_functional_priority_candidate_selected_before_scroll(self) -> None:
         action_space = ActionSpace(max_candidates=4)
         observation = {

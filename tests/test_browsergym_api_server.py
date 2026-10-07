@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import tempfile
@@ -13,12 +13,22 @@ from runners.browsergym_api_server import (
     _get_job,
     _job_status,
     _looks_like_form_or_login_url,
+    _repair_mojibake_tree,
     _spring_step_events,
 )
 from services.scan_backend_service import RUNNING_PROCESSES, ScanStartResult, cancel_browsergym_scan, start_browsergym_scan
 
 
 class BrowserGymApiServerTests(unittest.TestCase):
+    def test_api_response_repairs_common_korean_mojibake(self) -> None:
+        expected = "\ubc30\ub2ec"
+        broken = "\u8adb\uacd5\ub596"
+
+        repaired = _repair_mojibake_tree({"message": broken, "items": [broken]})
+
+        self.assertEqual(expected, repaired["message"])
+        self.assertEqual(expected, repaired["items"][0])
+
     def test_step_events_are_spring_compatible(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             job = self._job(tmp)
@@ -578,3 +588,4 @@ class BrowserGymApiServerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

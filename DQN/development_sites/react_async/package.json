@@ -1,0 +1,15 @@
+{
+  "name": "dev-react-async-testbed",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Development-only React async lifecycle false-positive testbed for frozen Detector v1 baseline.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "frameworkMetadata": {
+    "framework": "React",
+    "reactVersion": "18.2.0",
+    "mode": "production-like UMD",
+    "strictMode": false
+  }
+}

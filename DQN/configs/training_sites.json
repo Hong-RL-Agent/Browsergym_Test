@@ -1,0 +1,59 @@
+{
+  "shared_model_path": "artifacts/models/jaws_browsergym_shared_ppo.pt",
+  "output_dir": "artifacts/multisite",
+  "sites": [
+    {
+      "site_id": "site001",
+      "base_url": "http://localhost:9220",
+      "has_bug_catalog": true,
+      "bug_catalog_path": "datasets/site001/bug_catalog.json",
+      "reward_scale": 0.5
+    },
+    {
+      "site_id": "site003",
+      "base_url": "http://localhost:9222",
+      "has_bug_catalog": true,
+      "bug_catalog_path": "datasets/site003/bug_catalog.json",
+      "reward_scale": 1.2
+    },
+    {
+      "site_id": "site9800",
+      "base_url": "http://localhost:9800",
+      "has_bug_catalog": true,
+      "bug_catalog_path": "datasets/site9800/bug_catalog.json",
+      "reward_scale": 1.0,
+      "exploration_profile": "openended_commerce",
+      "requires_login": true,
+      "login": {
+        "email": "customer@smart.com",
+        "password": "commerce123",
+        "email_selector_candidates": [
+          "input[type='email']",
+          "input[type='text']",
+          "input[name='email']",
+          "input[placeholder*='email']",
+          "form input"
+        ],
+        "password_selector_candidates": [
+          "input[type='password']",
+          "input[name='password']"
+        ],
+        "submit_selector_candidates": [
+          "button:has-text('Sign in')",
+          "button[type='submit']"
+        ],
+        "success_url_contains": [
+          "/dashboard",
+          "/shop",
+          "/cart"
+        ],
+        "success_text_contains": [
+          "Dashboard",
+          "Products",
+          "Cart",
+          "Checkout"
+        ]
+      }
+    }
+  ]
+}

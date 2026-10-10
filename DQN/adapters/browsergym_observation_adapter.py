@@ -279,7 +279,9 @@ class BrowserGymObservationAdapter:
                 _add_candidate(candidates_by_key, candidate)
                 source_counts[candidate["source"]] += 1
 
-        for dom_candidate in _dom_candidates(obs.get("dom_object"), page_text, site_profile):
+        for dom_candidate in _dom_candidates(
+            obs.get("dom_object"), page_text, site_profile, properties=properties
+        ):
             _add_candidate(candidates_by_key, dom_candidate)
             source_counts[dom_candidate["source"]] += 1
 
@@ -397,7 +399,15 @@ class BrowserGymObservationAdapter:
         role = _normalize_role(node.get("role"))
         bid = _node_bid(node)
         backend_id = _as_str(node.get("backendDOMNodeId"))
-        prop = properties.get(str(bid), {}) or properties.get(backend_id, {})
+        # BrowserGym's extra properties are keyed by the stable ``bid``.  AX
+        # nodes may also expose nodeId/backendDOMNodeId, but nodeId is a
+        # different accessibility id-space.  Prefer the backend DOM id for
+        # enrichment and fall back through the remaining aliases.
+        prop = _property_for_node(node, properties)
+        if not node.get("browsergym_id") and not node.get("bid") and backend_id in properties:
+            # If AX exposes only a backend DOM id, the BrowserGym property key
+            # is the actionable bid and must remain the candidate identity.
+            bid = backend_id
         name = _as_str(_ax_value(node.get("name")) or _ax_value(node.get("text")) or prop.get("text")).strip()
         text = _as_str(_ax_value(node.get("text")) or prop.get("text") or name).strip()
         focusable = _ax_property_bool(node, "focusable")
@@ -420,7 +430,9 @@ class BrowserGymObservationAdapter:
             return None
 
         bbox = _normalize_bbox(prop.get("bbox") or prop.get("bounding_box") or node.get("bbox"))
-        visibility = max(0.0, min(1.0, _as_float(prop.get("visibility"), default=1.0 if _has_bbox(bbox) else 0.0)))
+        visibility = _safe_visibility(
+            prop or node, bbox=bbox, default=1.0 if _has_bbox(bbox) else 0.0
+        )
         clickable = _as_bool(prop.get("clickable"), role in INTERACTIVE_ROLES or focusable)
         set_of_marks = _as_bool(prop.get("set_of_marks"), False)
         meaningful_text = _meaningful_name(text or name, page_title)
@@ -485,6 +497,7 @@ class BrowserGymObservationAdapter:
             element_id=_as_str(prop.get("id")),
             class_name=_as_str(prop.get("class") or prop.get("className")),
             href=_as_str(prop.get("href")),
+            fillable=_is_fillable_control(role, _as_str(prop.get("tag") or prop.get("tagName")), prop),
             site_profile=site_profile,
         )
 
@@ -502,7 +515,7 @@ class BrowserGymObservationAdapter:
         site_profile: Optional[Mapping[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         bbox = _normalize_bbox(prop.get("bbox") or prop.get("bounding_box"))
-        visibility = max(0.0, min(1.0, _as_float(prop.get("visibility"), default=0.0)))
+        visibility = _safe_visibility(prop, bbox=bbox, default=1.0 if _has_bbox(bbox) else 0.0)
         clickable = _as_bool(prop.get("clickable"), False)
         set_of_marks = _as_bool(prop.get("set_of_marks"), False)
         if not (clickable or set_of_marks or visibility >= 0.5):
@@ -577,6 +590,7 @@ class BrowserGymObservationAdapter:
             element_id=_as_str(prop.get("id")),
             class_name=_as_str(prop.get("class") or prop.get("className")),
             href=_as_str(prop.get("href")),
+            fillable=_is_fillable_control(role, tag, prop),
             site_profile=site_profile,
         )
 
@@ -623,6 +637,7 @@ def _make_candidate(
     class_name: str = "",
     href: str = "",
     site_profile: Optional[Mapping[str, Any]] = None,
+    fillable: Optional[bool] = None,
 ) -> Dict[str, Any]:
     selector_hint = ""
     keyword_text = " ".join([text, name, aria_label, title, element_id, class_name])
@@ -638,6 +653,11 @@ def _make_candidate(
         or _contains_keyword(keyword_text, ACTION_TEXT_KEYWORDS)
     )
     is_form_field = bool(tag_norm in {"input", "select", "textarea"} or role_norm in {"textbox", "searchbox", "combobox"})
+    resolved_fillable = bool(fillable) if fillable is not None else bool(
+        is_form_field
+        and tag_norm != "select"
+        and str(input_type or "").lower() not in {"hidden", "button", "submit", "checkbox", "radio", "reset", "image", "file"}
+    )
     openended_keyword_matches = sorted(
         set(
             profile_keyword_matches(keyword_text, site_profile, "interaction_keywords")
@@ -733,6 +753,8 @@ def _make_candidate(
         "is_purchase_action": is_purchase_action,
         "is_interactive": is_interactive,
         "is_form_field": is_form_field,
+        "fillable": resolved_fillable,
+        "selectable": bool(tag_norm == "select"),
         "is_login_related": is_login_related,
         "is_cart_related": is_cart_related,
         "is_quantity_control": is_quantity_control,
@@ -802,6 +824,7 @@ def _dom_candidates(
     dom_object: Any,
     page_text: str,
     site_profile: Optional[Mapping[str, Any]] = None,
+    properties: Optional[Mapping[str, Mapping[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     candidates: List[Dict[str, Any]] = []
     if not isinstance(dom_object, Mapping):
@@ -835,11 +858,24 @@ def _dom_candidates(
             has_interactive_attr = any(key in attr_map for key in DOM_INTERACTIVE_ATTRS)
             if tag not in DOM_INTERACTIVE_TAGS and not has_interactive_attr:
                 continue
-            bid = str(backend_ids[index]) if isinstance(backend_ids, list) and index < len(backend_ids) else f"dom-{index}"
+            # DOMSnapshot backendNodeId is not the BrowserGym action identity.
+            # The stable identity is the ``bid`` attribute that also keys
+            # extra_element_properties.  Keep backendNodeId only as a
+            # compatibility fallback for observations without a bid.
+            bid = attr_map.get("bid") or (
+                str(backend_ids[index]) if isinstance(backend_ids, list) and index < len(backend_ids) else f"dom-{index}"
+            )
+            prop = (properties or {}).get(str(bid), {}) or (
+                (properties or {}).get(str(backend_ids[index]), {})
+                if isinstance(backend_ids, list) and index < len(backend_ids)
+                else {}
+            )
+            bbox = _normalize_bbox(prop.get("bbox") or prop.get("bounding_box"))
             role = attr_map.get("role") or ("link" if tag == "a" else "button" if tag == "button" else tag or "generic")
             score = 0.45 if tag in DOM_INTERACTIVE_TAGS else 0.25
             score += 0.2 if has_interactive_attr else 0.0
             score += 0.1 if text else 0.0
+            fillable = _is_fillable_control(role, tag, {**attr_map, **prop})
             candidates.append(
                 _make_candidate(
                     bid=bid,
@@ -847,10 +883,10 @@ def _dom_candidates(
                     name=text or tag or f"dom-{index}",
                     role=role,
                     tag=tag,
-                    bbox=[0.0, 0.0, 0.0, 0.0],
-                    visibility=0.0,
-                    clickable=True,
-                    enabled=True,
+                    bbox=bbox,
+                    visibility=_safe_visibility(prop, bbox=bbox, default=1.0 if _has_bbox(bbox) else 0.0),
+                    clickable=_as_bool(prop.get("clickable"), tag in {"button", "a"} or role in INTERACTIVE_ROLES),
+                    enabled=not _as_bool(prop.get("disabled") or attr_map.get("disabled"), False),
                     source="dom",
                     page_text=page_text,
                     clickable_score=min(1.0, score),
@@ -880,6 +916,7 @@ def _dom_candidates(
                     element_id=attr_map.get("id", ""),
                     class_name=attr_map.get("class", ""),
                     href=attr_map.get("href", ""),
+                    fillable=fillable,
                     site_profile=site_profile,
                 )
             )
@@ -980,6 +1017,23 @@ def _index_extra_properties(extra: Any) -> Dict[str, Mapping[str, Any]]:
     return indexed
 
 
+def _property_for_node(
+    node: Mapping[str, Any], properties: Mapping[str, Mapping[str, Any]]
+) -> Mapping[str, Any]:
+    """Resolve BrowserGym enrichment without confusing AX and DOM ids."""
+    keys = (
+        node.get("browsergym_id"),
+        node.get("bid"),
+        node.get("backendDOMNodeId"),
+        node.get("backendNodeId"),
+        node.get("nodeId"),
+    )
+    for key in keys:
+        if key is not None and str(key) in properties:
+            return properties[str(key)]
+    return {}
+
+
 def _node_bid(node: Mapping[str, Any]) -> str:
     for key in ("browsergym_id", "bid", "nodeId", "backendDOMNodeId", "backendNodeId"):
         value = node.get(key)
@@ -1002,6 +1056,45 @@ def _normalize_bbox(value: Any) -> List[float]:
     while len(values) < 4:
         values.append(0.0)
     return [_as_float(v, default=0.0) for v in values[:4]]
+
+
+def _safe_visibility(
+    mapping: Mapping[str, Any] | None, *, bbox: Any = None, default: float = 1.0
+) -> float:
+    """Preserve explicit visibility; use valid geometry only as a safe fallback.
+
+    Missing geometry is not treated as proof of invisibility.  Conversely, a
+    missing bbox still remains invalid for target eligibility; this helper only
+    computes visibility semantics.
+    """
+    mapping = mapping or {}
+    if "visibility" in mapping and mapping.get("visibility") is not None:
+        value = _as_float(mapping.get("visibility"), default=default)
+    elif "visible" in mapping and mapping.get("visible") is not None:
+        value = 1.0 if _as_bool(mapping.get("visible"), False) else 0.0
+    elif "is_visible" in mapping and mapping.get("is_visible") is not None:
+        value = 1.0 if _as_bool(mapping.get("is_visible"), False) else 0.0
+    else:
+        value = default
+    return max(0.0, min(1.0, value))
+
+
+def _is_fillable_control(role: Any, tag: Any, mapping: Mapping[str, Any]) -> bool:
+    role_norm = _as_str(role).lower()
+    tag_norm = _as_str(tag).lower()
+    input_type = _as_str(
+        mapping.get("input_type") or mapping.get("type") or ""
+    ).lower()
+    if input_type in {"hidden", "button", "submit", "checkbox", "radio", "reset", "image", "file"}:
+        return False
+    if tag_norm == "select":
+        return False
+    return bool(
+        mapping.get("fillable")
+        or tag_norm in {"input", "textarea"}
+        or role_norm in {"textbox", "searchbox"}
+        or mapping.get("contenteditable")
+    )
 
 
 def _viewport_size(screenshot: Any, info: Mapping[str, Any]) -> tuple[int, int]:

@@ -8,7 +8,7 @@ import re
 import traceback
 from typing import Any, Dict, Mapping, Optional
 
-from adapters.browsergym_action_adapter import BrowserGymActionAdapter
+from adapters.browsergym_action_adapter import BrowserGymActionAdapter, input_value_for_candidate
 from adapters.browsergym_observation_adapter import BrowserGymObservationAdapter
 from models.action_space import ActionSpace
 from models.observation_encoder import ObservationEncoder
@@ -146,7 +146,11 @@ class BrowserGymJAWSEnv:
         }
         if diagnostic_context:
             execution_diagnostic.update(self._diagnostic_target_snapshot(selected_candidate))
-        self._begin_temporal_action_window(selected_candidate)
+        self._begin_temporal_action_window(
+            selected_candidate,
+            action_context=getattr(self, "_pending_action_context", None),
+        )
+        self._pending_action_context = None
         action_error = False
         done = False
         info: Dict[str, Any] = {}
@@ -168,6 +172,8 @@ class BrowserGymJAWSEnv:
             info = self._inspect_infra(browser_action.action_type)
         elif browser_action.action_type == "fill_input":
             info = self._fill_input(decoded_action)
+        elif browser_action.action_type == "select_option":
+            info = self._select_option(decoded_action)
         elif browser_action.action_type == "press_enter":
             info = self._press_enter(decoded_action)
         elif browser_action.action_type == "change_viewport_mobile":
@@ -287,6 +293,30 @@ class BrowserGymJAWSEnv:
                 "infra_signals": next_jaws_obs.get("infra_signals", {}),
             }
         )
+        if browser_action.action_type == "select_option":
+            action_context = dict(getattr(self, "_temporal_action_context", {}) or {})
+            selected_option = info.get("selected_option") if isinstance(info.get("selected_option"), Mapping) else {}
+            provenance = {
+                "episode_id": action_context.get("episode_id") or self.site_id,
+                "step": action_context.get("action_step") or self.step_index,
+                "action_id": action_context.get("action_id") or action_context.get("action_trace_id") or f"{self.site_id}:step:{self.step_index}",
+                "action_type": "select_option",
+                "target_bid": info.get("selected_bid") or (selected_candidate or {}).get("bid"),
+                "target_tag": str((selected_candidate or {}).get("tag") or "select"),
+                "target_role": (selected_candidate or {}).get("role"),
+                "option_identity": {
+                    key: selected_option.get(key)
+                    for key in ("value", "label", "text", "index")
+                    if selected_option.get(key) is not None
+                },
+                "selected_value_before": info.get("current_value_before"),
+                "selected_value_after": selected_option.get("value"),
+                "execution_success": bool(info.get("selected")) and not explicit_action_error,
+                "action_start_timestamp": action_context.get("action_start_timestamp"),
+                "action_end_timestamp": action_context.get("action_end_timestamp") or _monotonic_ms(),
+            }
+            step_info["origin_action_provenance"] = provenance
+            next_jaws_obs.setdefault("runtime_signals", {})["origin_action_provenance"] = provenance
         if diagnostic_context:
             if isinstance(info.get("diagnostic_exception"), Mapping):
                 execution_diagnostic.update(dict(info["diagnostic_exception"]))
@@ -536,7 +566,7 @@ class BrowserGymJAWSEnv:
         page = _active_page(self.env)
         candidate = self._candidate_for_decoded_action(decoded_action)
         bid = str((candidate or {}).get("bid") or "")
-        value = str(decoded_action.get("input_text") or "test")
+        value = input_value_for_candidate(candidate or {}, decoded_action)
         if page is None or not bid:
             info["fill_error"] = "active page or bid not found"
             return info
@@ -546,6 +576,54 @@ class BrowserGymJAWSEnv:
             info.update({"filled": True, "filled_bid": bid, "input_text": value})
         except Exception as exc:
             info["fill_error"] = str(exc)
+            info["diagnostic_exception"] = {
+                "error_origin": "PLAYWRIGHT_EXCEPTION",
+                "exception_module": type(exc).__module__,
+                "exception_class": type(exc).__name__,
+                "exception_message": str(exc),
+                "traceback": traceback.format_exc(),
+            }
+        return info
+
+    def _select_option(self, decoded_action: Dict[str, Any]) -> Dict[str, Any]:
+        info: Dict[str, Any] = {"internal_action": "select_option", "selected": False}
+        page = _active_page(self.env)
+        candidate = self._candidate_for_decoded_action(decoded_action)
+        bid = str((candidate or {}).get("bid") or "")
+        if page is None or not bid:
+            info["select_error"] = "active page or bid not found"
+            return info
+        try:
+            locator = page.locator(f'[bid="{bid}"]')
+            if locator.count() != 1:
+                info["select_error"] = "select target not uniquely resolvable"
+                return info
+            if str(locator.evaluate("el => String(el.tagName || '').toLowerCase()")) != "select":
+                info["select_error"] = "target is not a native select"
+                return info
+            current_value = str(locator.input_value() or "")
+            options = locator.locator("option")
+            option_rows = []
+            selected_value = None
+            for index in range(options.count()):
+                option = options.nth(index)
+                value = str(option.get_attribute("value") or "")
+                label = str(option.inner_text() or "")
+                disabled = bool(option.is_disabled())
+                selected = value == current_value
+                option_rows.append({"value": value, "label": label, "index": index, "disabled": disabled, "selected": selected})
+                if selected:
+                    selected_value = value
+            valid_options = [row for row in option_rows if not row["disabled"] and row["value"] != current_value]
+            if not valid_options:
+                info.update({"select_error": "no enabled option different from current value", "options": option_rows})
+                return info
+            chosen = valid_options[0]
+            locator.select_option(value=chosen["value"], timeout=1000)
+            page.wait_for_timeout(150)
+            info.update({"selected": True, "selected_bid": bid, "selected_option": chosen, "current_value_before": current_value, "options": option_rows})
+        except Exception as exc:
+            info["select_error"] = str(exc)
             info["diagnostic_exception"] = {
                 "error_origin": "PLAYWRIGHT_EXCEPTION",
                 "exception_module": type(exc).__module__,
@@ -588,17 +666,29 @@ class BrowserGymJAWSEnv:
     def _reset_temporal_runtime(self) -> None:
         self._temporal_page = None
         self._temporal_network_events = []
-        self._temporal_active_requests = {}
+        # Keep requests started by an earlier action alive so a late response
+        # or failure retains its original start timestamp and is classified as
+        # background rather than caused by the current action.
+        self._temporal_active_requests = dict(getattr(self, "_temporal_active_requests", {}) or {})
+        self._temporal_action_context = {}
+        self._pending_action_context = None
         self._temporal_console_errors = []
         self._temporal_action_origin = 0.0
 
-    def _begin_temporal_action_window(self, selected_candidate: Optional[Mapping[str, Any]] = None) -> None:
+    def _begin_temporal_action_window(
+        self,
+        selected_candidate: Optional[Mapping[str, Any]] = None,
+        action_context: Optional[Mapping[str, Any]] = None,
+    ) -> None:
         self._ensure_temporal_hooks()
         self._temporal_action_origin = _monotonic_ms()
         self._temporal_target_bid = str((selected_candidate or {}).get("bid") or "")
         self._temporal_network_events = []
         self._temporal_active_requests = {}
         self._temporal_console_errors = []
+        context = dict(action_context or {})
+        context.setdefault("action_start_timestamp", _monotonic_ms())
+        self._temporal_action_context = context
 
     def _ensure_temporal_hooks(self) -> None:
         page = _active_page(self.env)
@@ -621,6 +711,7 @@ class BrowserGymJAWSEnv:
             "request_id": request_id,
             "relative_ms": self._relative_temporal_ms(),
             "request_relative_ms": self._relative_temporal_ms(),
+            "request_start_timestamp": _monotonic_ms(),
             "method": _safe_call(request, "method"),
             "url": _safe_attr(request, "url"),
             "resource_type": _safe_call(request, "resource_type"),
@@ -638,6 +729,8 @@ class BrowserGymJAWSEnv:
             "request_id": request_id,
             "relative_ms": self._relative_temporal_ms(),
             "request_relative_ms": self._temporal_active_requests.get(request_id, {}).get("request_relative_ms"),
+            "request_start_timestamp": self._temporal_active_requests.get(request_id, {}).get("request_start_timestamp"),
+            "response_timestamp": _monotonic_ms(),
             "method": _safe_call(request, "method") if request is not None else "",
             "url": _safe_attr(response, "url") or (_safe_attr(request, "url") if request is not None else ""),
             "resource_type": _safe_call(request, "resource_type") if request is not None else "",
@@ -654,10 +747,13 @@ class BrowserGymJAWSEnv:
     def _on_temporal_request_failed(self, request: Any) -> None:
         request_id = _request_identity(request)
         failure = _safe_call(request, "failure")
+        started = self._temporal_active_requests.get(request_id, {})
         event = {
             "event": "requestfailed",
             "request_id": request_id,
             "relative_ms": self._relative_temporal_ms(),
+            "request_start_timestamp": started.get("request_start_timestamp") or _monotonic_ms(),
+            "response_timestamp": None,
             "method": _safe_call(request, "method"),
             "url": _safe_attr(request, "url"),
             "resource_type": _safe_call(request, "resource_type"),
@@ -701,15 +797,26 @@ class BrowserGymJAWSEnv:
     def _stamp_temporal_runtime(self, observation: Dict[str, Any]) -> None:
         runtime = observation.setdefault("runtime_signals", {})
         events = list(self._temporal_network_events)
+        requests = [event for event in events if event.get("event") == "request"]
         completed = [event for event in events if event.get("event") == "response"]
         failed = [event for event in events if event.get("event") == "requestfailed"]
+        action_context = dict(getattr(self, "_temporal_action_context", {}) or {})
+        action_context.setdefault("action_end_timestamp", _monotonic_ms())
+        for event in events:
+            event.setdefault("action_start_timestamp", action_context.get("action_start_timestamp"))
+            event.setdefault("action_end_timestamp", action_context.get("action_end_timestamp"))
+            event.setdefault("action_id", action_context.get("action_id"))
+            event.setdefault("action_type", action_context.get("action_type"))
+            event.setdefault("target_identity", action_context.get("target_identity"))
         runtime["temporal_network"] = {
+            "request_events": requests,
             "active_requests": list(self._temporal_active_requests.values()),
             "completed_requests": completed,
             "failed_requests": failed,
             "active_request_count": len(self._temporal_active_requests),
             "completed_request_count": len(completed),
             "failed_request_count": len(failed),
+            "action_context": action_context,
         }
         runtime["temporal_console_errors"] = list(self._temporal_console_errors)
 
@@ -837,6 +944,11 @@ class BrowserGymJAWSEnv:
     def set_action_diagnostic_context(self, context: Optional[Mapping[str, Any]]) -> None:
         """Set per-step trace context; no-op for all behavior except opt-in logging."""
         self._action_diagnostic_context = dict(context or {}) or None
+        self._pending_action_context = dict(context or {}) or None
+
+    def runtime_candidate_compatibility(self, candidate: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+        """Expose the same bid-based DOM probe used by execution diagnostics."""
+        return self._diagnostic_target_snapshot(candidate)
 
     def _diagnostic_target_snapshot(self, candidate: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
         if not isinstance(candidate, Mapping):
@@ -844,21 +956,66 @@ class BrowserGymJAWSEnv:
                 "target_present_at_selection": False,
                 "target_resolved_at_execution": False,
                 "target_resolution_method": None,
+                "target_locator_count": 0,
             }
         bid = str(candidate.get("bid") or "")
         page = _active_page(self.env)
         resolved = False
+        locator_count = 0
+        runtime_snapshot: Dict[str, Any] = {}
         if page is not None and bid:
             try:
-                resolved = page.locator(f'[bid="{bid}"]').count() > 0
+                locator = page.locator(f'[bid="{bid}"]')
+                locator_count = int(locator.count())
+                resolved = locator_count > 0
+                if resolved:
+                    target = locator.first
+                    bbox = target.bounding_box() or {}
+                    runtime_snapshot = {
+                        "target_visible_runtime": bool(target.is_visible()),
+                        "target_enabled_runtime": bool(target.is_enabled()),
+                        "target_bbox_runtime": [
+                            bbox.get("x", 0.0), bbox.get("y", 0.0),
+                            bbox.get("width", 0.0), bbox.get("height", 0.0),
+                        ] if isinstance(bbox, Mapping) else [],
+                        "target_dom_attributes": target.evaluate(
+                            """el => ({
+                                tag: String(el.tagName || '').toLowerCase(),
+                                type: String(el.getAttribute('type') || '').toLowerCase(),
+                                role: String(el.getAttribute('role') || '').toLowerCase(),
+                                contenteditable: String(el.getAttribute('contenteditable') || '').toLowerCase()
+                            })"""
+                        ),
+                    }
+                    dom = runtime_snapshot.get("target_dom_attributes") or {}
+                    tag = str(dom.get("tag") or "")
+                    role = str(dom.get("role") or "")
+                    contenteditable = str(dom.get("contenteditable") or "")
+                    runtime_snapshot["target_fillable_runtime"] = bool(
+                        tag in {"input", "textarea"}
+                        or tag != "select" and role in {"textbox", "searchbox"}
+                        or contenteditable in {"true", "plaintext-only"}
+                    )
+                    runtime_snapshot["target_clickable_runtime"] = bool(runtime_snapshot.get("target_visible_runtime"))
             except Exception:
                 resolved = False
-        return {
+        snapshot = {
             "target_present_at_selection": True,
             "target_resolved_at_execution": resolved,
             "target_resolution_method": "bid" if bid else None,
             "execution_target_bid": bid,
+            "target_locator_count": locator_count,
+            "target_candidate_role": str(candidate.get("role") or ""),
+            "target_candidate_tag": str(candidate.get("tag") or ""),
+            "target_candidate_type": str(candidate.get("type") or candidate.get("input_type") or ""),
+            "target_candidate_visible": bool(candidate.get("visible", True)),
+            "target_candidate_enabled": bool(candidate.get("enabled", True)),
+            "target_candidate_fillable": bool(candidate.get("fillable", False)),
+            "target_candidate_clickable": bool(candidate.get("clickable", False)),
+            "target_candidate_bbox": list(candidate.get("bbox") or [])[:4] if isinstance(candidate.get("bbox"), list) else [],
         }
+        snapshot.update(runtime_snapshot)
+        return snapshot
 
     def _diagnostic_page_state(self) -> Dict[str, Any]:
         page = _active_page(self.env)
@@ -984,6 +1141,20 @@ def _safe_call(obj: Any, name: str) -> Any:
 def _request_identity(request: Any) -> str:
     if request is None:
         return ""
+    for attr in ("_guid", "guid", "request_id"):
+        try:
+            value = getattr(request, attr, None)
+            if value:
+                return str(value)
+        except Exception:
+            pass
+    try:
+        impl = getattr(request, "_impl_obj", None)
+        guid = getattr(impl, "_guid", None)
+        if guid:
+            return str(guid)
+    except Exception:
+        pass
     return str(id(request))
 
 

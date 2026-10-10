@@ -10,6 +10,7 @@ import torch
 from torch.nn import functional as F
 
 from models.ppo_actor_critic import PPOActorCritic
+from models.action_types import action_space_mapping_hash, action_space_metadata
 
 
 class PPOAgent:
@@ -169,14 +170,26 @@ class PPOAgent:
             {
                 "obs_dim": self.obs_dim,
                 "action_dim": self.action_dim,
+                "action_space": {
+                    **action_space_metadata(),
+                    "mapping_hash": action_space_mapping_hash(),
+                },
                 "policy_state_dict": self.policy.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
             },
             path,
         )
 
-    def load(self, path: str | Path) -> None:
+    def load(self, path: str | Path, *, expected_action_space: dict[str, Any] | None = None) -> None:
         checkpoint = torch.load(path, map_location=self.device)
+        if expected_action_space is not None:
+            actual_action_space = checkpoint.get("action_space")
+            if not isinstance(actual_action_space, dict):
+                raise RuntimeError("PPO_ACTION_SPACE_MAPPING_MISMATCH")
+            expected_types = list(expected_action_space.get("action_types") or [])
+            expected_dim = int(expected_action_space.get("action_dim", self.action_dim) or self.action_dim)
+            if list(actual_action_space.get("action_types") or []) != expected_types or int(actual_action_space.get("action_dim", -1) or -1) != expected_dim:
+                raise RuntimeError("PPO_ACTION_SPACE_MAPPING_MISMATCH")
         checkpoint_obs_dim = int(checkpoint.get("obs_dim", self.obs_dim))
         checkpoint_action_dim = int(checkpoint.get("action_dim", self.action_dim))
         if checkpoint_obs_dim != self.obs_dim or checkpoint_action_dim != self.action_dim:

@@ -16,6 +16,105 @@ from urllib.parse import urlparse
 
 MAX_JSON_ARRAY_ITEMS = 8
 MAX_FIELD_COUNT = 120
+
+
+def semantic_pair_confidence(pair: Mapping[str, Any]) -> float | None:
+    """Return canonical confidence, accepting the legacy field as fallback."""
+    value = pair.get("confidence") if "confidence" in pair else pair.get("pair_confidence")
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def normalize_runtime_network_telemetry(
+    observation: Mapping[str, Any], info: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
+    """Normalize BrowserGym temporal network events without copying bodies."""
+    runtime = observation.get("runtime_signals", {}) if isinstance(observation, Mapping) else {}
+    temporal = runtime.get("temporal_network", {}) if isinstance(runtime, Mapping) else {}
+    temporal = temporal if isinstance(temporal, Mapping) else {}
+    request_events = [row for row in temporal.get("request_events", []) or [] if isinstance(row, Mapping)]
+    completed = [row for row in temporal.get("completed_requests", []) or [] if isinstance(row, Mapping)]
+    failed = [row for row in temporal.get("failed_requests", []) or [] if isinstance(row, Mapping)]
+    events = request_events + completed + failed
+    parsed = sum(int("response_body_json" in row and row.get("response_body_json") is not None) for row in completed)
+    http_errors = sum(int(isinstance(row.get("status"), (int, float)) and int(row.get("status")) >= 400) for row in completed)
+    action_context = temporal.get("action_context", {}) if isinstance(temporal.get("action_context"), Mapping) else {}
+    action_start = action_context.get("action_start_timestamp")
+    action_end = action_context.get("action_end_timestamp")
+    associations = []
+    response_by_id = {str(row.get("request_id") or ""): row for row in completed if row.get("request_id")}
+    failed_by_id = {str(row.get("request_id") or ""): row for row in failed if row.get("request_id")}
+    # Merge request-start and completion streams by stable request_id. A
+    # request may start in one action and complete in a later action.
+    request_by_id: dict[str, dict[str, Any]] = {}
+    anonymous_events: list[Mapping[str, Any]] = []
+    for event in request_events + completed + failed:
+        request_id = str(event.get("request_id") or "")
+        if not request_id:
+            anonymous_events.append(event)
+            continue
+        row = request_by_id.setdefault(request_id, {})
+        for key, value in event.items():
+            if value is not None and (key not in row or row[key] in (None, "")):
+                row[key] = value
+    # Start/response/failure are lifecycle events for one request, not
+    # duplicate associations. Duplicates are measured on the canonical
+    # association rows below; by construction each request_id occurs once.
+    duplicate_request_ids = 0
+    association_events = list(request_by_id.values()) + anonymous_events
+    for event in association_events:
+        request_id = str(event.get("request_id") or "")
+        response = response_by_id.get(request_id) or failed_by_id.get(request_id) or {}
+        request_start = event.get("request_start_timestamp")
+        strict = False
+        outside_window = False
+        if isinstance(action_start, (int, float)) and isinstance(action_end, (int, float)) and isinstance(request_start, (int, float)):
+            strict = float(action_start) <= float(request_start) <= float(action_end)
+            outside_window = not strict
+        if strict:
+            association_type = "STRICT_ACTION_CAUSED"
+        elif outside_window:
+            association_type = "BACKGROUND_UNASSOCIATED"
+        elif request_start is None:
+            association_type = "TEMPORAL_ONLY"
+        else:
+            association_type = "UNKNOWN"
+        associations.append({
+            "action_id": action_context.get("action_id"),
+            "action_type": action_context.get("action_type"),
+            "target_identity": action_context.get("target_identity"),
+            "request_id": request_id,
+            "method": event.get("method"),
+            "url": event.get("url"),
+            "request_start_timestamp": request_start,
+            "response_timestamp": response.get("response_timestamp") or event.get("response_timestamp"),
+            "association_type": association_type,
+            "association_confidence": 1.0 if strict else 0.0,
+        })
+    strict_count = sum(int(row["association_type"] == "STRICT_ACTION_CAUSED") for row in associations)
+    return {
+        "raw_request_count": len(request_by_id) + len(anonymous_events),
+        "raw_response_count": len(completed),
+        "normalized_request_count": len(request_by_id) + len(anonymous_events),
+        "normalized_response_count": len(completed),
+        "failed_request_count": len(failed),
+        "http_error_response_count": http_errors,
+        "parsed_response_count": parsed,
+        "events": events,
+        "request_events": request_events,
+        "associations": associations,
+        "strict_associated_request_count": strict_count,
+        "duplicate_request_id_count": duplicate_request_ids,
+        "request_id_linkage_mismatch_count": sum(
+            int(str(row.get("request_id") or "") not in response_by_id and str(row.get("request_id") or "") not in failed_by_id)
+            for row in association_events if row.get("request_id")
+        ),
+        "schema": "runtime_signals.temporal_network.completed_requests+failed_requests",
+    }
 KEY_ALIASES = {
     "amount": "price",
     "cost": "price",
@@ -192,6 +291,7 @@ def pair_network_ui_fields(network_fields: list[Mapping[str, Any]], ui_fields: l
                     "ui_semantic_value": uval,
                     "match_basis": "normalized_key",
                     "relation": relation,
+                    "confidence": confidence,
                     "pair_confidence": confidence,
                     "pair_method": "EXACT_KEY",
                     "request_id": nfield.get("request_id"),

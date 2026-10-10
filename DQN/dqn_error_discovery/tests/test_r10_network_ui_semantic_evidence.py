@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from services.r10_network_ui_semantic_evidence import build_network_ui_semantic_evidence, normalize_value
+from services.r10_network_ui_semantic_evidence import build_network_ui_semantic_evidence, normalize_value, semantic_pair_confidence
 
 
 def test_normalize_currency_and_number_equivalent() -> None:
@@ -46,6 +46,38 @@ def test_builds_not_equal_network_ui_pair_from_json_and_ui_fields() -> None:
     assert ("usage", "EQUAL") in relations
     assert evidence["not_equal_pairs"] == 2
     assert evidence["equal_pairs"] == 1
+    assert all(pair["confidence"] == pair["pair_confidence"] for pair in evidence["pairs"])
+
+
+def test_not_equal_pair_uses_canonical_nonzero_confidence() -> None:
+    evidence = build_network_ui_semantic_evidence(
+        action_context={"action_id": "a"},
+        network_entries=[{"request_id": "r", "url": "/api", "status": 200,
+                          "response_body_json": {"status": "server"}}],
+        observation={"page_state": {"page_text": "status: client"}},
+    )
+    pair = next(row for row in evidence["pairs"] if row["relation"] == "NOT_EQUAL")
+    assert pair["confidence"] > 0.0
+    assert semantic_pair_confidence(pair) == pair["confidence"]
+
+
+def test_equal_pair_confidence_is_preserved() -> None:
+    evidence = build_network_ui_semantic_evidence(
+        action_context={"action_id": "a"},
+        network_entries=[{"request_id": "r", "url": "/api", "status": 200,
+                          "response_body_json": {"status": "same"}}],
+        observation={"page_state": {"page_text": "status: same"}},
+    )
+    pair = next(row for row in evidence["pairs"] if row["relation"] == "EQUAL")
+    assert semantic_pair_confidence(pair) == pair["confidence"] > 0.0
+
+
+def test_missing_confidence_is_not_silently_promoted() -> None:
+    assert semantic_pair_confidence({"relation": "NOT_EQUAL"}) is None
+
+
+def test_legacy_pair_confidence_alias_is_read() -> None:
+    assert semantic_pair_confidence({"pair_confidence": 0.73}) == 0.73
 
 
 def test_text_response_key_value_pairs_are_supported() -> None:

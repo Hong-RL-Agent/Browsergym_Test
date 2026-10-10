@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Mapping
 from urllib.parse import urljoin, urlparse
 
 from dqn_error_discovery.agents.confirmation_reproduction import derive_reproduction_context
+from services.r10_network_ui_semantic_evidence import semantic_pair_confidence
 
 
 ACTION_KEYWORDS = (
@@ -616,6 +617,25 @@ def _standardize_anomalies(
         anomaly["evidence_target_identity"] = f"bid:{evidence_target}" if evidence_target and ":" not in evidence_target else (evidence_target or None)
         anomaly["trigger_action_type"] = trigger_action_type or None
         anomaly["trigger_target_identity"] = f"bid:{trigger_target}" if trigger_target and ":" not in trigger_target else (trigger_target or None)
+        origin_provenance = action_info.get("origin_action_provenance")
+        if isinstance(origin_provenance, Mapping):
+            anomaly["origin_action_provenance"] = dict(origin_provenance)
+            evidence.setdefault("origin_action_provenance", dict(origin_provenance))
+            evidence.setdefault("source_action_id", origin_provenance.get("action_id"))
+            evidence.setdefault("source_action_type", origin_provenance.get("action_type"))
+            evidence.setdefault("source_target_bid", origin_provenance.get("target_bid"))
+        selected_option = action_info.get("selected_option")
+        if isinstance(selected_option, Mapping):
+            option_value = selected_option.get("selected_option") if isinstance(selected_option.get("selected_option"), Mapping) else selected_option
+            option_identity = {
+                key: option_value.get(key)
+                for key in ("value", "label", "text", "index")
+                if option_value.get(key) is not None
+            }
+            if option_identity:
+                anomaly["origin_option_identity"] = option_identity
+                evidence.setdefault("origin_option_identity", option_identity)
+                evidence.setdefault("reproduction_option_identity", option_identity)
         reproduction = derive_reproduction_context(anomaly)
         anomaly.update(reproduction.as_dict())
         evidence.setdefault("evidence_target_identity", anomaly.get("evidence_target_identity"))
@@ -626,6 +646,11 @@ def _standardize_anomalies(
         anomaly["entity_id"] = str(anomaly.get("entity_id") or evidence.get("entity_id") or evidence.get("expected_entity_id") or "")
         anomaly["url_path"] = _anomaly_url_path(anomaly, before_observation, after_observation)
         anomaly["signature"] = _build_anomaly_signature(anomaly)
+        if rule_id == "R10":
+            pair_confidence = semantic_pair_confidence(evidence)
+            if pair_confidence is not None:
+                anomaly["pair_confidence"] = pair_confidence
+                anomaly["semantic_pair_confidence"] = pair_confidence
         policy = _anomaly_confirmation_policy(anomaly)
         anomaly["confirmation_policy"] = policy
         anomaly["status"] = "confirmed" if _anomaly_confirmed_by_policy(anomaly, policy) else "candidate"
@@ -798,7 +823,8 @@ def _r10_confirmation_evidence_qualified(anomaly: Mapping[str, Any]) -> bool:
     if str(evidence.get("pair_method") or "") not in {"EXACT_KEY", "FORM_NAME_VALUE", "LABEL_VALUE", "TABLE_HEADER_CELL"}:
         return False
     try:
-        if float(evidence.get("pair_confidence", 0.0) or 0.0) < 0.85:
+        confidence = semantic_pair_confidence(evidence)
+        if confidence is None or confidence < 0.85:
             return False
     except (TypeError, ValueError):
         return False
@@ -3382,7 +3408,8 @@ def _detect_r10_network_ui_semantic_mismatch(
                 "ui_value": pair.get("ui_value"),
                 "relation": "NOT_EQUAL",
                 "pair_method": pair.get("pair_method"),
-                "pair_confidence": pair.get("pair_confidence"),
+                "confidence": semantic_pair_confidence(pair),
+                "pair_confidence": semantic_pair_confidence(pair),
                 "match_basis": pair.get("match_basis"),
                 "api_status": pair.get("status"),
                 "api_request_succeeded": True,
@@ -3431,7 +3458,7 @@ def _r10_high_confidence_not_equal_pair(pair: Mapping[str, Any]) -> bool:
     method = str(pair.get("pair_method") or "").upper()
     if method not in {"EXACT_KEY", "FORM_NAME_VALUE", "LABEL_VALUE", "TABLE_HEADER_CELL"}:
         return False
-    confidence = _safe_float(pair.get("pair_confidence"))
+    confidence = semantic_pair_confidence(pair)
     if confidence is None or confidence < 0.85:
         return False
     if not pair.get("network_key") or not pair.get("ui_key"):

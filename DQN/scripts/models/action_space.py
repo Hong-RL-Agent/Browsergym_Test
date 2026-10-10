@@ -6,17 +6,11 @@ from typing import Any, Dict, Mapping
 
 import numpy as np
 
+from models.action_types import CANONICAL_ACTION_TYPES
+
 
 class ActionSpace:
-    action_types = [
-        "noop",
-        "click_element",
-        "scroll_down",
-        "scroll_up",
-        "inspect_dom",
-        "inspect_layout",
-        "finish_episode",
-    ]
+    action_types = list(CANONICAL_ACTION_TYPES)
 
     def __init__(self, max_candidates: int = 32) -> None:
         self.max_candidates = max_candidates

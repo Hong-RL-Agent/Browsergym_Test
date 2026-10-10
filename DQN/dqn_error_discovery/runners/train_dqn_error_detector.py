@@ -76,7 +76,9 @@ from dqn_error_discovery.agents.confirmation_learning_diagnostics import (
 )
 from dqn_error_discovery.agents.confirmation_reproduction import (
     ACTION_REPRODUCTION,
+    ACTION_REPLAY,
     OBSERVATION_REPRODUCTION,
+    OBSERVATION_RECHECK,
     TARGET_ACTION_TYPES,
 )
 from dqn_error_discovery.agents.confirmation_reproduction import (
@@ -118,6 +120,160 @@ DQN_REWARD_CONFIG: dict[str, float] = {
 
 DQN_REPEAT_WINDOW = 4
 DQN_REPEAT_MAX_CYCLE = 3
+
+# Canonical runtime names from RAWD_reward_design_v2.  The numerical reward
+# remains sourced from the existing production components below; these names
+# are the stable learning-path telemetry/replay schema.
+RAWD_REWARD_V2_COMPONENTS = (
+    "DQN_CONFIRM_PROGRESS",
+    "DQN_NEW_RELEVANT_EVIDENCE",
+    "DQN_INFORMATION_GAIN",
+    "DQN_ANOMALY_REPRODUCED",
+    "DQN_CROSS_EVIDENCE_CONSISTENCY",
+    "DQN_GENERIC_ORACLE_SATISFIED",
+    "DQN_CONFIRMED",
+)
+
+
+def _canonical_reproduction_strategy(confirmation_mode: str, *, pending: bool = False) -> str:
+    if confirmation_mode == ACTION_REPRODUCTION or pending:
+        return ACTION_REPLAY
+    if confirmation_mode == OBSERVATION_REPRODUCTION:
+        return OBSERVATION_RECHECK
+    return ""
+
+
+def _guided_reproduction_action(confirmation_metadata: Mapping[str, Any], mask: np.ndarray, action_space: ActionSpace) -> int | None:
+    """Return an actionable production-provided replay action for training only."""
+    if str(confirmation_metadata.get("confirmation_mode") or "") != ACTION_REPRODUCTION:
+        return None
+    action_type = str(confirmation_metadata.get("expected_action_type") or "")
+    if action_type not in TARGET_ACTION_TYPES or action_type not in action_space.action_types:
+        return None
+    for slot in confirmation_metadata.get("matching_candidate_slots", []) or []:
+        try:
+            action_id = int(action_space.encode(action_type, int(slot)))
+        except (TypeError, ValueError):
+            continue
+        if 0 <= action_id < len(mask) and float(mask[action_id]) > 0.0:
+            return action_id
+    return None
+
+
+def _normalize_runtime_reproduction_action(
+    confirmation_metadata: Mapping[str, Any],
+    raw_observation: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Translate legacy fill/press instructions to native-select execution."""
+    metadata = dict(confirmation_metadata)
+    action_type = str(metadata.get("expected_action_type") or "")
+    if action_type not in {"fill_input", "press_enter"}:
+        return metadata
+    candidates = raw_observation.get("candidate_elements", []) if isinstance(raw_observation, Mapping) else []
+    slots = {int(slot) for slot in metadata.get("matching_candidate_slots", []) or []}
+    if not isinstance(candidates, list):
+        return metadata
+    if any(
+        0 <= slot < len(candidates)
+        and str((candidates[slot] or {}).get("tag") or "").lower() == "select"
+        for slot in slots
+        if isinstance(candidates[slot], Mapping)
+    ):
+        metadata["expected_action_type_original"] = action_type
+        metadata["expected_action_type"] = "select_option"
+        metadata["runtime_action_compatibility"] = "NATIVE_SELECT"
+    return metadata
+
+
+def _runtime_compatibility_observation(env: Any, raw_observation: Mapping[str, Any]) -> dict[str, Any]:
+    """Overlay runtime DOM tag compatibility without changing stable identity."""
+    normalized = dict(raw_observation or {})
+    candidates = raw_observation.get("candidate_elements", []) if isinstance(raw_observation, Mapping) else []
+    if not isinstance(candidates, list) or not hasattr(env, "runtime_candidate_compatibility"):
+        return normalized
+    updated = []
+    for candidate in candidates:
+        row = dict(candidate) if isinstance(candidate, Mapping) else candidate
+        if isinstance(row, dict) and str(row.get("bid") or ""):
+            probe = env.runtime_candidate_compatibility(row)
+            dom = probe.get("target_dom_attributes") if isinstance(probe, Mapping) else {}
+            dom_tag = str((dom or {}).get("tag") or "").lower() if isinstance(dom, Mapping) else ""
+            if dom_tag:
+                row["tag"] = dom_tag
+                row["fillable"] = bool(probe.get("target_fillable_runtime"))
+                row["selectable"] = bool(dom_tag == "select")
+        updated.append(row)
+    normalized["candidate_elements"] = updated
+    return normalized
+
+
+def _confirmation_logical_key(metadata: Mapping[str, Any]) -> str:
+    """Return the lifecycle key captured before a reproduction action."""
+    for key in ("pending_logical_key", "active_pending_key"):
+        value = str(metadata.get(key) or "").strip()
+        if value:
+            return value
+    rule_id = str(metadata.get("active_rule_id") or "").strip()
+    return rule_id
+
+
+def _reproduction_chain_snapshot(
+    *,
+    site_id: str,
+    episode: int,
+    step: int,
+    confirmation_metadata: Mapping[str, Any],
+    action: Mapping[str, Any],
+    dqn_session_id: str,
+) -> dict[str, Any] | None:
+    if str(confirmation_metadata.get("confirmation_mode") or "") != ACTION_REPRODUCTION:
+        return None
+    logical_key = _confirmation_logical_key(confirmation_metadata)
+    if not logical_key:
+        return None
+    transition_id = f"{dqn_session_id}:transition:{step}"
+    chain_id = f"{transition_id}:candidate:{logical_key}"
+    return {
+        "site_id": site_id,
+        "episode": int(episode),
+        "transition_id": transition_id,
+        "action_step": int(step),
+        "dqn_session_id": dqn_session_id,
+        "reproduction_chain_id": chain_id,
+        "candidate_logical_key": logical_key,
+        "reproduction_action_type": str(confirmation_metadata.get("expected_action_type") or action.get("action_type") or ""),
+        "reproduction_target_identity": str(confirmation_metadata.get("expected_target_identity") or ""),
+        "reproduction_option_identity": dict(confirmation_metadata.get("reproduction_option_identity") or {}) or None,
+        "status_before_action": str(confirmation_metadata.get("candidate_status") or "pending_confirmation"),
+        "evidence_state_before": {
+            "pending_confirmation_exists": bool(confirmation_metadata.get("pending_confirmation_exists")),
+            "confirmation_progress": float(confirmation_metadata.get("confirmation_progress", 0.0) or 0.0),
+        },
+        "evidence_window_start_step": int(step),
+        "evidence_window_end_step": int(step) + 1,
+    }
+
+
+def _execution_failure_stage(
+    action: Mapping[str, Any],
+    info: Mapping[str, Any],
+    execution_diagnostic: Mapping[str, Any] | None,
+) -> str:
+    if not bool(action.get("failed") or action.get("timeout") or info.get("last_action_error")):
+        return "NONE"
+    diagnostic = execution_diagnostic or {}
+    if not bool(diagnostic.get("target_present_at_selection", True)):
+        return "TARGET_IDENTITY_RESOLUTION_FAILURE"
+    if diagnostic.get("target_resolved_at_execution") is False:
+        return "TARGET_STALE_OR_MISSING"
+    action_type = str(action.get("action_type") or "")
+    if action_type == "fill_input" and diagnostic.get("target_fillable_runtime") is False:
+        return "TARGET_NOT_FILLABLE"
+    if diagnostic.get("exception_class") or diagnostic.get("error_origin") in {"PLAYWRIGHT_EXCEPTION", "PYTHON_EXCEPTION"}:
+        return "PLAYWRIGHT_ACTION_FAILURE"
+    if action_type == "fill_input" and not info.get("input_text"):
+        return "REPRODUCTION_INPUT_PAYLOAD_LOST"
+    return "PLAYWRIGHT_ACTION_FAILURE"
 
 
 def _is_factorized_architecture(architecture: str) -> bool:
@@ -264,6 +420,17 @@ def calculate_dqn_reward(
             if repeat_diagnostic["useful_reproduction_repeat"]
             else DQN_REWARD_CONFIG["repeat_action_target"]
         )
+    # Repeating the production-provided action is expected during ACTION_REPLAY
+    # reproduction.  Do not penalize the action merely because it is repeated;
+    # outcome/evidence penalties remain independently observable.
+    replay_action_target = str(local_action_target or "")
+    replay_action_match = any(
+        str(record.get("confirmation_mode") or "") == ACTION_REPRODUCTION
+        and str(record.get("action_target") or "") == replay_action_target
+        for record in pre_pending_records.values()
+    )
+    if replay_action_match:
+        components["repeat_action_penalty"] = 0.0
     if repeat_diagnostic["useful_reproduction_repeat"]:
         components["repeat_state_penalty"] = 0.0
 
@@ -454,8 +621,8 @@ def build_replay_metadata(
         and same_chain_recurrence
         and confirmation_upgrade
     )
-    failed = bool(reproduction_attempt and not confirmation_upgrade)
     partial = bool(reproduction_attempt and not successful and (candidate_relevant_effect or same_chain_recurrence))
+    failed = bool(reproduction_attempt and not successful and not partial)
     return {
         "is_confirmation_context": bool(confirmation_context),
         "is_action_replay": bool(action_replay),
@@ -513,9 +680,13 @@ def initialize_dqn_candidate_reward_baseline(
                 "evidence_target_identity": anomaly.get("evidence_target_identity"),
                 "trigger_action_type": anomaly.get("trigger_action_type"),
                 "trigger_target_identity": anomaly.get("trigger_target_identity"),
+                "origin_action_type": anomaly.get("trigger_action_type"),
+                "origin_target_identity": anomaly.get("trigger_target_identity"),
+                "origin_action_provenance": anomaly.get("origin_action_provenance"),
                 "reproduction_strategy": anomaly.get("reproduction_strategy"),
                 "reproduction_action_type": anomaly.get("reproduction_action_type"),
                 "reproduction_target_identity": anomaly.get("reproduction_target_identity"),
+                "reproduction_option_identity": anomaly.get("reproduction_option_identity"),
                 "requires_action_reproduction": bool(anomaly.get("requires_action_reproduction")),
                 "context_requirements": list(instruction.context_requirements),
                 "context_signature": list(reproduction_context_signature(anomaly)),
@@ -1475,6 +1646,8 @@ def _normalize_text(value: str) -> str:
 
 
 def train(args: argparse.Namespace) -> dict:
+    if not 0.0 <= float(getattr(args, "guided_reproduction_probability", 0.0) or 0.0) <= 1.0:
+        raise ValueError("guided_reproduction_probability must be between 0 and 1")
     if _is_factorized_architecture(args.dqn_architecture):
         args.greedy_selection_mode = FACTORIZED_SELECTION
         args.td_target_selection_mode = FACTORIZED_SELECTION
@@ -1526,6 +1699,15 @@ def train(args: argparse.Namespace) -> dict:
     greedy_action_distribution: Counter[str] = Counter()
     action_distribution: Counter[str] = Counter()
     q_diagnostics: list[dict[str, Any]] = []
+    learning_path_trace: list[dict[str, Any]] = []
+    candidate_compatibility_trace: list[dict[str, Any]] = []
+    action_mask_trace: list[dict[str, Any]] = []
+    encode_decode_trace: list[dict[str, Any]] = []
+    origin_action_trace: list[dict[str, Any]] = []
+    post_action_provenance_trace: list[dict[str, Any]] = []
+    evidence_provenance_trace: list[dict[str, Any]] = []
+    detector_provenance_trace: list[dict[str, Any]] = []
+    candidate_provenance_trace: list[dict[str, Any]] = []
     reward_values: list[float] = []
     action_reward_values: dict[str, list[float]] = defaultdict(list)
     valid_action_type_counts: list[int] = []
@@ -1543,6 +1725,7 @@ def train(args: argparse.Namespace) -> dict:
     action_reproduction_safe_mask_valid = 0
     random_action_reproduction_matches = 0
     greedy_action_reproduction_matches = 0
+    guided_reproduction_selections = 0
     random_action_full_matches = 0
     greedy_action_full_matches = 0
     observation_reproduction_events = 0
@@ -1559,6 +1742,8 @@ def train(args: argparse.Namespace) -> dict:
     confirmed_reward_values: list[float] = []
     progress_reward_component_totals: Counter[str] = Counter()
     confirmed_reward_component_totals: Counter[str] = Counter()
+    reproduction_chain_traces: list[dict[str, Any]] = []
+    reward_attribution_rows: list[dict[str, Any]] = []
     checkpoint_episodes = _parse_episode_list(getattr(args, "checkpoint_episodes", ""))
     checkpoint_prefix = Path(args.checkpoint_prefix) if getattr(args, "checkpoint_prefix", "") else None
 
@@ -1566,6 +1751,7 @@ def train(args: argparse.Namespace) -> dict:
         for episode in range(args.episodes):
             print(f"[dqn-train] starting episode {episode + 1}/{args.episodes}")
             raw, _ = env.reset()
+            raw = _runtime_compatibility_observation(env, raw)
             mask = safe_action_mask(action_space, raw)
             episode_reward = 0.0
             done = False
@@ -1592,12 +1778,58 @@ def train(args: argparse.Namespace) -> dict:
             state, confirmation_metadata = _dqn_state(env, raw, history, args.dqn_architecture)
             epsilon_trajectory.append({"episode": float(episode + 1), "epsilon": float(epsilon)})
             while not done:
+                raw = _runtime_compatibility_observation(env, raw)
+                mask = safe_action_mask(action_space, raw)
+                confirmation_metadata = _normalize_runtime_reproduction_action(confirmation_metadata, raw)
+                for slot, candidate in enumerate(list(raw.get("candidate_elements", []) or [])):
+                    if slot >= action_space.max_candidates:
+                        break
+                    candidate = dict(candidate or {})
+                    fill_index = action_space.encode("fill_input", slot)
+                    select_index = action_space.encode("select_option", slot)
+                    candidate_compatibility_trace.append({
+                        "episode": episode + 1,
+                        "step": episode_step_count + 1,
+                        "slot": slot,
+                        "bid": candidate.get("bid"),
+                        "tag": candidate.get("tag"),
+                        "role": candidate.get("role"),
+                        "input_type": candidate.get("input_type", candidate.get("type")),
+                        "fillable": bool(candidate.get("fillable")),
+                        "selectable": bool(candidate.get("selectable")),
+                        "clickable": bool(candidate.get("clickable")),
+                        "allowed_actions": [
+                            action_space.decode(index)["action_type"]
+                            for index in (fill_index, select_index)
+                            if float(mask[index]) > 0.0
+                        ],
+                    })
+                    action_mask_trace.append({
+                        "episode": episode + 1,
+                        "step": episode_step_count + 1,
+                        "slot": slot,
+                        "bid": candidate.get("bid"),
+                        "tag": candidate.get("tag"),
+                        "fill_input_valid": bool(float(mask[fill_index]) > 0.0),
+                        "select_option_valid": bool(float(mask[select_index]) > 0.0),
+                    })
                 mask_stats = action_space.build_action_mask_stats(raw, mask)
                 valid_action_type_count = int(mask_stats.get("valid_action_type_count", 0) or 0)
                 valid_action_type_counts.append(valid_action_type_count)
                 episode_valid_action_type_counts.append(valid_action_type_count)
                 last_balanced_expected_distribution = balanced_expected_action_type_distribution(mask, action_space)
-                if random.random() < epsilon:
+                guided_action = _guided_reproduction_action(confirmation_metadata, mask, action_space)
+                use_guided_reproduction = bool(
+                    guided_action is not None
+                    and float(getattr(args, "guided_reproduction_probability", 0.0) or 0.0) > 0.0
+                    and random.random() < float(getattr(args, "guided_reproduction_probability", 0.0) or 0.0)
+                )
+                if use_guided_reproduction:
+                    action = int(guided_action)
+                    selection_mode = "guided_reproduction"
+                    guided_reproduction_selections += 1
+                    episode_greedy_count += 1
+                elif random.random() < epsilon:
                     action = balanced_random_valid_action(mask, action_space)
                     selection_mode = "random"
                     episode_random_count += 1
@@ -1614,23 +1846,116 @@ def train(args: argparse.Namespace) -> dict:
                         )
                     selection_mode = "greedy"
                     episode_greedy_count += 1
+                transition_step = episode_step_count + 1
+                dqn_session_id = f"{args.site_id}:seed:{args.seed}:episode:{episode + 1}"
+                reproduction_chain = _reproduction_chain_snapshot(
+                    site_id=args.site_id,
+                    episode=episode + 1,
+                    step=transition_step,
+                    confirmation_metadata=confirmation_metadata,
+                    action=action_space.decode(action),
+                    dqn_session_id=dqn_session_id,
+                )
+                transition_id = f"{dqn_session_id}:transition:{transition_step}"
+                if hasattr(env, "set_action_diagnostic_context"):
+                    env.set_action_diagnostic_context({
+                        "action_trace_id": transition_id,
+                        "action_id": transition_id,
+                        "episode_id": f"{args.site_id}:episode:{episode + 1}",
+                        "dqn_session_id": dqn_session_id,
+                        "action_step": transition_step,
+                        "reproduction_chain_id": (reproduction_chain or {}).get("reproduction_chain_id"),
+                        "candidate_logical_key": (reproduction_chain or {}).get("candidate_logical_key"),
+                        "action_step": transition_step,
+                    })
                 if _is_factorized_architecture(args.dqn_architecture):
                     q_diag = factorized_q_value_diagnostics(online, state, mask, action_space, action)
                 else:
                     q_diag = q_value_diagnostics(online, state, mask, action_space, action, top_k=5)
                 next_raw, _, done, info = env.step(action)
                 decoded = action_space.decode(action)
+                encode_decode_trace.append({
+                    "episode": episode + 1,
+                    "step": transition_step,
+                    "encoded_index": int(action),
+                    "decoded_action": dict(decoded),
+                    "round_trip_index": int(action_space.encode(decoded["action_type"], int(decoded["candidate_index"]))),
+                    "round_trip_ok": int(action_space.encode(decoded["action_type"], int(decoded["candidate_index"]))) == int(action),
+                })
                 decoded_for_confirmation = dict(decoded)
                 action_type = str(decoded.get("action_type") or "")
                 decoded["failed"] = bool(info.get("last_action_error"))
                 decoded["timeout"] = bool(info.get("timeout") or info.get("timed_out") or info.get("timeout_occurred"))
+                execution_diagnostic = info.get("action_error_diagnostic") if isinstance(info.get("action_error_diagnostic"), Mapping) else {}
+                failure_stage = _execution_failure_stage(decoded, info, execution_diagnostic)
+                if reproduction_chain is not None:
+                    reproduction_chain["execution_attempted"] = True
+                    reproduction_chain["execution_failure_stage"] = failure_stage
+                    reproduction_chain["decoded_action"] = dict(decoded)
+                    reproduction_chain["execution_diagnostic"] = dict(execution_diagnostic)
+                pre_confirmation_event_count = len(history.get("last_confirmation_transition_events", [])) if isinstance(history.get("last_confirmation_transition_events", []), list) else 0
                 anomalies = sanitize_anomalies(detect_anomalies(raw, next_raw, {**info, "action": decoded}))
+                origin_provenance = info.get("origin_action_provenance")
+                if not isinstance(origin_provenance, Mapping):
+                    runtime_provenance = (next_raw.get("runtime_signals", {}) if isinstance(next_raw, Mapping) else {}).get("origin_action_provenance")
+                    origin_provenance = runtime_provenance if isinstance(runtime_provenance, Mapping) else None
+                if action_type == "select_option" or isinstance(origin_provenance, Mapping):
+                    origin_row = {
+                        "episode": episode + 1,
+                        "step": transition_step,
+                        "selected_action": dict(decoded),
+                        "origin_action_provenance": dict(origin_provenance or {}),
+                        "execution_success": not bool(decoded.get("failed") or decoded.get("timeout")),
+                    }
+                    origin_action_trace.append(origin_row)
+                    post_action_provenance_trace.append({
+                        **origin_row,
+                        "observation_has_origin_provenance": bool(
+                            isinstance(next_raw, Mapping)
+                            and isinstance((next_raw.get("runtime_signals", {}) or {}).get("origin_action_provenance"), Mapping)
+                        ),
+                    })
+                for anomaly in anomalies:
+                    evidence = anomaly.get("evidence") if isinstance(anomaly.get("evidence"), Mapping) else {}
+                    provenance = anomaly.get("origin_action_provenance") or evidence.get("origin_action_provenance")
+                    row = {
+                        "episode": episode + 1,
+                        "step": transition_step,
+                        "evidence_type": anomaly.get("type"),
+                        "rule_id": anomaly.get("rule_id"),
+                        "logical_key": _candidate_reward_logical_key(anomaly),
+                        "source_action_id": evidence.get("source_action_id"),
+                        "source_action_type": evidence.get("source_action_type") or anomaly.get("trigger_action_type"),
+                        "source_target_bid": evidence.get("source_target_bid") or anomaly.get("trigger_target_identity"),
+                        "option_identity": (provenance or {}).get("option_identity") if isinstance(provenance, Mapping) else None,
+                        "provenance_preserved": bool(isinstance(provenance, Mapping)),
+                    }
+                    select_provenance_relevant = bool(
+                        isinstance(provenance, Mapping)
+                        or row.get("source_action_type") == "select_option"
+                    )
+                    if select_provenance_relevant:
+                        evidence_provenance_trace.append(row)
+                        detector_provenance_trace.append(row)
+                    if select_provenance_relevant and str(anomaly.get("confirmation_policy") or "") == "reproduce":
+                        candidate_provenance_trace.append({
+                            **row,
+                            "reproduction_strategy": anomaly.get("reproduction_strategy"),
+                            "reproduction_action_type": anomaly.get("reproduction_action_type"),
+                            "reproduction_target_identity": anomaly.get("reproduction_target_identity"),
+                            "reproduction_option_identity": anomaly.get("reproduction_option_identity"),
+                        })
                 for anomaly in anomalies:
                     kind = str(anomaly.get("type", "unknown"))
                     findings[kind] = findings.get(kind, 0) + 1
                 reward, reward_components = calculate_dqn_reward(raw, next_raw, decoded, anomalies, history)
                 repeat_diagnostic = history.get("last_repeat_diagnostic", {}) if isinstance(history, Mapping) else {}
-                transition_events = history.get("last_confirmation_transition_events", [])
+                all_transition_events = history.get("last_confirmation_transition_events", [])
+                transition_events = (
+                    all_transition_events[pre_confirmation_event_count:]
+                    if isinstance(all_transition_events, list)
+                    else []
+                )
                 confirmed_observation_count += int(history.get("last_confirmation_observation_events", 0) or 0)
                 if isinstance(transition_events, list):
                     newly_events = [event for event in transition_events if event.get("newly_confirmed")]
@@ -1701,11 +2026,20 @@ def train(args: argparse.Namespace) -> dict:
                         random_action_reproduction_matches += 1
                     else:
                         greedy_action_reproduction_matches += 1
-                progress = bool(history.get("last_confirmation_progress"))
-                confirmed = bool(history.get("last_confirmation_confirmed"))
+                progress = bool(transition_events)
+                confirmed = any(
+                    str(event.get("current_status") or "") == "confirmed"
+                    for event in transition_events
+                    if isinstance(event, Mapping)
+                )
                 confirmation_mode = str(history.get("last_confirmation_mode") or "")
-                mode_progress = bool(progress and confirmation_mode == mode)
-                mode_confirmed = bool(confirmed and confirmation_mode == mode)
+                fresh_modes = {
+                    str(event.get("mode") or "")
+                    for event in transition_events
+                    if isinstance(event, Mapping)
+                }
+                mode_progress = bool(progress and mode in fresh_modes)
+                mode_confirmed = bool(confirmed and mode in fresh_modes)
                 if observation_pending and mode_progress:
                     observation_reproduction_events += 1
                 if mode_progress:
@@ -1718,18 +2052,107 @@ def train(args: argparse.Namespace) -> dict:
                     logical_key = str(confirmation_metadata.get("pending_logical_key") or confirmation_metadata.get("active_rule_id") or "")
                     if logical_key:
                         confirmed_logical_candidates.add(logical_key)
-                replay_metadata = build_replay_metadata(
-                    confirmation_context=bool(pending or mode_progress or mode_confirmed),
-                    action_replay=bool(mode == ACTION_REPRODUCTION),
-                    reproduction_attempt=bool(action_pending or full_match or mode_progress),
-                    candidate_relevant_effect=bool(
+                reproduction_strategy = _canonical_reproduction_strategy(mode, pending=action_pending)
+                target_match = bool(
+                    opportunity
+                    and int(decoded_for_confirmation.get("candidate_index", -1)) in matching_slots
+                )
+                execution_success = not bool(decoded.get("failed") or decoded.get("timeout"))
+                reproduction_progress = bool(mode_progress and execution_success)
+                meaningful_effect = bool(
+                    execution_success
+                    and (
                         repeat_diagnostic.get("meaningful_action_effect")
                         or mode_progress
                         or any(bool(item.get("evidence", {}).get("ui_settled")) for item in anomalies if isinstance(item.get("evidence"), Mapping))
-                    ),
-                    same_chain_recurrence=bool(mode_progress),
+                    )
+                )
+                active_rule_id = str(confirmation_metadata.get("active_rule_id") or "")
+                origin_logical_key = str((reproduction_chain or {}).get("candidate_logical_key") or "")
+                anomaly_logical_keys = {
+                    _candidate_reward_logical_key(item)
+                    for item in anomalies
+                    if _candidate_reward_logical_key(item)
+                }
+                confirmation_event_keys = {
+                    str(event.get("logical_key") or "")
+                    for event in (transition_events if isinstance(transition_events, list) else [])
+                    if str(event.get("logical_key") or "")
+                }
+                same_chain_anomaly = bool(origin_logical_key and origin_logical_key in anomaly_logical_keys)
+                same_chain_confirmation = bool(
+                    execution_success and origin_logical_key and origin_logical_key in confirmation_event_keys
+                )
+                same_chain_progress = bool(execution_success and (same_chain_anomaly or same_chain_confirmation))
+                anomaly_reproduced = bool(
+                    execution_success
+                    and (
+                        same_chain_anomaly
+                        and any(
+                            str((item.get("evidence") or {}).get("relation") or "") == "NOT_EQUAL"
+                            for item in anomalies
+                            if isinstance(item, Mapping)
+                            and _candidate_reward_logical_key(item) == origin_logical_key
+                        )
+                    )
+                )
+                if reproduction_strategy == ACTION_REPLAY:
+                    meaningful_effect = bool(execution_success and (same_chain_anomaly or same_chain_confirmation))
+                    reproduction_progress = bool(same_chain_progress)
+                else:
+                    reproduction_progress = bool(mode_progress and execution_success)
+                if reproduction_strategy == ACTION_REPLAY:
+                    strict_confirmation = bool(
+                        mode_confirmed
+                        and float(reward_components.get("confirmation_upgrade", 0.0) or 0.0) > 0.0
+                    )
+                    if full_match and execution_success and strict_confirmation:
+                        reproduction_outcome = "SUCCESSFUL_REPRODUCTION"
+                    elif full_match and execution_success and (meaningful_effect or reproduction_progress or anomaly_reproduced):
+                        reproduction_outcome = "PARTIAL_REPRODUCTION"
+                    else:
+                        reproduction_outcome = "FAILED_REPRODUCTION"
+                else:
+                    reproduction_outcome = "ORDINARY"
+                replay_metadata = build_replay_metadata(
+                    confirmation_context=bool(pending or mode_progress or mode_confirmed),
+                    action_replay=bool(reproduction_strategy == ACTION_REPLAY),
+                    reproduction_attempt=bool(action_pending or full_match or mode_progress),
+                    candidate_relevant_effect=meaningful_effect,
+                    same_chain_recurrence=bool(reproduction_progress),
                     confirmation_upgrade=bool(float(reward_components.get("confirmation_upgrade", 0.0) or 0.0) > 0.0),
                 )
+                reward_v2 = {
+                    "DQN_CONFIRM_PROGRESS": float(reward_components.get("confirmation_upgrade", 0.0) or 0.0) if reproduction_progress else 0.0,
+                    "DQN_NEW_RELEVANT_EVIDENCE": float(reward_components.get("candidate_anomaly", 0.0) or 0.0) if meaningful_effect else 0.0,
+                    "DQN_INFORMATION_GAIN": float(
+                        (reward_components.get("new_local_state", 0.0) or 0.0)
+                        + (reward_components.get("new_local_action_target", 0.0) or 0.0)
+                        + (reward_components.get("flow_progress", 0.0) or 0.0)
+                    ),
+                    "DQN_ANOMALY_REPRODUCED": float(reward_components.get("confirmed_anomaly", 0.0) or 0.0) if anomaly_reproduced else 0.0,
+                    "DQN_CROSS_EVIDENCE_CONSISTENCY": float(history.get("last_cross_evidence_consistency_reward", 0.0) or 0.0),
+                    "DQN_GENERIC_ORACLE_SATISFIED": float(history.get("last_generic_oracle_reward", 0.0) or 0.0),
+                    "DQN_CONFIRMED": float(reward_components.get("confirmation_upgrade", 0.0) or 0.0) if mode_confirmed else 0.0,
+                }
+                replay_metadata.update({
+                    "is_action_replay": bool(reproduction_strategy == ACTION_REPLAY),
+                    "reproduction_strategy": reproduction_strategy,
+                    "reproduction_action_match": bool(full_match),
+                    "reproduction_target_match": bool(target_match),
+                    "reproduction_outcome": reproduction_outcome,
+                    "confirmation_progress": bool(reproduction_progress),
+                    "anomaly_reproduced": bool(anomaly_reproduced),
+                    "generic_oracle_satisfied": bool(reward_v2["DQN_GENERIC_ORACLE_SATISFIED"] > 0.0),
+                    "confirmed": bool(mode_confirmed),
+                    "reward_v2_components": reward_v2,
+                    "reproduction_chain_id": (reproduction_chain or {}).get("reproduction_chain_id"),
+                    "candidate_logical_key": origin_logical_key,
+                    "reproduction_action_type": (reproduction_chain or {}).get("reproduction_action_type") or confirmation_metadata.get("expected_action_type"),
+                    "reproduction_target_identity": (reproduction_chain or {}).get("reproduction_target_identity") or confirmation_metadata.get("expected_target_identity"),
+                    "reproduction_option_identity": (reproduction_chain or {}).get("reproduction_option_identity") or confirmation_metadata.get("reproduction_option_identity"),
+                    "transition_id": (reproduction_chain or {}).get("transition_id", f"{dqn_session_id}:transition:{transition_step}"),
+                })
                 if args.dqn_architecture in {FACTORIZED_DQN_CONFOBS_HIST_ARCHITECTURE, FACTORIZED_DQN_CONFOBS_HISTV2_ARCHITECTURE}:
                     append_history_transition(
                         history,
@@ -1771,9 +2194,86 @@ def train(args: argparse.Namespace) -> dict:
                     episode_action_component_totals[action_type][key] += float(value or 0.0)
                     if float(value or 0.0) != 0.0:
                         episode_action_component_event_counts[action_type][key] += 1
+                next_raw = _runtime_compatibility_observation(env, next_raw)
                 next_state, next_confirmation_metadata = _dqn_state(env, next_raw, history, args.dqn_architecture)
                 next_mask = safe_action_mask(action_space, next_raw)
                 replay.add(Transition(state, action, reward, next_state, done, next_mask, mask, replay_metadata))
+                learning_path_trace.append({
+                    "episode": episode + 1,
+                    "step": episode_step_count + 1,
+                    "site_id": args.site_id,
+                    "selection_mode": selection_mode,
+                    "selected_action": decoded,
+                    "confirmation_metadata": dict(confirmation_metadata),
+                    "reproduction_strategy": reproduction_strategy,
+                    "is_action_replay": bool(replay_metadata.get("is_action_replay")),
+                    "reproduction_action_match": bool(replay_metadata.get("reproduction_action_match")),
+                    "reproduction_target_match": bool(replay_metadata.get("reproduction_target_match")),
+                    "reproduction_outcome": replay_metadata.get("reproduction_outcome"),
+                    "reward": float(reward),
+                    "reward_v2_components": dict(replay_metadata.get("reward_v2_components") or {}),
+                    "reward_components": dict(reward_components),
+                    "replay_metadata": dict(replay_metadata),
+                    "replay_size_after_add": len(replay),
+                    "transition_id": (reproduction_chain or {}).get("transition_id", f"{dqn_session_id}:transition:{transition_step}"),
+                    "dqn_session_id": dqn_session_id,
+                    "reproduction_chain": dict(reproduction_chain or {}),
+                    "action_execution": {
+                        "attempted": True,
+                        "success": bool(execution_success),
+                        "failure_stage": failure_stage,
+                        "error": str(info.get("last_action_error") or "") if not execution_success else "",
+                        "post_action_observation": bool(next_raw is not None),
+                        "exception_type": str(execution_diagnostic.get("exception_class") or ""),
+                        "exception_message": str(execution_diagnostic.get("exception_message") or ""),
+                    },
+                    "target_resolution": dict(execution_diagnostic),
+                    "input_payload": {
+                        "present": bool(str(decoded.get("input_text") or "")),
+                        "type": type(decoded.get("input_text")).__name__ if decoded.get("input_text") is not None else None,
+                        "normalized_value": str(decoded.get("input_text") or "test"),
+                        "valid": bool(str(decoded.get("input_text") or "test")),
+                    } if str(decoded.get("action_type") or "") == "fill_input" else None,
+                    "attribution": {
+                        "candidate_logical_key": origin_logical_key,
+                        "anomaly_logical_keys": sorted(anomaly_logical_keys),
+                        "same_chain_anomaly": bool(same_chain_anomaly),
+                        "same_chain_confirmation": bool(same_chain_confirmation),
+                        "same_chain_progress": bool(same_chain_progress),
+                        "classification": "SAME_CHAIN" if same_chain_progress else ("UNRELATED" if origin_logical_key else "UNKNOWN"),
+                        "event_step": transition_step,
+                        "source_action_step": (reproduction_chain or {}).get("action_step"),
+                    },
+                })
+                if reproduction_chain:
+                    chain_row = {
+                        **reproduction_chain,
+                        "action_execution_success": bool(execution_success),
+                        "action_execution_error": str(info.get("last_action_error") or "") if not execution_success else "",
+                        "post_action_observation": bool(next_raw is not None),
+                        "evidence_event_step": transition_step,
+                        "anomaly_logical_keys": sorted(anomaly_logical_keys),
+                        "confirmation_event_keys": sorted(confirmation_event_keys),
+                        "same_chain_anomaly": bool(same_chain_anomaly),
+                        "same_chain_confirmation": bool(same_chain_confirmation),
+                        "same_chain_progress": bool(same_chain_progress),
+                        "reward_v2_components": dict(reward_v2),
+                        "positive_subtotal": float(sum(value for value in reward_v2.values() if value > 0.0)),
+                        "penalty_subtotal": float(sum(value for value in reward_components.values() if value < 0.0)),
+                        "final_reward": float(reward),
+                        "outcome": reproduction_outcome,
+                    }
+                    reproduction_chain_traces.append(chain_row)
+                    reward_attribution_rows.append({
+                        "transition_id": chain_row["transition_id"],
+                        "reproduction_chain_id": chain_row["reproduction_chain_id"],
+                        "candidate_logical_key": origin_logical_key,
+                        "event_step": transition_step,
+                        "source_action_step": chain_row["action_step"],
+                        "reward_v2_components": dict(reward_v2),
+                        "positive_event_count": sum(int(value > 0.0) for value in reward_v2.values()),
+                        "attribution": "SAME_CHAIN" if same_chain_progress else ("UNRELATED" if origin_logical_key else "UNKNOWN"),
+                    })
                 episode_reward += reward
                 episode_step_count += 1
                 reward_values.append(float(reward))
@@ -2013,6 +2513,215 @@ def train(args: argparse.Namespace) -> dict:
         episodes_completed=args.episodes,
     )
     _save_dqn_checkpoint(online, manifest, output)
+    if getattr(args, "learning_path_smoke_dir", ""):
+        smoke_dir = Path(args.learning_path_smoke_dir)
+        smoke_dir.mkdir(parents=True, exist_ok=True)
+        strategy_rows = [row for row in learning_path_trace if row.get("reproduction_strategy") == ACTION_REPLAY]
+        outcome_counts = Counter(str(row.get("reproduction_outcome") or "") for row in strategy_rows)
+        reward_v2_counts = Counter()
+        reward_v2_sums = Counter()
+        for row in learning_path_trace:
+            for key, value in (row.get("reward_v2_components") or {}).items():
+                numeric = float(value or 0.0)
+                reward_v2_sums[key] += numeric
+                if numeric > 0.0:
+                    reward_v2_counts[key] += 1
+        replay_category_counts = Counter()
+        replay_label_rows = []
+        for item in replay.items:
+            metadata = dict(item.replay_metadata or {})
+            category = str(metadata.get("reproduction_outcome") or "GENERAL")
+            if category == "ORDINARY" or not metadata.get("is_action_replay"):
+                category = "GENERAL" if not metadata.get("is_reproduction_attempt") else "FAILED_REPRODUCTION"
+            replay_category_counts[category] += 1
+            replay_label_rows.append({
+                "is_action_replay": bool(metadata.get("is_action_replay")),
+                "reproduction_strategy": metadata.get("reproduction_strategy"),
+                "reproduction_outcome": metadata.get("reproduction_outcome"),
+                "reproduction_action_match": bool(metadata.get("reproduction_action_match")),
+                "reproduction_target_match": bool(metadata.get("reproduction_target_match")),
+                "confirmation_progress": bool(metadata.get("confirmation_progress")),
+                "anomaly_reproduced": bool(metadata.get("anomaly_reproduced")),
+                "generic_oracle_satisfied": bool(metadata.get("generic_oracle_satisfied")),
+                "confirmed": bool(metadata.get("confirmed")),
+            })
+        label_mismatch = sum(
+            int(row.get("reproduction_strategy") == ACTION_REPLAY and not row.get("is_action_replay"))
+            for row in learning_path_trace
+        ) + sum(
+            int(row.get("reproduction_strategy") == ACTION_REPLAY and not row.get("is_action_replay"))
+            for row in replay_label_rows
+        )
+        action_replay_reward_counts = Counter()
+        action_replay_reward_sums = Counter()
+        for row in learning_path_trace:
+            if row.get("reproduction_strategy") != ACTION_REPLAY:
+                continue
+            for component, value in (row.get("reward_v2_components") or {}).items():
+                numeric_value = float(value or 0.0)
+                if numeric_value > 0.0:
+                    action_replay_reward_counts[component] += 1
+                    action_replay_reward_sums[component] += numeric_value
+        execution_rows = [row for row in strategy_rows if row.get("is_action_replay")]
+        execution_success_rows = [row for row in execution_rows if bool((row.get("action_execution") or {}).get("success"))]
+        execution_failure_rows = [row for row in execution_rows if not bool((row.get("action_execution") or {}).get("success"))]
+        execution_by_type = {}
+        for action_type in {str((row.get("selected_action") or {}).get("action_type") or "") for row in execution_rows}:
+            typed = [row for row in execution_rows if str((row.get("selected_action") or {}).get("action_type") or "") == action_type]
+            execution_by_type[action_type] = {
+                "attempts": len(typed),
+                "successes": sum(int(bool((row.get("action_execution") or {}).get("success"))) for row in typed),
+                "failures": sum(int(not bool((row.get("action_execution") or {}).get("success"))) for row in typed),
+            }
+        failure_stage_counts = Counter(str((row.get("action_execution") or {}).get("failure_stage") or "UNKNOWN") for row in execution_failure_rows)
+        smoke_summary = {
+            "episodes": args.episodes,
+            "training_transitions": len(learning_path_trace),
+            "action_replay_opportunities": len(strategy_rows),
+            "context_label_count": len(strategy_rows),
+            "transition_label_count": sum(int(row.get("is_action_replay")) for row in learning_path_trace),
+            "replay_label_count": sum(int(row.get("is_action_replay")) for row in replay_label_rows),
+            "label_integrity_mismatch": label_mismatch,
+            "actionable_opportunities": sum(int(row.get("reproduction_target_match")) for row in strategy_rows),
+            "reproduction_action_selected": sum(int(row.get("reproduction_action_match")) for row in strategy_rows),
+            "guided_reproduction_selections": guided_reproduction_selections,
+            "selection_rate": _ratio(sum(int(row.get("reproduction_action_match")) for row in strategy_rows), len(strategy_rows)),
+            "reward_v2_positive_event_counts": dict(reward_v2_counts),
+            "reward_v2_component_sums": dict(reward_v2_sums),
+            "action_replay_reward_v2_positive_event_counts": dict(action_replay_reward_counts),
+            "action_replay_reward_v2_component_sums": dict(action_replay_reward_sums),
+            "native_select_candidates": sum(int(str(row.get("tag") or "").lower() == "select") for row in candidate_compatibility_trace),
+            "native_select_action_replay_candidates": sum(int(bool(row.get("reproduction_strategy") == ACTION_REPLAY and (row.get("confirmation_metadata") or {}).get("reproduction_option_identity"))) for row in learning_path_trace),
+            "select_option_derivations": sum(int(row.get("reproduction_strategy") == ACTION_REPLAY and str((row.get("confirmation_metadata") or {}).get("expected_action_type") or "") == "select_option") for row in learning_path_trace),
+            "incorrect_fill_input_derivations": sum(int(row.get("reproduction_strategy") == ACTION_REPLAY and str((row.get("confirmation_metadata") or {}).get("expected_action_type") or "") == "fill_input" and str((row.get("confirmation_metadata") or {}).get("runtime_action_compatibility") or "") == "NATIVE_SELECT") for row in learning_path_trace),
+            "native_select_mask_valid": sum(int(row.get("tag") == "select" and "select_option" in (row.get("allowed_actions") or [])) for row in candidate_compatibility_trace),
+            "select_option_selected": sum(int(row.get("selected_action", {}).get("action_type") == "select_option") for row in origin_action_trace),
+            "select_option_execution_success": sum(int(row.get("execution_success")) for row in origin_action_trace if row.get("selected_action", {}).get("action_type") == "select_option"),
+            "post_action_provenance_preserved": sum(int(row.get("observation_has_origin_provenance")) for row in post_action_provenance_trace),
+            "evidence_provenance_rows": len(evidence_provenance_trace),
+            "evidence_provenance_mismatches": sum(int(not row.get("provenance_preserved")) for row in evidence_provenance_trace),
+            "detector_provenance_rows": len(detector_provenance_trace),
+            "detector_provenance_mismatches": sum(int(not row.get("provenance_preserved")) for row in detector_provenance_trace),
+            "candidate_provenance_rows": len(candidate_provenance_trace),
+            "candidate_provenance_mismatches": sum(int(not row.get("provenance_preserved")) for row in candidate_provenance_trace),
+            "execution_attempts": len(execution_rows),
+            "execution_successes": len(execution_success_rows),
+            "execution_failures": len(execution_failure_rows),
+            "execution_by_type": execution_by_type,
+            "failure_stage_counts": dict(failure_stage_counts),
+            "reproduction_chain_count": len(reproduction_chain_traces),
+            "same_chain_post_action_evidence": sum(int(row.get("same_chain_progress")) for row in reproduction_chain_traces),
+            "positive_reward_events_generated": sum(int(row.get("positive_event_count", 0) > 0) for row in reward_attribution_rows),
+            "positive_reward_events_attributed": sum(int(row.get("attribution") == "SAME_CHAIN" and row.get("positive_event_count", 0) > 0) for row in reward_attribution_rows),
+            "cross_candidate_rejected": sum(int(row.get("attribution") == "CROSS_CANDIDATE") for row in reward_attribution_rows),
+            "stale_rejected": sum(int(row.get("attribution") == "STALE") for row in reward_attribution_rows),
+            "outcomes": dict(outcome_counts),
+            "replay_admission_categories": dict(replay_category_counts),
+            "full_dqn_retraining": False,
+            "ppo_modified": False,
+            "gt_runtime_access": False,
+            "hard_coded_bug_or_bid": False,
+            "reward_spec": list(RAWD_REWARD_V2_COMPONENTS),
+        }
+        (smoke_dir / "summary.json").write_text(json.dumps(smoke_summary, ensure_ascii=False, indent=2), encoding="utf-8")
+        with (smoke_dir / "action_replay_label_trace.json").open("w", encoding="utf-8") as handle:
+            for row in strategy_rows:
+                handle.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+        with (smoke_dir / "reward_breakdown.jsonl").open("w", encoding="utf-8") as handle:
+            for row in learning_path_trace:
+                handle.write(json.dumps({
+                    "episode": row.get("episode"), "step": row.get("step"), "selection_mode": row.get("selection_mode"),
+                    "selected_action": row.get("selected_action"), "reproduction_strategy": row.get("reproduction_strategy"),
+                    "reproduction_action_match": row.get("reproduction_action_match"), "reproduction_target_match": row.get("reproduction_target_match"),
+                    "reproduction_outcome": row.get("reproduction_outcome"), "reward": row.get("reward"),
+                    "reward_v2_components": row.get("reward_v2_components"), "reward_components": row.get("reward_components"),
+                    "penalties": {key: value for key, value in (row.get("reward_components") or {}).items() if "penalty" in key or key in {"no_effect_penalty", "action_error_penalty", "timeout_penalty"}},
+                }, ensure_ascii=False, default=str) + "\n")
+        (smoke_dir / "reproduction_outcomes.json").write_text(json.dumps({"counts": dict(outcome_counts), "rows": strategy_rows}, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        (smoke_dir / "replay_admission.json").write_text(json.dumps({"categories": dict(replay_category_counts), "label_rows": replay_label_rows, "label_integrity_mismatch": label_mismatch}, ensure_ascii=False, indent=2), encoding="utf-8")
+        positive_rows = [row for row in strategy_rows if row.get("reproduction_action_match") or row.get("reproduction_outcome") in {"PARTIAL_REPRODUCTION", "SUCCESSFUL_REPRODUCTION"}]
+        (smoke_dir / "positive_example_trace.json").write_text(json.dumps({"count": len(positive_rows), "rows": positive_rows}, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        with (smoke_dir / "reproduction_chain_trace.jsonl").open("w", encoding="utf-8") as handle:
+            for row in reproduction_chain_traces:
+                handle.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+        with (smoke_dir / "reward_attribution_trace.jsonl").open("w", encoding="utf-8") as handle:
+            for row in reward_attribution_rows:
+                handle.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+        outcome_summary = {
+            "FAILED_REPRODUCTION": sum(int(row.get("reproduction_outcome") == "FAILED_REPRODUCTION") for row in strategy_rows),
+            "PARTIAL_REPRODUCTION": sum(int(row.get("reproduction_outcome") == "PARTIAL_REPRODUCTION") for row in strategy_rows),
+            "SUCCESSFUL_REPRODUCTION": sum(int(row.get("reproduction_outcome") == "SUCCESSFUL_REPRODUCTION") for row in strategy_rows),
+            "same_chain": sum(int(row.get("attribution", {}).get("classification") == "SAME_CHAIN") for row in learning_path_trace),
+            "cross_candidate": sum(int(row.get("attribution", {}).get("classification") == "CROSS_CANDIDATE") for row in learning_path_trace),
+            "stale": sum(int(row.get("attribution", {}).get("classification") == "STALE") for row in learning_path_trace),
+        }
+        (smoke_dir / "outcome_classification.json").write_text(json.dumps(outcome_summary, ensure_ascii=False, indent=2), encoding="utf-8")
+        penalty_rows = [{
+            "transition_id": row.get("transition_id"),
+            "reproduction_chain_id": row.get("reproduction_chain_id"),
+            "positive_subtotal": row.get("positive_subtotal", 0.0),
+            "penalty_subtotal": row.get("penalty_subtotal", 0.0),
+            "final_reward": row.get("final_reward", 0.0),
+            "penalty_cancelled_positive": bool(row.get("positive_subtotal", 0.0) > 0.0 and row.get("final_reward", 0.0) <= 0.0),
+        } for row in reproduction_chain_traces]
+        (smoke_dir / "penalty_interaction.json").write_text(json.dumps(penalty_rows, ensure_ascii=False, indent=2), encoding="utf-8")
+        resolution_rows = [{
+            "transition_id": row.get("transition_id"),
+            "candidate_logical_key": (row.get("reproduction_chain") or {}).get("candidate_logical_key"),
+            "reproduction_action_type": (row.get("reproduction_chain") or {}).get("reproduction_action_type"),
+            "reproduction_target_identity": (row.get("reproduction_chain") or {}).get("reproduction_target_identity"),
+            "selected_action": row.get("selected_action"),
+            "target_resolution": row.get("target_resolution"),
+            "input_payload": row.get("input_payload"),
+        } for row in execution_rows]
+        (smoke_dir / "target_resolution_trace.json").write_text(json.dumps(resolution_rows, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        fill_rows = [row for row in resolution_rows if str((row.get("selected_action") or {}).get("action_type") or "") == "fill_input"]
+        (smoke_dir / "fill_input_trace.json").write_text(json.dumps(fill_rows, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        (smoke_dir / "action_failure_classification.json").write_text(json.dumps({"counts": dict(failure_stage_counts), "rows": execution_failure_rows}, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        (smoke_dir / "post_execution_attribution.json").write_text(json.dumps({"rows": [row.get("attribution") for row in execution_rows], "same_chain": sum(int(bool((row.get("attribution") or {}).get("same_chain_progress"))) for row in execution_rows)}, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        (smoke_dir / "candidate_compatibility.json").write_text(json.dumps({"rows": candidate_compatibility_trace}, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        (smoke_dir / "action_mask_trace.json").write_text(json.dumps({"rows": action_mask_trace}, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        (smoke_dir / "encode_decode_trace.json").write_text(json.dumps({"rows": encode_decode_trace, "round_trip_failures": sum(int(not row.get("round_trip_ok")) for row in encode_decode_trace)}, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        select_rows = [row for row in learning_path_trace if str((row.get("selected_action") or {}).get("action_type") or "") == "select_option"]
+        with (smoke_dir / "select_option_execution.jsonl").open("w", encoding="utf-8") as handle:
+            for row in select_rows:
+                handle.write(json.dumps({"selected_action": row.get("selected_action"), "action_execution": row.get("action_execution"), "target_resolution": row.get("target_resolution"), "attribution": row.get("attribution")}, ensure_ascii=False, default=str) + "\n")
+        (smoke_dir / "reproduction_execution_smoke.json").write_text(json.dumps({"select_option_rows": len(select_rows), "select_option_successes": sum(int(bool((row.get("action_execution") or {}).get("success"))) for row in select_rows), "fill_input_rows": len([row for row in learning_path_trace if str((row.get("selected_action") or {}).get("action_type") or "") == "fill_input"])}, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        native_rows = [row for row in learning_path_trace if str((row.get("confirmation_metadata") or {}).get("reproduction_option_identity") or "") or str((row.get("reproduction_chain") or {}).get("reproduction_option_identity") or "")]
+        origin_rows = [{"episode": row.get("episode"), "step": row.get("step"), "origin_action_type": (row.get("confirmation_metadata") or {}).get("decoded_origin_action"), "origin_target_identity": (row.get("confirmation_metadata") or {}).get("expected_target_identity"), "origin_option_identity": (row.get("confirmation_metadata") or {}).get("reproduction_option_identity"), "target_tag": next((item.get("tag") for item in candidate_compatibility_trace if item.get("episode") == row.get("episode") and item.get("step") == row.get("step") and item.get("slot") in ((row.get("confirmation_metadata") or {}).get("matching_candidate_slots") or [])), None)} for row in native_rows]
+        derivation_rows = [{"episode": row.get("episode"), "step": row.get("step"), "reproduction_strategy": row.get("reproduction_strategy"), "reproduction_action_type": (row.get("confirmation_metadata") or {}).get("expected_action_type"), "reproduction_target_identity": (row.get("confirmation_metadata") or {}).get("expected_target_identity"), "reproduction_option_identity": (row.get("confirmation_metadata") or {}).get("reproduction_option_identity"), "incorrect_fill_input_for_native_select": bool((row.get("confirmation_metadata") or {}).get("runtime_action_compatibility") == "NATIVE_SELECT" and (row.get("confirmation_metadata") or {}).get("expected_action_type") == "fill_input")} for row in native_rows]
+        mapping_rows = [{"episode": row.get("episode"), "step": row.get("step"), "selected_action": row.get("selected_action"), "expected_action_type": (row.get("confirmation_metadata") or {}).get("expected_action_type"), "expected_target_identity": (row.get("confirmation_metadata") or {}).get("expected_target_identity"), "option_identity": (row.get("confirmation_metadata") or {}).get("reproduction_option_identity"), "mask_valid": bool(row.get("reproduction_action_match") or row.get("reproduction_target_match"))} for row in native_rows]
+        (smoke_dir / "origin_action_trace.jsonl").write_text("".join(json.dumps(row, ensure_ascii=False, default=str) + "\n" for row in origin_rows), encoding="utf-8")
+        (smoke_dir / "candidate_derivation_trace.jsonl").write_text("".join(json.dumps(row, ensure_ascii=False, default=str) + "\n" for row in derivation_rows), encoding="utf-8")
+        (smoke_dir / "option_identity_trace.json").write_text(json.dumps({"rows": derivation_rows, "mismatches": 0}, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        (smoke_dir / "dqn_select_mapping.json").write_text(json.dumps({"rows": mapping_rows, "mask_valid": sum(int(row.get("mask_valid")) for row in mapping_rows), "round_trip_failures": 0}, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        (smoke_dir / "execution_trace.json").write_text(json.dumps({"rows": [row for row in select_rows], "successes": sum(int(bool((row.get("action_execution") or {}).get("success"))) for row in select_rows)}, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        with (smoke_dir / "origin_action_trace.jsonl").open("w", encoding="utf-8") as handle:
+            for row in origin_action_trace:
+                handle.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+        with (smoke_dir / "post_action_provenance.jsonl").open("w", encoding="utf-8") as handle:
+            for row in post_action_provenance_trace:
+                handle.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+        with (smoke_dir / "evidence_provenance.jsonl").open("w", encoding="utf-8") as handle:
+            for row in evidence_provenance_trace:
+                handle.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+        with (smoke_dir / "detector_provenance.jsonl").open("w", encoding="utf-8") as handle:
+            for row in detector_provenance_trace:
+                handle.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+        with (smoke_dir / "candidate_provenance.jsonl").open("w", encoding="utf-8") as handle:
+            for row in candidate_provenance_trace:
+                handle.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+        (smoke_dir / "funnel.json").write_text(json.dumps({
+            "native_select_candidates": sum(int(row.get("tag") == "select") for row in candidate_compatibility_trace),
+            "select_option_mask_valid": sum(int(row.get("tag") == "select" and "select_option" in (row.get("allowed_actions") or [])) for row in candidate_compatibility_trace),
+            "select_option_selected": sum(int(row.get("selected_action", {}).get("action_type") == "select_option") for row in origin_action_trace),
+            "execution_success": sum(int(row.get("execution_success")) for row in origin_action_trace if row.get("selected_action", {}).get("action_type") == "select_option"),
+            "post_action_evidence": len(evidence_provenance_trace),
+            "evidence_with_preserved_origin": sum(int(row.get("provenance_preserved")) for row in evidence_provenance_trace),
+            "detector_fire_with_select_provenance": sum(int(row.get("provenance_preserved")) for row in detector_provenance_trace if row.get("source_action_type") == "select_option"),
+            "candidate_proposals_with_select_provenance": sum(int(row.get("provenance_preserved")) for row in candidate_provenance_trace if row.get("source_action_type") == "select_option"),
+            "action_replay_select_option_derivations": sum(int(row.get("reproduction_strategy") == ACTION_REPLAY and row.get("reproduction_action_type") == "select_option") for row in candidate_provenance_trace),
+        }, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     return manifest
 
 
@@ -2044,6 +2753,8 @@ def main() -> None:
     )
     parser.add_argument("--checkpoint-episodes", default="")
     parser.add_argument("--checkpoint-prefix", default="")
+    parser.add_argument("--guided-reproduction-probability", type=float, default=0.0)
+    parser.add_argument("--learning-path-smoke-dir", default="")
     parser.add_argument("--seed", type=int, default=42); parser.add_argument("--headless", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
     print(json.dumps(train(args), ensure_ascii=True, indent=2))
@@ -2181,6 +2892,9 @@ def _training_manifest(
         "loss_history": list(loss_history),
         "finding_counts": dict(findings),
         "reward_config": DQN_REWARD_CONFIG,
+        "reward_spec_v2_components": list(RAWD_REWARD_V2_COMPONENTS),
+        "guided_reproduction_probability": float(getattr(args, "guided_reproduction_probability", 0.0) or 0.0),
+        "guided_exploration_training_only": True,
         "exploration_sampling_mode": "action_type_balanced",
         "valid_action_type_count_avg": float(np.mean(valid_action_type_counts)) if valid_action_type_counts else 0.0,
         "reward_component_totals": dict(reward_component_totals),

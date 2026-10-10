@@ -43,6 +43,12 @@ class BrowserGymActionAdapter:
         }:
             return BrowserGymAction(action=None, executable=False, action_type=action_type)
 
+        if action_type == "select_option":
+            candidate = self._candidate_at(raw_observation, candidate_index)
+            if not candidate:
+                return BrowserGymAction(action=None, executable=False, action_type=action_type)
+            return BrowserGymAction(action=None, executable=False, action_type=action_type)
+
         if action_type == "click_element":
             candidate = self._candidate_at(raw_observation, candidate_index)
             if not candidate:
@@ -91,7 +97,7 @@ class BrowserGymActionAdapter:
             return f"click('{bid}')"
         if action_type == "fill_input":
             bid = _escape_action_string(str(candidate.get("bid", "")))
-            value = _escape_action_string(str((decoded_action or {}).get("input_text") or "test"))
+            value = _escape_action_string(input_value_for_candidate(candidate, decoded_action))
             if not bid:
                 return self.noop_action
             return f"fill('{bid}', '{value}')"
@@ -115,3 +121,21 @@ class BrowserGymActionAdapter:
 
 def _escape_action_string(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
+def input_value_for_candidate(
+    candidate: Mapping[str, Any],
+    decoded_action: Optional[Mapping[str, Any]] = None,
+) -> str:
+    explicit = str((decoded_action or {}).get("input_text") or "")
+    if explicit:
+        return explicit
+    input_type = str(candidate.get("input_type") or candidate.get("type") or "").lower()
+    current = str(candidate.get("value") or "")
+    if input_type in {"number", "range"}:
+        return current or str(candidate.get("min") or "0")
+    if input_type in {"email"}:
+        return current or "user@example.com"
+    if input_type in {"date", "datetime-local", "month", "time", "week"}:
+        return current or str(candidate.get("min") or "2000-01-01")
+    return current or "test"

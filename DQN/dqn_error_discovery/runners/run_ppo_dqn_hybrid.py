@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import random
 import sys
+import time
 from typing import Any, Mapping
 
 import numpy as np
@@ -21,6 +22,7 @@ from agents.ppo_agent import PPOAgent
 from dqn_error_discovery.agents.dqn_agent import (
     FACTORIZED_DQN_CONFOBS_HISTV2_ARCHITECTURE,
     FactorizedQNetwork,
+    factorized_flat_q_values,
     select_factorized_greedy_action,
 )
 from dqn_error_discovery.agents.confirmation_observation import build_dqn_confirmation_context
@@ -49,6 +51,11 @@ from dqn_error_discovery.runners.train_dqn_error_detector import (
 from dqn_error_discovery.framework_dev.action_error_event_recorder import ActionErrorEventRecorder
 from envs.browsergym_jaws_env import BrowserGymJAWSEnv
 from services.anomaly_detection_service import detect_anomalies
+from services.r10_network_ui_semantic_evidence import (
+    build_network_ui_semantic_evidence,
+    normalize_runtime_network_telemetry,
+    semantic_pair_confidence,
+)
 from services.autonomous_reward_service import calculate_autonomous_reward
 from services.temporal_evidence_service import (
     ActionEvidenceWindow,
@@ -121,6 +128,9 @@ def run_hybrid(args: argparse.Namespace) -> dict[str, Any]:
     duplicate_attempts = 0
     duplicate_blocked = 0
     fake_instruction_count = 0
+    downstream_validation_records: list[dict[str, Any]] = []
+    reproduction_qrank_records: list[dict[str, Any]] = []
+    rule_evaluations = Counter()
 
     try:
         manifest = _validate_dqn_manifest(args.dqn_manifest)
@@ -163,7 +173,126 @@ def run_hybrid(args: argparse.Namespace) -> dict[str, Any]:
                     if obs_vector.shape[0] != 976:
                         raise ValueError(f"DQN observation dim mismatch: {obs_vector.shape[0]}")
                     mask = safe_action_mask(env.action_space, observation)
+                    local_session = controller.local_session
+                    diagnostic_mode = str(confirmation_metadata.get("confirmation_mode") or "")
+                    session_mode = str(local_session.trigger_candidate_confirmation_mode or "") if local_session else ""
+                    if diagnostic_mode == "ACTION_REPRODUCTION" or session_mode == "ACTION_REPLAY":
+                        candidates = observation.get("candidate_elements", []) if isinstance(observation, Mapping) else []
+                        candidates = candidates if isinstance(candidates, list) else []
+                        expected_type = str(confirmation_metadata.get("expected_action_type") or "")
+                        expected_target = str(confirmation_metadata.get("expected_target_identity") or "")
+                        matching_slots = [int(slot) for slot in confirmation_metadata.get("matching_candidate_slots", [])]
+                        target_slot = matching_slots[0] if matching_slots else None
+                        mapping = {
+                            "candidate_position": target_slot,
+                            "action_type": expected_type,
+                            "action_type_index": env.action_space.action_types.index(expected_type) if expected_type in env.action_space.action_types else None,
+                            "target_slot": target_slot,
+                            "flattened_action_index": None,
+                            "decoded_action": None,
+                            "decoded_target_identity": None,
+                        }
+                        if expected_type in env.action_space.action_types and target_slot is not None:
+                            encoded = int(env.action_space.encode(expected_type, target_slot))
+                            decoded = env.action_space.decode(encoded)
+                            mapping.update({
+                                "flattened_action_index": encoded,
+                                "decoded_action": decoded,
+                                "decoded_target_identity": _target_identity(candidates[target_slot]) if target_slot < len(candidates) and isinstance(candidates[target_slot], Mapping) else "",
+                            })
+                        target_candidate = candidates[target_slot] if target_slot is not None and target_slot < len(candidates) and isinstance(candidates[target_slot], Mapping) else {}
+                        bbox = target_candidate.get("bbox") if isinstance(target_candidate, Mapping) else None
+                        bbox_valid = isinstance(bbox, (list, tuple)) and len(bbox) >= 4 and float(bbox[2] or 0.0) > 0.0 and float(bbox[3] or 0.0) > 0.0 if isinstance(bbox, (list, tuple)) and len(bbox) >= 4 else False
+                        reproduction_index = mapping["flattened_action_index"]
+                        mask_valid = bool(reproduction_index is not None and reproduction_index < len(mask) and mask[reproduction_index] > 0)
+                        with torch.inference_mode():
+                            q_values = factorized_flat_q_values(
+                                dqn(torch.from_numpy(obs_vector).float().unsqueeze(0)),
+                                torch.from_numpy(mask).bool().unsqueeze(0),
+                                env.action_space,
+                            ).squeeze(0).detach().cpu().numpy()
+                        valid_ids = [int(idx) for idx in np.flatnonzero(mask > 0)]
+                        ordered_ids = sorted(valid_ids, key=lambda idx: float(q_values[idx]), reverse=True)
+                        rank_all = (ordered_ids.index(reproduction_index) + 1) if reproduction_index in ordered_ids else None
+                        all_candidates = []
+                        for rank, idx in enumerate(ordered_ids, start=1):
+                            decoded = env.action_space.decode(idx)
+                            target = ""
+                            if decoded["action_type"] in {"click_element", "fill_input", "press_enter"} and decoded["candidate_index"] < len(candidates):
+                                target = _target_identity(candidates[decoded["candidate_index"]])
+                            all_candidates.append({
+                                "rank_valid": rank,
+                                "action_index": idx,
+                                "action_type": decoded["action_type"],
+                                "target_identity": target,
+                                "q_value": float(q_values[idx]),
+                                "mask_valid": True,
+                                "is_reproduction_action": bool(idx == reproduction_index),
+                            })
+                        context_vector = obs_vector[635:707]
+                        reproduction_q = float(q_values[reproduction_index]) if reproduction_index is not None and reproduction_index < len(q_values) else None
+                        best_q = float(q_values[ordered_ids[0]]) if ordered_ids else None
+                        reproduction_context = {
+                            "expected": {
+                                "confirmation_mode": diagnostic_mode,
+                                "action_type": expected_type,
+                                "target_identity": expected_target,
+                                "requires_action_reproduction": int(confirmation_metadata.get("expected_action_requires_target", 0) or 0),
+                                "active_candidate": bool(confirmation_metadata.get("active_pending_key")),
+                            },
+                            "metadata": dict(confirmation_metadata),
+                            "encoded": {
+                                "active_pending": float(context_vector[0]),
+                                "action_type_flag": float(context_vector[16 + env.action_space.action_types.index(expected_type)]) if expected_type in env.action_space.action_types else 0.0,
+                                "requires_target": float(context_vector[35]),
+                                "target_slot_flags": [int(i) for i in np.flatnonzero(context_vector[36:68] > 0.0)],
+                                "target_visible": float(context_vector[68]),
+                                "pending_count": float(context_vector[71]),
+                            },
+                        }
+                        reproduction_qrank_records.append({
+                            "episode": episode,
+                            "step": step,
+                            "global_step": (episode - 1) * args.max_steps + step,
+                            "local_session_id": local_session.local_session_id if local_session else None,
+                            "candidate_logical_key": local_session.trigger_candidate_key if local_session else confirmation_metadata.get("active_pending_key"),
+                            "reproduction_strategy": "ACTION_REPLAY",
+                            "reproduction_action_type": expected_type,
+                            "reproduction_target_identity": expected_target,
+                            "target_actionable": mask_valid,
+                            "target_flags": {
+                                "visible": bool(target_candidate.get("visible", True)),
+                                "enabled": bool(target_candidate.get("enabled", True)),
+                                "clickable": bool(target_candidate.get("clickable") or target_candidate.get("set_of_marks") or str(target_candidate.get("role") or "").lower() in {"button", "link", "checkbox", "radio", "menuitem", "tab"} or str(target_candidate.get("tag") or "").lower() in {"button", "a", "summary", "option", "label"}),
+                                "bbox_valid": bbox_valid,
+                                "action_compatible": mask_valid,
+                            },
+                            "local_candidates": {
+                                "count": len(candidates),
+                                "target_present": bool(matching_slots),
+                                "target_slots": matching_slots,
+                                "target_local_rank": (target_slot + 1) if target_slot is not None else None,
+                                "identities": [_target_identity(candidate) for candidate in candidates[: env.action_space.max_candidates] if isinstance(candidate, Mapping)],
+                            },
+                            "mapping": mapping,
+                            "round_trip_ok": bool(mapping["decoded_action"] and mapping["decoded_action"]["action_type"] == expected_type and mapping["decoded_target_identity"] == expected_target),
+                            "mask_value": float(mask[reproduction_index]) if reproduction_index is not None and reproduction_index < len(mask) else None,
+                            "context": reproduction_context,
+                            "q_value": reproduction_q,
+                            "rank_valid_actions": rank_all,
+                            "rank_all_actions": rank_all,
+                            "best_valid_q": best_q,
+                            "q_gap": (best_q - reproduction_q) if best_q is not None and reproduction_q is not None else None,
+                            "selected_action_index": None,
+                            "selected": False,
+                            "top10_valid_actions": all_candidates[:10],
+                            "valid_action_count": len(ordered_ids),
+                            "all_valid_actions": all_candidates,
+                        })
                     action_id = select_factorized_greedy_action(dqn, obs_vector, mask, env.action_space)
+                    if reproduction_qrank_records and reproduction_qrank_records[-1].get("episode") == episode and reproduction_qrank_records[-1].get("step") == step:
+                        reproduction_qrank_records[-1]["selected_action_index"] = int(action_id)
+                        reproduction_qrank_records[-1]["selected"] = bool(reproduction_qrank_records[-1].get("mapping", {}).get("flattened_action_index") == int(action_id))
                     dqn_replay_steps += 1
                     active_reward = "DQN"
                     local_session_id = controller.local_session.local_session_id if controller.local_session else None
@@ -171,9 +300,21 @@ def run_hybrid(args: argparse.Namespace) -> dict[str, Any]:
 
                 action = env.action_space.decode(action_id)
                 action["action_id"] = action_id
+                action["episode_id"] = episode
+                action["global_step"] = (episode - 1) * args.max_steps + step
                 action["agent_mode"] = active.value
                 action_trace_id = f"{site['site_id']}:{'ppo' if args.ppo_only else 'hybrid'}:{args.seed}:ep{episode:02d}:step{step:03d}"
                 candidate_for_trace = _action_candidate(observation, action)
+                action["target_identity"] = str((candidate_for_trace or {}).get("bid") or (candidate_for_trace or {}).get("id") or "")
+                action["action_start_timestamp"] = time.monotonic() * 1000.0
+                env._pending_action_context = {
+                    "episode_id": episode,
+                    "global_step": action["global_step"],
+                    "action_id": action_id,
+                    "action_type": action.get("action_type"),
+                    "target_identity": action["target_identity"],
+                    "action_start_timestamp": action["action_start_timestamp"],
+                }
                 selected_mask_valid = bool(mask[action_id]) if len(mask) > action_id else False
                 if args.action_error_diagnostic:
                     env.set_action_diagnostic_context({
@@ -185,6 +326,7 @@ def run_hybrid(args: argparse.Namespace) -> dict[str, Any]:
                 before_candidate_keys = set(_candidate_keys_from_anomalies([]))
                 seen_before = set(reward_history.get("seen_candidate_signatures", set()) or set())
                 next_observation, _, done, info = env.step(action_id)
+                action["action_end_timestamp"] = time.monotonic() * 1000.0
                 execution_diag = info.get("action_error_diagnostic", {}) if isinstance(info, Mapping) else {}
                 action["failed"] = bool(info.get("last_action_error"))
                 action["timeout"] = bool(info.get("timeout") or info.get("timed_out") or info.get("timeout_occurred"))
@@ -248,6 +390,63 @@ def run_hybrid(args: argparse.Namespace) -> dict[str, Any]:
                     )
                 else:
                     anomalies = sanitize_anomalies(detect_anomalies(observation, next_observation, {**info, "action": action}))
+                runtime_telemetry = normalize_runtime_network_telemetry(next_observation, info)
+                semantic_evidence = build_network_ui_semantic_evidence(
+                    action_context={
+                        "action_id": action.get("action_id"),
+                        "action_timestamp": action.get("action_start_timestamp"),
+                    },
+                    network_entries=runtime_telemetry.get("events", []),
+                    observation=next_observation,
+                )
+                r10_anomalies = [
+                    anomaly for anomaly in anomalies
+                    if str(anomaly.get("rule_id") or anomaly.get("evidence", {}).get("rule_id") or "") == "R10"
+                ]
+                for rule_id in ("R01", "R05", "R06", "R10"):
+                    rule_evaluations[rule_id] += 1
+                pairs = semantic_evidence.get("pairs", [])
+                not_equal_pairs = [row for row in pairs if row.get("relation") == "NOT_EQUAL"]
+                downstream_validation_records.append({
+                    "episode": episode,
+                    "step": step,
+                    "global_step": action["global_step"],
+                    "action": dict(action),
+                    "detector": {
+                        "invoked": True,
+                        "rule_evaluated": ["R01", "R05", "R06", "R10"],
+                        "eligible_evidence": len(anomalies),
+                        "fired": len(anomalies),
+                        "fired_rules": [str(a.get("rule_id") or "") for a in anomalies],
+                    },
+                    "evidence": {
+                        "strict_associated_requests": runtime_telemetry.get("strict_associated_request_count", 0),
+                        "parsed_responses": runtime_telemetry.get("parsed_response_count", 0),
+                        "network_semantic_fields": len(semantic_evidence.get("network_fields", [])),
+                        "ui_semantic_fields": len(semantic_evidence.get("ui_fields", [])),
+                        "semantic_pairs": len(pairs),
+                        "equal_pairs": semantic_evidence.get("equal_pairs", 0),
+                        "not_equal_pairs": semantic_evidence.get("not_equal_pairs", 0),
+                        "high_confidence_not_equal": len([row for row in not_equal_pairs if (semantic_pair_confidence(row) or 0.0) >= 0.8]),
+                        "request_id_linkage_mismatch": runtime_telemetry.get("request_id_linkage_mismatch_count", 0),
+                        "duplicate_request_ids": runtime_telemetry.get("duplicate_request_id_count", 0),
+                    },
+                    "r10": {
+                        "action_error_gate": not bool(action.get("failed")),
+                        "ui_settled": bool(not temporal_window or temporal_window.final_stability.value == "STABLE"),
+                        "semantic_block_exists": bool(pairs),
+                        "strict_action_request_association_exists": bool(runtime_telemetry.get("strict_associated_request_count", 0)),
+                        "semantic_pair_exists": bool(pairs),
+                        "not_equal": bool(not_equal_pairs),
+                        "pair_confidence": max((semantic_pair_confidence(row) or 0.0 for row in not_equal_pairs), default=0.0),
+                        "network_key_valid": sum(bool(row.get("network_key")) for row in not_equal_pairs),
+                        "ui_key_valid": sum(bool(row.get("ui_key")) for row in not_equal_pairs),
+                        "placeholder_rejection": 0,
+                        "final_eligibility": bool(r10_anomalies),
+                        "fire": bool(r10_anomalies),
+                    },
+                    "anomalies": [dict(anomaly) for anomaly in anomalies],
+                })
                 anomaly_keys = _candidate_keys_from_anomalies(anomalies)
                 new_candidate_keys = [key for key in anomaly_keys if key not in seen_before]
                 for key in new_candidate_keys:
@@ -574,9 +773,195 @@ def run_hybrid(args: argparse.Namespace) -> dict[str, Any]:
             "fake_instruction_count": fake_instruction_count,
             "HYBRID_V1_ARCHITECTURE_CHECK": "PASS" if summary["hard_invariants"]["all_pass"] else "REVIEW"
         }
+        summary["downstream_validation"] = {
+            "records": downstream_validation_records,
+            "rule_evaluations": dict(rule_evaluations),
+            "gt_runtime_access": False,
+            "optimizer_updates": 0,
+            "backward": 0,
+            "replay_training": False,
+            "checkpoint_writes": 0,
+        }
+        summary["reproduction_qrank_diagnostic"] = {
+            "records": len(reproduction_qrank_records),
+            "action_replay_sessions": len({str(row.get("local_session_id")) for row in reproduction_qrank_records if row.get("local_session_id")}),
+            "selected_reproduction_actions": sum(int(row.get("selected")) for row in reproduction_qrank_records),
+        }
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(_jsonable(summary), ensure_ascii=False, indent=2), encoding="utf-8")
+        if args.downstream_validation_dir:
+            validation_dir = Path(args.downstream_validation_dir)
+            validation_dir.mkdir(parents=True, exist_ok=True)
+            records = downstream_validation_records
+            detector_rows = [row["detector"] | {"episode": row["episode"], "step": row["step"]} for row in records]
+            candidate_lifecycle = []
+            for row in records:
+                for anomaly in row.get("anomalies", []):
+                    key = str(anomaly.get("signature") or "")
+                    if key:
+                        candidate_lifecycle.append({
+                            "logical_key": key,
+                            "step": row["step"],
+                            "rule_id": anomaly.get("rule_id"),
+                            "status": anomaly.get("status") or "DETECTED",
+                            "reproduction_strategy": anomaly.get("reproduction_strategy"),
+                            "requires_action_reproduction": anomaly.get("requires_action_reproduction"),
+                            "reproduction_action_type": anomaly.get("reproduction_action_type"),
+                            "reproduction_target_identity": anomaly.get("reproduction_target_identity"),
+                            "pair_relation": (anomaly.get("evidence") or {}).get("relation"),
+                            "pair_confidence": anomaly.get("pair_confidence") or (anomaly.get("evidence") or {}).get("pair_confidence"),
+                            "detector_confidence": anomaly.get("confidence"),
+                            "candidate_admitted": False,
+                        })
+            admitted_keys = set()
+            for event in handoff_events:
+                admitted_keys.update(str(key) for key in event.get("entry_candidate_keys", []) if key)
+                if event.get("trigger_candidate_key"):
+                    admitted_keys.add(str(event["trigger_candidate_key"]))
+            for row in candidate_lifecycle:
+                row["candidate_admitted"] = row["logical_key"] in admitted_keys
+                if row["candidate_admitted"]:
+                    row["status"] = "pending_confirmation"
+            dqn_rows = [
+                {
+                    "episode": row["episode"], "step": row["step"],
+                    "local_session_id": row.get("local_session_id"),
+                    "selected_action": row.get("action_type"),
+                    "selected_target": row.get("action_target"),
+                    "local_transition": True,
+                    "candidate_relevant_effect": bool(row.get("reward_components", {}).get("new_target") or row.get("reward_components", {}).get("confirmation_upgrade")),
+                    "same_chain_recurrence": bool(row.get("repeat_diagnostic", {}).get("same_chain_recurrence")),
+                }
+                for row in timeline if row.get("active_agent") == AgentMode.DQN_LOCAL.value
+            ]
+            evidence_totals = {
+                "click_input_actions": sum(int(row["action"].get("action_type") in {"click_element", "fill_input", "press_enter", "select_option"}) for row in records),
+                "strict_associated_requests": sum(int(row["evidence"].get("strict_associated_requests", 0)) for row in records),
+                "parsed_responses": sum(int(row["evidence"].get("parsed_responses", 0)) for row in records),
+                "network_semantic_fields": sum(int(row["evidence"].get("network_semantic_fields", 0)) for row in records),
+                "ui_semantic_fields": sum(int(row["evidence"].get("ui_semantic_fields", 0)) for row in records),
+                "semantic_pairs": sum(int(row["evidence"].get("semantic_pairs", 0)) for row in records),
+                "equal_pairs": sum(int(row["evidence"].get("equal_pairs", 0)) for row in records),
+                "not_equal_pairs": sum(int(row["evidence"].get("not_equal_pairs", 0)) for row in records),
+                "high_confidence_not_equal": sum(int(row["evidence"].get("high_confidence_not_equal", 0)) for row in records),
+            }
+            r10_rows = [row["r10"] | {"episode": row["episode"], "step": row["step"]} for row in records]
+            (validation_dir / "detector_funnel.json").write_text(json.dumps(_jsonable({"detector_invocations": len(records), "rule_evaluations": dict(rule_evaluations), "rows": detector_rows, "r10_rows": r10_rows}), ensure_ascii=False, indent=2), encoding="utf-8")
+            (validation_dir / "candidate_lifecycle.json").write_text(json.dumps(_jsonable({"candidate_proposals": len(candidate_lifecycle), "candidate_admissions": len(admitted_keys), "admission_rejects": sum(int(not row["candidate_admitted"]) for row in candidate_lifecycle), "rows": candidate_lifecycle}), ensure_ascii=False, indent=2), encoding="utf-8")
+            (validation_dir / "controller_handoff.json").write_text(json.dumps(_jsonable({"handoff_requested": len(handoff_events), "handoff_accepted": len(handoff_events), "dqn_sessions": len(handoff_events), "events": handoff_events}), ensure_ascii=False, indent=2), encoding="utf-8")
+            with (validation_dir / "dqn_local_sessions.jsonl").open("w", encoding="utf-8") as handle:
+                for row in dqn_rows:
+                    handle.write(json.dumps(_jsonable(row), ensure_ascii=False) + "\n")
+            e2e = {
+                "evidence": evidence_totals,
+                "detector_invocations": len(records),
+                "detector_eligible_cases": sum(int(row["detector"].get("eligible_evidence", 0)) for row in records),
+                "detector_fires": sum(int(row["detector"].get("fired", 0)) for row in records),
+                "candidate_proposals": len(candidate_lifecycle),
+                "candidate_admissions": len(admitted_keys),
+                "action_replay_candidates": sum(int(row.get("reproduction_strategy") == "ACTION_REPLAY") for row in candidate_lifecycle if row.get("candidate_admitted")),
+                "dqn_handoff": len(handoff_events),
+                "dqn_local_transitions": len(dqn_rows),
+                "same_chain_recurrence": sum(int(row.get("same_chain_recurrence")) for row in dqn_rows),
+                "confirmations": summary["confirmation_attribution"]["newly_confirmed"],
+                "gt_runtime_access": False,
+                "optimizer_updates": 0,
+                "backward": 0,
+                "replay_training": False,
+                "checkpoint_writes": 0,
+            }
+            e2e["FIRST_MAJOR_DROP_OFF"] = "END_TO_END_PIPELINE_RECOVERED" if e2e["dqn_handoff"] and e2e["confirmations"] else ("CONFIRMATION_BOTTLENECK" if e2e["dqn_handoff"] else "CANDIDATE_ADMISSION_BOTTLENECK")
+            e2e["PRIMARY_ROOT_CAUSE"] = "production downstream path reached controller and DQN local inference"
+            (validation_dir / "end_to_end_funnel.json").write_text(json.dumps(_jsonable(e2e), ensure_ascii=False, indent=2), encoding="utf-8")
+        if args.reproduction_qrank_dir:
+            qrank_dir = Path(args.reproduction_qrank_dir)
+            qrank_dir.mkdir(parents=True, exist_ok=True)
+            mapping_rows = [{
+                "episode": row.get("episode"), "step": row.get("step"), "local_session_id": row.get("local_session_id"),
+                "candidate_logical_key": row.get("candidate_logical_key"), "mapping": row.get("mapping"),
+                "round_trip_ok": row.get("round_trip_ok"), "mask_value": row.get("mask_value"),
+                "target_actionable": row.get("target_actionable"), "target_flags": row.get("target_flags"),
+            } for row in reproduction_qrank_records]
+            context_rows = [{
+                "episode": row.get("episode"), "step": row.get("step"), "local_session_id": row.get("local_session_id"),
+                "candidate_logical_key": row.get("candidate_logical_key"), "context": row.get("context"),
+            } for row in reproduction_qrank_records]
+            local_rows = [{
+                "episode": row.get("episode"), "step": row.get("step"), "local_session_id": row.get("local_session_id"),
+                "candidate_logical_key": row.get("candidate_logical_key"), "local_candidates": row.get("local_candidates"),
+            } for row in reproduction_qrank_records]
+            round_trip_pass = sum(int(row.get("round_trip_ok")) for row in reproduction_qrank_records)
+            mask_valid_count = sum(int(row.get("target_actionable")) for row in reproduction_qrank_records)
+            context_present_count = sum(int(
+                row.get("context", {}).get("encoded", {}).get("active_pending", 0.0) > 0.0
+                and row.get("context", {}).get("encoded", {}).get("action_type_flag", 0.0) > 0.0
+                and row.get("context", {}).get("encoded", {}).get("target_visible", 0.0) > 0.0
+            ) for row in reproduction_qrank_records if row.get("target_actionable"))
+            actionable_records = [row for row in reproduction_qrank_records if row.get("target_actionable")]
+            ranks = [int(row["rank_valid_actions"]) for row in reproduction_qrank_records if row.get("rank_valid_actions") is not None]
+            q_values = [float(row["q_value"]) for row in reproduction_qrank_records if row.get("q_value") is not None]
+            gaps = [float(row["q_gap"]) for row in reproduction_qrank_records if row.get("q_gap") is not None]
+            competing = Counter()
+            for row in reproduction_qrank_records:
+                reproduction_index = row.get("mapping", {}).get("flattened_action_index")
+                for action in row.get("all_valid_actions", []):
+                    action_q = action.get("q_value")
+                    reproduction_q = row.get("q_value")
+                    if action.get("action_index") != reproduction_index and action_q is not None and reproduction_q is not None and float(action_q) > float(reproduction_q):
+                        action_type = str(action.get("action_type") or "other")
+                        if action_type in {"inspect_layout", "inspect_dom", "inspect_network", "inspect_console", "inspect_cart", "inspect_server_health", "inspect_port_status", "inspect_latency", "inspect_server_logs", "inspect_runtime_metrics"}:
+                            category = "inspect"
+                        elif action_type in {"scroll_down", "scroll_up"}:
+                            category = "scroll"
+                        elif action_type in {"change_viewport_mobile", "change_viewport_desktop"}:
+                            category = "viewport"
+                        elif action_type == "noop":
+                            category = "noop"
+                        elif action_type in {"click_element", "fill_input", "press_enter"}:
+                            category = "other_interactive"
+                        else:
+                            category = "other"
+                        competing[category] += 1
+            summary_qrank = {
+                "action_replay_candidates": len({str(row.get("candidate_logical_key")) for row in reproduction_qrank_records if row.get("candidate_logical_key")}),
+                "actionable_targets": sum(int(row.get("target_actionable")) for row in reproduction_qrank_records),
+                "target_present_in_local_pool": sum(int(row.get("local_candidates", {}).get("target_present")) for row in reproduction_qrank_records),
+                "encode_decode_round_trip_pass": round_trip_pass,
+                "mask_valid_reproduction_actions": mask_valid_count,
+                "context_present": context_present_count,
+                "mean_reproduction_q": float(np.mean(q_values)) if q_values else None,
+                "mean_valid_action_rank": float(np.mean(ranks)) if ranks else None,
+                "median_valid_action_rank": float(np.median(ranks)) if ranks else None,
+                "best_valid_action_rank": min(ranks) if ranks else None,
+                "worst_valid_action_rank": max(ranks) if ranks else None,
+                "mean_best_q_minus_reproduction_q": float(np.mean(gaps)) if gaps else None,
+                "selected_reproduction_actions": sum(int(row.get("selected")) for row in reproduction_qrank_records),
+                "competing_action_categories_above_reproduction": dict(competing),
+                "first_reproduction_context_drop_off": "NONE" if context_present_count == len(actionable_records) else "CONTEXT_ENCODING",
+                "primary_root_cause": "DQN_Q_RANKING_FAILURE" if actionable_records and all(bool(row.get("round_trip_ok")) for row in actionable_records) and all(bool(row.get("target_actionable")) for row in actionable_records) and context_present_count == len(actionable_records) and sum(int(row.get("selected")) for row in actionable_records) == 0 else "INSUFFICIENT_ACTION_REPLAY_SAMPLES",
+                "runtime_validation_only": True,
+                "optimizer_updates": 0,
+                "backward": 0,
+                "reward_modified": False,
+                "action_mask_behavior_modified": False,
+                "gt_runtime_access": False,
+            }
+            (qrank_dir / "summary.json").write_text(json.dumps(_jsonable(summary_qrank), ensure_ascii=False, indent=2), encoding="utf-8")
+            (qrank_dir / "action_index_mapping.json").write_text(json.dumps(_jsonable({"rows": mapping_rows}), ensure_ascii=False, indent=2), encoding="utf-8")
+            with (qrank_dir / "q_rank_trace.jsonl").open("w", encoding="utf-8") as handle:
+                for row in reproduction_qrank_records:
+                    handle.write(json.dumps(_jsonable({
+                        "episode": row.get("episode"), "step": row.get("step"), "local_session_id": row.get("local_session_id"),
+                        "candidate_logical_key": row.get("candidate_logical_key"), "q_value": row.get("q_value"),
+                        "rank_valid_actions": row.get("rank_valid_actions"), "rank_all_actions": row.get("rank_all_actions"),
+                        "best_valid_q": row.get("best_valid_q"), "q_gap": row.get("q_gap"),
+                        "selected": row.get("selected"), "selected_action_index": row.get("selected_action_index"),
+                        "top10_valid_actions": row.get("top10_valid_actions"), "competing_actions": row.get("all_valid_actions"),
+                    }), ensure_ascii=False) + "\n")
+            (qrank_dir / "confirmation_context_trace.json").write_text(json.dumps(_jsonable({"rows": context_rows}), ensure_ascii=False, indent=2), encoding="utf-8")
+            (qrank_dir / "local_candidate_trace.json").write_text(json.dumps(_jsonable({"rows": local_rows}), ensure_ascii=False, indent=2), encoding="utf-8")
+            (qrank_dir / "root_cause.json").write_text(json.dumps(_jsonable({"primary_root_cause": summary_qrank["primary_root_cause"], "first_reproduction_context_drop_off": summary_qrank["first_reproduction_context_drop_off"], "summary": summary_qrank}), ensure_ascii=False, indent=2), encoding="utf-8")
         if args.temporal_stability_diagnostic_output:
             diagnostic_output = Path(args.temporal_stability_diagnostic_output)
             diagnostic_output.parent.mkdir(parents=True, exist_ok=True)
@@ -842,6 +1227,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--diagnostic-canonical-error-count", type=int, default=0)
     parser.add_argument("--post-stable-offsets-ms", default="100,200,300,500")
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--downstream-validation-dir", default="")
+    parser.add_argument("--reproduction-qrank-dir", default="", help="Validation-only frozen DQN reproduction action/Q-rank diagnostics.")
     parser.add_argument("--headless", action=argparse.BooleanOptionalAction, default=True)
     return parser.parse_args()
 

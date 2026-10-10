@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Mapping
+from models.action_types import CANONICAL_ACTION_TYPES
 
 
 @dataclass(frozen=True)
@@ -13,14 +14,7 @@ class ActionContract:
     executor: str
 
 
-V3_ACTION_TYPES = (
-    "noop", "click_element", "scroll_down", "scroll_up", "inspect_dom",
-    "inspect_layout", "inspect_network", "inspect_console", "inspect_cart",
-    "inspect_server_health", "inspect_port_status", "inspect_latency",
-    "inspect_server_logs", "inspect_runtime_metrics", "fill_input",
-    "select_option", "press_enter", "change_viewport_mobile",
-    "change_viewport_desktop", "finish_episode",
-)
+V3_ACTION_TYPES = CANONICAL_ACTION_TYPES
 
 ACTION_CONTRACTS = {
     action_type: ActionContract(action_type, action_type in {"click_element", "fill_input", "select_option", "press_enter"}, action_type)

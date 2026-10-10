@@ -5,30 +5,11 @@ from __future__ import annotations
 from typing import Any, Dict, Mapping
 
 import numpy as np
+from models.action_types import CANONICAL_ACTION_TYPES
 
 
 class ActionSpace:
-    action_types = [
-        "noop",
-        "click_element",
-        "scroll_down",
-        "scroll_up",
-        "inspect_dom",
-        "inspect_layout",
-        "inspect_network",
-        "inspect_console",
-        "inspect_cart",
-        "inspect_server_health",
-        "inspect_port_status",
-        "inspect_latency",
-        "inspect_server_logs",
-        "inspect_runtime_metrics",
-        "fill_input",
-        "press_enter",
-        "change_viewport_mobile",
-        "change_viewport_desktop",
-        "finish_episode",
-    ]
+    action_types = list(CANONICAL_ACTION_TYPES)
 
     def __init__(self, max_candidates: int = 32) -> None:
         self.max_candidates = max_candidates
@@ -54,7 +35,7 @@ class ActionSpace:
         }
 
     def is_element_action(self, action_type: str) -> bool:
-        return action_type in {"click_element", "fill_input", "press_enter"}
+        return action_type in {"click_element", "fill_input", "press_enter", "select_option"}
 
     def is_infra_action(self, action_type: str) -> bool:
         return action_type in {
@@ -148,6 +129,8 @@ def _is_executable_candidate_action(action_type: str, candidate: Mapping[str, An
         return _is_clickable_candidate(candidate)
     if action_type in {"fill_input", "press_enter"}:
         return _is_input_candidate(candidate)
+    if action_type == "select_option":
+        return _is_selectable_candidate(candidate)
     return False
 
 
@@ -186,7 +169,23 @@ def _is_input_candidate(candidate: Mapping[str, Any]) -> bool:
     input_type = str(candidate.get("input_type") or candidate.get("type") or "").lower()
     if input_type in {"hidden", "button", "submit", "checkbox", "radio", "reset", "image", "file"}:
         return False
-    return bool(candidate.get("fillable") or tag in {"input", "textarea"} or role in {"textbox", "searchbox", "combobox"})
+    if tag == "select":
+        return False
+    if role == "combobox":
+        # ARIA combobox is not synonymous with a native select.  It is
+        # fill-compatible only when the underlying control is actually
+        # editable (or the observation already proved it fillable).
+        return bool(candidate.get("fillable") or tag in {"input", "textarea"} or candidate.get("contenteditable"))
+    return bool(candidate.get("fillable") or tag in {"input", "textarea"} or role in {"textbox", "searchbox"})
+
+
+def _is_selectable_candidate(candidate: Mapping[str, Any]) -> bool:
+    if not _is_visible_enabled(candidate) or not _has_executable_target_identity(candidate):
+        return False
+    if not _has_bbox(candidate.get("bbox")):
+        return False
+    tag = str(candidate.get("tag") or "").lower()
+    return bool(candidate.get("selectable") or tag == "select")
 
 
 def _is_visible_enabled(candidate: Mapping[str, Any]) -> bool:

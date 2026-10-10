@@ -12,7 +12,7 @@ OBSERVATION_REPRODUCTION = "OBSERVATION_REPRODUCTION"
 ACTION_REPLAY = "ACTION_REPLAY"
 OBSERVATION_RECHECK = "OBSERVATION_RECHECK"
 
-TARGET_ACTION_TYPES = frozenset({"click_element", "fill_input", "press_enter"})
+TARGET_ACTION_TYPES = frozenset({"click_element", "fill_input", "press_enter", "select_option"})
 OBSERVATION_RULES = frozenset({"R04", "R05", "R06"})
 
 
@@ -59,6 +59,7 @@ class ReproductionContext:
     requires_action_reproduction: bool
     reason: str
     rule_id: str = ""
+    option_identity: Mapping[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -71,6 +72,7 @@ class ReproductionContext:
             "requires_action_reproduction": self.requires_action_reproduction,
             "reproduction_derivation_reason": self.reason,
             "rule_id": self.rule_id,
+            "reproduction_option_identity": dict(self.option_identity or {}) or None,
         }
 
 
@@ -94,6 +96,20 @@ def _identity(value: Any) -> str | None:
     return text if ":" in text else f"bid:{text}"
 
 
+def _option_identity(value: Any) -> dict[str, Any] | None:
+    """Normalize the runtime-selected native-select option without inventing it."""
+    if not isinstance(value, Mapping):
+        return None
+    nested = value.get("selected_option")
+    if isinstance(nested, Mapping):
+        value = nested
+    result = {}
+    for key in ("value", "label", "text", "index"):
+        if key in value and value.get(key) is not None:
+            result[key] = value.get(key)
+    return result or None
+
+
 def derive_reproduction_context(anomaly: Mapping[str, Any]) -> ReproductionContext:
     """Derive confirmation semantics from runtime provenance, not evidence target."""
     evidence = anomaly.get("evidence", {}) if isinstance(anomaly.get("evidence"), Mapping) else {}
@@ -101,15 +117,23 @@ def derive_reproduction_context(anomaly: Mapping[str, Any]) -> ReproductionConte
     evidence_target = _identity(anomaly.get("evidence_target_identity") or evidence.get("evidence_target_identity")) or target_identity_from_anomaly(anomaly)
     trigger_action = str(anomaly.get("trigger_action_type") or evidence.get("trigger_action_type") or anomaly.get("action_type") or evidence.get("action_type") or "").strip() or None
     trigger_target = _identity(anomaly.get("trigger_target_identity") or evidence.get("trigger_target_identity"))
+    option_identity = _option_identity(
+        anomaly.get("reproduction_option_identity")
+        or anomaly.get("origin_option_identity")
+        or anomaly.get("selected_option")
+        or evidence.get("reproduction_option_identity")
+        or evidence.get("origin_option_identity")
+        or evidence.get("selected_option")
+    )
     if trigger_target is None and not any(key in anomaly or key in evidence for key in ("evidence_target_identity", "trigger_target_identity", "reproduction_strategy")):
         trigger_target = target_identity_from_anomaly(anomaly)  # legacy candidate compatibility
     explicit_strategy = str(anomaly.get("reproduction_strategy") or evidence.get("reproduction_strategy") or "").upper()
     if explicit_strategy == OBSERVATION_RECHECK or rule_id in OBSERVATION_RULES:
-        return ReproductionContext(evidence_target, trigger_action, trigger_target, OBSERVATION_RECHECK, None, None, False, "observation-rule", rule_id)
+        return ReproductionContext(evidence_target, trigger_action, trigger_target, OBSERVATION_RECHECK, None, None, False, "observation-rule", rule_id, option_identity)
     if explicit_strategy == ACTION_REPLAY or (trigger_action in TARGET_ACTION_TYPES and trigger_target):
         if trigger_action in TARGET_ACTION_TYPES and trigger_target:
-            return ReproductionContext(evidence_target, trigger_action, trigger_target, ACTION_REPLAY, trigger_action, trigger_target, True, "runtime-trigger-provenance", rule_id)
-    return ReproductionContext(evidence_target, trigger_action, trigger_target, OBSERVATION_RECHECK, None, None, False, "no-executable-trigger-provenance", rule_id)
+            return ReproductionContext(evidence_target, trigger_action, trigger_target, ACTION_REPLAY, trigger_action, trigger_target, True, "runtime-trigger-provenance", rule_id, option_identity)
+    return ReproductionContext(evidence_target, trigger_action, trigger_target, OBSERVATION_RECHECK, None, None, False, "no-executable-trigger-provenance", rule_id, option_identity)
 
 
 def expected_reproduction_for_anomaly(anomaly: Mapping[str, Any]) -> ExpectedReproduction | None:
@@ -145,6 +169,9 @@ def action_semantics_matrix(action_space: Any) -> list[dict[str, Any]]:
         elif action_type in {"fill_input", "press_enter"}:
             roles = ["textbox", "searchbox", "combobox"]
             tags = ["input", "textarea"]
+        elif action_type == "select_option":
+            roles = ["combobox"]
+            tags = ["select"]
         else:
             roles, tags = [], []
         rows.append({

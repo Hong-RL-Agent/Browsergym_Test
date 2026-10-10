@@ -14,9 +14,9 @@ HISTORY_OBSERVATION_VERSION = "v1"
 HISTORY_OBSERVATION_V2_VERSION = "v2"
 DQN_HISTORY_WINDOW = 4
 HISTORY_CONTEXT_DIM = 238
-HISTORY_CONTEXT_V2_DIM = 269
+HISTORY_CONTEXT_V2_DIM = 272
 HISTORY_STREAK_CAP = 4
-TARGET_REQUIRED_ACTION_TYPES = {"click_element", "fill_input", "press_enter"}
+TARGET_REQUIRED_ACTION_TYPES = {"click_element", "fill_input", "press_enter", "select_option"}
 PROSPECTIVE_REPEAT_RISK_FLAGS = ("immediate", "recent", "cycle")
 
 

@@ -1,0 +1,637 @@
+{
+  "repository": "https://github.com/Hong-RL-Agent/RL_Errorsite.git",
+  "branch": "frontend-errorsite",
+  "commit_sha": "cca3c72a21a7c0d26af30bf35d92ff1134459036",
+  "sites": [
+    {
+      "site_id": "site001",
+      "base_url": "http://localhost:9220",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site001",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site002",
+      "base_url": "http://localhost:9221",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site002",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site003",
+      "base_url": "http://localhost:9222",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site003",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site004",
+      "base_url": "http://localhost:9223",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site004",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site005",
+      "base_url": "http://localhost:9224",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site005",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site006",
+      "base_url": "http://localhost:9225",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site006",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site007",
+      "base_url": "http://localhost:9226",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site007",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site008",
+      "base_url": "http://localhost:9227",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site008",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site009",
+      "base_url": "http://localhost:9228",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site009",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site010",
+      "base_url": "http://localhost:9229",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site010",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site011",
+      "base_url": "http://localhost:9230",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site011",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site012",
+      "base_url": "http://localhost:9231",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site012",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site013",
+      "base_url": "http://localhost:9232",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site013",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site014",
+      "base_url": "http://localhost:9233",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site014",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site015",
+      "base_url": "http://localhost:9234",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site015",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site016",
+      "base_url": "http://localhost:9235",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site016",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site017",
+      "base_url": "http://localhost:9236",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site017",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site018",
+      "base_url": "http://localhost:9237",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site018",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site019",
+      "base_url": "http://localhost:9238",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site019",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site020",
+      "base_url": "http://localhost:9239",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site020",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site021",
+      "base_url": "http://localhost:9240",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site021",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site022",
+      "base_url": "http://localhost:9241",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site022",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site023",
+      "base_url": "http://localhost:9242",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site023",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site024",
+      "base_url": "http://localhost:9243",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site024",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site025",
+      "base_url": "http://localhost:9244",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site025",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site026",
+      "base_url": "http://localhost:9245",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site026",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site027",
+      "base_url": "http://localhost:9246",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site027",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site028",
+      "base_url": "http://localhost:9247",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site028",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site029",
+      "base_url": "http://localhost:9248",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site029",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site030",
+      "base_url": "http://localhost:9249",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site030",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site031",
+      "base_url": "http://localhost:9250",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site031",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site032",
+      "base_url": "http://localhost:9251",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site032",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site033",
+      "base_url": "http://localhost:9252",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site033",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site034",
+      "base_url": "http://localhost:9253",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site034",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site035",
+      "base_url": "http://localhost:9254",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site035",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site036",
+      "base_url": "http://localhost:9255",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site036",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site037",
+      "base_url": "http://localhost:9256",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site037",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site038",
+      "base_url": "http://localhost:9257",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site038",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site039",
+      "base_url": "http://localhost:9258",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site039",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site040",
+      "base_url": "http://localhost:9259",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site040",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site041",
+      "base_url": "http://localhost:9260",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site041",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site042",
+      "base_url": "http://localhost:9261",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site042",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site043",
+      "base_url": "http://localhost:9262",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site043",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site044",
+      "base_url": "http://localhost:9263",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site044",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site045",
+      "base_url": "http://localhost:9264",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site045",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site046",
+      "base_url": "http://localhost:9265",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site046",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site047",
+      "base_url": "http://localhost:9266",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site047",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site048",
+      "base_url": "http://localhost:9267",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site048",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site049",
+      "base_url": "http://localhost:9268",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site049",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site050",
+      "base_url": "http://localhost:9269",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site050",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site051",
+      "base_url": "http://localhost:9270",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site051",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site052",
+      "base_url": "http://localhost:9271",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site052",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site053",
+      "base_url": "http://localhost:9272",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site053",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site054",
+      "base_url": "http://localhost:9273",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site054",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site055",
+      "base_url": "http://localhost:9274",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site055",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site056",
+      "base_url": "http://localhost:9275",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site056",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site057",
+      "base_url": "http://localhost:9276",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site057",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site058",
+      "base_url": "http://localhost:9277",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site058",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site059",
+      "base_url": "http://localhost:9278",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site059",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site060",
+      "base_url": "http://localhost:9279",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site060",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site061",
+      "base_url": "http://localhost:9280",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site061",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site062",
+      "base_url": "http://localhost:9281",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site062",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site063",
+      "base_url": "http://localhost:9282",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site063",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site064",
+      "base_url": "http://localhost:9283",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site064",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site065",
+      "base_url": "http://localhost:9284",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site065",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site066",
+      "base_url": "http://localhost:9285",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site066",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site067",
+      "base_url": "http://localhost:9286",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site067",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site068",
+      "base_url": "http://localhost:9287",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site068",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site069",
+      "base_url": "http://localhost:9288",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site069",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site070",
+      "base_url": "http://localhost:9289",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site070",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site071",
+      "base_url": "http://localhost:9290",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site071",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site072",
+      "base_url": "http://localhost:9291",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site072",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site073",
+      "base_url": "http://localhost:9292",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site073",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site074",
+      "base_url": "http://localhost:9293",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site074",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site075",
+      "base_url": "http://localhost:9294",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site075",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site076",
+      "base_url": "http://localhost:9295",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site076",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site077",
+      "base_url": "http://localhost:9296",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site077",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site078",
+      "base_url": "http://localhost:9297",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site078",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site079",
+      "base_url": "http://localhost:9298",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site079",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site080",
+      "base_url": "http://localhost:9299",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site080",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site081",
+      "base_url": "http://localhost:9300",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site081",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site082",
+      "base_url": "http://localhost:9301",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site082",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site083",
+      "base_url": "http://localhost:9302",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site083",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site084",
+      "base_url": "http://localhost:9303",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site084",
+      "partition": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site085",
+      "base_url": "http://localhost:9304",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site085",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site086",
+      "base_url": "http://localhost:9305",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site086",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site087",
+      "base_url": "http://localhost:9306",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site087",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site088",
+      "base_url": "http://localhost:9307",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site088",
+      "partition": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site089",
+      "base_url": "http://localhost:9308",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site089",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site090",
+      "base_url": "http://localhost:9309",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site090",
+      "partition": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    }
+  ]
+}

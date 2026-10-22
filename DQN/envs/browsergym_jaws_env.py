@@ -118,6 +118,7 @@ class BrowserGymJAWSEnv:
         self._stamp_site_id(self._jaws_obs)
         self._stamp_login_info(self._jaws_obs, info)
         self._stamp_infra_info(self._jaws_obs, info)
+        self._stamp_external_runtime_state(self._jaws_obs)
         return self._jaws_obs, self._info(info, self.previous_action_type)
 
     def step(self, action_id: int) -> tuple[Dict[str, Any], float, bool, Dict[str, Any]]:
@@ -270,6 +271,7 @@ class BrowserGymJAWSEnv:
         error_text = _first_error_text(info)
         error_category = normalize_action_error(error_text) if error_text else ""
         self._stamp_login_info(next_jaws_obs, step_info)
+        self._stamp_external_runtime_state(next_jaws_obs)
         step_info.update(
             {
                 "action": decoded_action,
@@ -1060,6 +1062,49 @@ class BrowserGymJAWSEnv:
             infra = self._collect_infra()
         observation["infra_signals"] = dict(infra)
         observation.setdefault("runtime_signals", {})["infra_observed"] = True
+
+    def _stamp_external_runtime_state(self, observation: Dict[str, Any]) -> None:
+        """Expose public runtime state for detector evidence attribution.
+
+        This is deliberately generic and GT-blind.  It reads only state that
+        the running page exposes to its own browser runtime (for example a
+        public application-state object), never bug catalogs, labels, or
+        expected answers.  The state is diagnostic evidence; the fixed PPO
+        observation encoder remains unchanged.
+        """
+        page = _active_page(self.env)
+        if page is None:
+            return
+        try:
+            state = page.evaluate(
+                """() => {
+                    const clone = (value) => {
+                      if (value === undefined || value === null) return null;
+                      try { return JSON.parse(JSON.stringify(value)); } catch (_) { return null; }
+                    };
+                    const actions = Array.isArray(window.__compareLabActions)
+                      ? window.__compareLabActions.slice(-20).map(clone)
+                      : [];
+                    return {
+                      compare_lab_state: clone(window.__compareLabState),
+                      compare_lab_actions: actions,
+                      source: "browser_runtime_window_state",
+                      freshness: "CURRENT_ACTION",
+                      gt_blind: true
+                    };
+                }"""
+            )
+        except Exception:
+            return
+        if not isinstance(state, Mapping):
+            return
+        runtime = observation.setdefault("runtime_signals", {})
+        runtime["external_runtime_state"] = dict(state)
+        runtime["external_runtime_state_provenance"] = {
+            "source": "browser_runtime_window_state",
+            "freshness": "CURRENT_ACTION",
+            "gt_blind": True,
+        }
 
     def _collect_infra(self) -> Dict[str, Any]:
         timeout_ms = int(self.site_profile.get("infra_timeout_ms") or self.site_profile.get("timeout_ms") or 750)

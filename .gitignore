@@ -1,67 +1,114 @@
-# Python virtual environments
+
+# ==========================================
+# RAWD Project - Git Ignore
+# ==========================================
+
+# ------------------------------------------
+# Python Virtual Environments
+# ------------------------------------------
 BrowserGym/.venv/
 .venv/
+.venv312/
 venv/
 
-# Python cache
+# ------------------------------------------
+# Python Cache
+# ------------------------------------------
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-# Runtime artifacts
+# ------------------------------------------
+# Node.js / Local Tools
+# ------------------------------------------
+node_modules/
+.node-gyp/
+.npm-cache/
+.claude/
+
+# ------------------------------------------
+# Runtime Artifacts
+# ------------------------------------------
 artifacts/
-artifacts/scans/
-artifacts/evaluations/
-artifacts/training/
-artifacts/preflight/
-artifacts/reports/
-artifacts/final/
 
-# Generated configs
+# ------------------------------------------
+# Training Models and Checkpoints
+# ------------------------------------------
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+
+# ------------------------------------------
+# Generated Configurations
+# ------------------------------------------
 configs/generated/
 
-# Logs
+# ------------------------------------------
+# Logs and Runtime Outputs
+# ------------------------------------------
+logs/
+screenshots/
 *.log
-    stdout.txt
-    stderr.txt
-    raw_result.txt
+stdout.txt
+stderr.txt
+raw_result.txt
 
-    # Playwright
-    .playwright/
-    playwright-report/
-    test-results/
+# ------------------------------------------
+# Local Scratch and Temporary Files
+# ------------------------------------------
+scratch_*.txt
+*.tmp
+*.temp
 
+# ------------------------------------------
+# Playwright
+# ------------------------------------------
+.playwright/
+playwright-report/
+test-results/
+
+# ------------------------------------------
 # IDE / OS
+# ------------------------------------------
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
 
-# Secrets
+# ------------------------------------------
+# Secrets and Environment Variables
+# ------------------------------------------
 .env
-.env.local
-.env.production
+.env.*
+!.env.example
+
 *.pem
 *.key
 *.p12
 *.pfx
 
-# Model files are shared through Git LFS
-# artifacts/models/*.pt
-
-# Embedded external repositories / local setup folders
+# ------------------------------------------
+# External Repositories / Dependencies
+# ------------------------------------------
+external/
 BrowserGym/
 webarena-setup/
 
-# Extra local model checkpoints / temp artifacts
-artifacts/models/site*_browsergym_ppo.pt
-artifacts/multisite/
-artifacts/tmp_batches/
-artifacts/tmp_preflight_closed/
-artifacts/tmp_*.json
+# ------------------------------------------
+# Temporary GitHub Upload Directory
+# ------------------------------------------
+_RL_AI_RAWD_upload/
 
-artifacts/logs/
-artifacts/tmp_*/
+# RAWD local runtime configuration
+configs/rl_errorsite_runtime.json
+
+# Local site inventory configurations
+configs/rl_errorsite_full_training_sites.json
+configs/rl_errorsite_training_sites.json

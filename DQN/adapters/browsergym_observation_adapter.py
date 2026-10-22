@@ -153,7 +153,7 @@ class BrowserGymObservationAdapter:
         raw_keys = _raw_observation_keys(obs)
         raw_summary = _compact_raw_observation(obs)
 
-        return {
+        result = {
             "browsergym_raw_observation": raw_summary,
             "browsergym_raw_observation_keys": raw_keys,
             "browsergym_raw_observation_key_count": len(raw_keys),
@@ -229,6 +229,7 @@ class BrowserGymObservationAdapter:
                 "no_change_steps": int(history.get("no_change_steps", 0) or 0),
             },
         }
+        return _sanitize_policy_observation(result)
 
     def _extract_candidates(
         self,
@@ -382,6 +383,7 @@ class BrowserGymObservationAdapter:
             ),
         }
         return candidates, debug
+
 
     def _candidate_from_axtree(
         self,
@@ -1702,4 +1704,26 @@ def _as_int(value: Any, default: int = 0) -> int:
 def _ax_value(value: Any) -> Any:
     if isinstance(value, Mapping):
         return value.get("value") or value.get("name") or value.get("text")
+    return value
+
+
+_POLICY_GT_KEYS = {
+    "data_bug_id", "data_bug_ids_found", "data_bug_id_counts", "bug_catalog",
+    "known_bug", "known_bugs", "known_bug_ids", "intentional_bug", "expected_bug",
+    "matched_bug_id", "matching_data_bug_ids", "mismatched_data_bug_ids",
+    "has_data_bug_id", "catalog_priority", "bug_id_matches", "profile_matches", "selector_match",
+}
+_POLICY_GT_TEXT = re.compile(r"data[-_]bug[-_]id(?:\s*=\s*|[\"']?\s*[:=]\s*[\"']?)[^\s,;\"'}]+|\bsite\d+-bug\d+\b", re.IGNORECASE)
+
+
+def _sanitize_policy_observation(value: Any) -> Any:
+    """Remove offline defect metadata before policy serialization."""
+    if isinstance(value, Mapping):
+        return {key: _sanitize_policy_observation(item) for key, item in value.items() if str(key).lower() not in _POLICY_GT_KEYS}
+    if isinstance(value, list):
+        return [_sanitize_policy_observation(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_sanitize_policy_observation(item) for item in value)
+    if isinstance(value, str):
+        return _POLICY_GT_TEXT.sub("<redacted-runtime-metadata>", value)
     return value

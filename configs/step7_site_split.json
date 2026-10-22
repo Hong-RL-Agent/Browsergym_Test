@@ -1,0 +1,9 @@
+{
+  "split_version": "rawd_step7_site_level_v1",
+  "split_type": "SITE_LEVEL",
+  "source_config": "configs/rl_errorsite_training_sites.json",
+  "train": ["site001"],
+  "validation": ["site003"],
+  "test": ["site004"],
+  "rationale": "site9800 is absent from RL_Errorsite/frontend-errorsite; site004 is a distinct EduLMS source/runtime selected from the actual inventory. No episode-level split is used."
+}

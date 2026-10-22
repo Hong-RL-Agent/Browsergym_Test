@@ -15,6 +15,7 @@ from typing import Any, Mapping, Sequence
 from urllib.parse import urlparse
 
 from dqn_error_discovery.agents.confirmation_reproduction import ACTION_REPLAY, OBSERVATION_RULES, derive_reproduction_context
+from dqn_error_discovery.hybrid.strategy_router import StrategyRoute, route_candidate
 
 
 class AgentMode(str, Enum):
@@ -160,6 +161,18 @@ class HybridController:
         if mode == AgentMode.PPO_GLOBAL:
             self.ppo_action_count += 1
             self.ppo_steps_since_return += 1
+
+    def verification_route(self, candidate: Mapping[str, Any]) -> StrategyRoute:
+        """Expose the canonical owner split to the production controller.
+
+        The existing PPO/DQN state machine remains responsible for lifecycle
+        orchestration; this method prevents callers from inferring DQN
+        eligibility from a rule id or from a mere candidate presence.
+        """
+        return route_candidate(candidate)
+
+    def dqn_local_eligible(self, candidate: Mapping[str, Any]) -> bool:
+        return self.verification_route(candidate).dqn_eligible
 
     def maybe_handoff_after_ppo_step(
         self,

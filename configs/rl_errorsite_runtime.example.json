@@ -1,0 +1,45 @@
+
+{
+  "repository": "https://github.com/Hong-RL-Agent/RL_Errorsite.git",
+  "branch": "frontend-errorsite",
+  "commit_sha": "cca3c72a21a7c0d26af30bf35d92ff1134459036",
+  "runtime_root": "C:/path/to/RL_Errorsite/RL_Errorsite",
+  "launcher": {
+    "mode": "per_site_server",
+    "install_command": "npm install (pre-existing node_modules verified)",
+    "build_command": "source dist verified; no rebuild performed",
+    "cleanup_policy": "terminate only recorded site server processes"
+  },
+  "sites": [
+    {
+      "site_id": "site001",
+      "source_path": "C:/path/to/RL_Errorsite/RL_Errorsite/site001",
+      "host": "localhost",
+      "port": 9220,
+      "url": "http://localhost:9220",
+      "start_command": "set PORT=9220 && node server.js",
+      "runtime_role": "TRAIN",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site003",
+      "source_path": "C:/path/to/RL_Errorsite/RL_Errorsite/site003",
+      "host": "localhost",
+      "port": 9222,
+      "url": "http://localhost:9222",
+      "start_command": "node server.js",
+      "runtime_role": "VALIDATION",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    },
+    {
+      "site_id": "site004",
+      "source_path": "C:/path/to/RL_Errorsite/RL_Errorsite/site004",
+      "host": "localhost",
+      "port": 9223,
+      "url": "http://localhost:9223",
+      "start_command": "node server.js",
+      "runtime_role": "TEST",
+      "runtime_policy_profile": "openended_anomaly_discovery_gt_free"
+    }
+  ]
+}

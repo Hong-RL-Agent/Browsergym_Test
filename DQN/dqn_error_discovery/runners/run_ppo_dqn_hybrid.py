@@ -50,6 +50,7 @@ from dqn_error_discovery.runners.train_dqn_error_detector import (
 )
 from dqn_error_discovery.framework_dev.action_error_event_recorder import ActionErrorEventRecorder
 from envs.browsergym_jaws_env import BrowserGymJAWSEnv
+from models.action_types import CANONICAL_ACTION_SPACE_VERSION, CANONICAL_ACTION_TYPES, action_space_mapping_hash
 from services.anomaly_detection_service import detect_anomalies
 from services.r10_network_ui_semantic_evidence import (
     build_network_ui_semantic_evidence,
@@ -137,7 +138,8 @@ def run_hybrid(args: argparse.Namespace) -> dict[str, Any]:
         ppo = PPOAgent(env.observation_encoder.get_obs_dim(), env.action_space.get_action_dim())
         ppo.load(args.ppo_checkpoint)
         ppo.policy.eval()
-        dqn = FactorizedQNetwork(976, len(env.action_space.action_types), env.action_space.max_candidates)
+        dqn_observation_dim = env.observation_encoder.get_obs_dim() + 72 + HISTORY_CONTEXT_V2_DIM
+        dqn = FactorizedQNetwork(dqn_observation_dim, len(env.action_space.action_types), env.action_space.max_candidates)
         payload = torch.load(Path(args.dqn_checkpoint), map_location="cpu")
         _validate_checkpoint_architecture(payload, FACTORIZED_DQN_CONFOBS_HISTV2_ARCHITECTURE)
         dqn.load_state_dict(payload.get("model", payload))
@@ -1146,15 +1148,19 @@ def _validate_dqn_manifest(path: str | Path) -> dict[str, Any]:
     manifest = json.loads(Path(path).read_text(encoding="utf-8"))
     expected = {
         "architecture": FACTORIZED_DQN_CONFOBS_HISTV2_ARCHITECTURE,
-        "dqn_obs_dim": 976,
+        "dqn_obs_dim": 635 + 72 + HISTORY_CONTEXT_V2_DIM,
         "ppo_obs_dim": 635,
-        "action_dim": 608,
+        "action_dim": len(CANONICAL_ACTION_TYPES) * 32,
+        "type_head_dim": len(CANONICAL_ACTION_TYPES),
+        "candidate_head_shape": [len(CANONICAL_ACTION_TYPES), 32],
+        "action_space_version": CANONICAL_ACTION_SPACE_VERSION,
+        "action_space_mapping_hash": action_space_mapping_hash(),
         "history_observation_version": "v2",
         "DQN_ROLE_CHECK": "FINAL PASS",
     }
     mismatches = {key: (manifest.get(key), value) for key, value in expected.items() if manifest.get(key) != value}
     if mismatches:
-        raise ValueError(f"final DQN manifest mismatch: {mismatches}")
+        raise ValueError(f"P0_DQN_ACTION_SPACE_OR_OBSERVATION_CONTRACT_MISMATCH: {mismatches}")
     return manifest
 
 

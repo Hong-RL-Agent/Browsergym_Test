@@ -57,6 +57,7 @@ class ActionSpace:
         runtime_signals = raw_observation.get("runtime_signals", {}) if isinstance(raw_observation, Mapping) else {}
         infra_signals = raw_observation.get("infra_signals", {}) if isinstance(raw_observation, Mapping) else {}
         infra_enabled = _is_infra_port(page_state, infra_signals)
+        viewport_type = str(page_state.get("viewport_type") or "").lower() if isinstance(page_state, Mapping) else ""
 
         for action_type in self.action_types:
             if self.is_infra_action(action_type) and not infra_enabled:
@@ -65,6 +66,14 @@ class ActionSpace:
                 history = raw_observation.get("history", {}) if isinstance(raw_observation, Mapping) else {}
                 if int(history.get("step_index", 0) or 0) < 5:
                     continue
+            # A viewport action that requests the already-active viewport is a
+            # deterministic no-op.  Keep the action available when the
+            # viewport is unknown, but do not let the policy repeatedly farm
+            # same-viewport transitions.
+            if action_type == "change_viewport_mobile" and viewport_type == "mobile":
+                continue
+            if action_type == "change_viewport_desktop" and viewport_type == "desktop":
+                continue
             if self.is_element_action(action_type):
                 for idx in range(min(candidate_count, self.max_candidates)):
                     candidate = candidates[idx] if isinstance(candidates, list) else {}

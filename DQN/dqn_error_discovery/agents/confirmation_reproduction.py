@@ -10,10 +10,13 @@ from urllib.parse import urlparse
 ACTION_REPRODUCTION = "ACTION_REPRODUCTION"
 OBSERVATION_REPRODUCTION = "OBSERVATION_REPRODUCTION"
 ACTION_REPLAY = "ACTION_REPLAY"
+SEQUENCE_REPLAY = "SEQUENCE_REPLAY"
 OBSERVATION_RECHECK = "OBSERVATION_RECHECK"
 
 TARGET_ACTION_TYPES = frozenset({"click_element", "fill_input", "press_enter", "select_option"})
-OBSERVATION_RULES = frozenset({"R04", "R05", "R06"})
+# These rules are observation-owned.  They must never become an actionable
+# DQN replay merely because the triggering action happened to have a target.
+OBSERVATION_RULES = frozenset({"R04", "R05", "R06", "R07", "R08"})
 
 
 @dataclass(frozen=True)
@@ -130,6 +133,8 @@ def derive_reproduction_context(anomaly: Mapping[str, Any]) -> ReproductionConte
     explicit_strategy = str(anomaly.get("reproduction_strategy") or evidence.get("reproduction_strategy") or "").upper()
     if explicit_strategy == OBSERVATION_RECHECK or rule_id in OBSERVATION_RULES:
         return ReproductionContext(evidence_target, trigger_action, trigger_target, OBSERVATION_RECHECK, None, None, False, "observation-rule", rule_id, option_identity)
+    if explicit_strategy == SEQUENCE_REPLAY or rule_id == "R12" or str(evidence.get("operation") or "").lower() == "sequence_replay":
+        return ReproductionContext(evidence_target, trigger_action, trigger_target, SEQUENCE_REPLAY, None, None, False, "runtime-sequence-state-provenance", rule_id, option_identity)
     if explicit_strategy == ACTION_REPLAY or (trigger_action in TARGET_ACTION_TYPES and trigger_target):
         if trigger_action in TARGET_ACTION_TYPES and trigger_target:
             return ReproductionContext(evidence_target, trigger_action, trigger_target, ACTION_REPLAY, trigger_action, trigger_target, True, "runtime-trigger-provenance", rule_id, option_identity)

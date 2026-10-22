@@ -1,0 +1,14 @@
+{
+  "contract_version": "rawd_ppo_full_training_v1",
+  "total_updates": 1,
+  "site_sampling": {"sites_per_update": 3, "strategy": "cluster_balanced_round_robin"},
+  "rollout": {"episodes_per_site": 1, "max_steps_per_episode": 3},
+  "optimizer": {"learning_rate": 0.0001, "ppo_epochs": 1, "max_grad_norm": 0.5},
+  "ppo": {"gamma": 0.99, "gae_lambda": 0.95, "clip_epsilon": 0.20, "entropy_coef": 0.01, "value_coef": 0.50},
+  "recurrent": {"sequence_length": 3, "sequences_per_minibatch": 1, "preserve_episode_boundary": true, "padding_mask": true},
+  "validation": {"episodes_per_site": 1, "max_steps_per_episode": 3, "optimizer_steps": 0},
+  "early_stopping": false,
+  "smoke_only": true,
+  "legacy_warm_start": false,
+  "gt_runtime_access": false
+}

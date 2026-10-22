@@ -1,0 +1,22 @@
+{
+  "sites": [
+    {
+      "site_id": "site001",
+      "base_url": "http://localhost:9220",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site001",
+      "runtime_role": "TRAIN"
+    },
+    {
+      "site_id": "site003",
+      "base_url": "http://localhost:9222",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site003",
+      "runtime_role": "VALIDATION"
+    },
+    {
+      "site_id": "site004",
+      "base_url": "http://localhost:9223",
+      "source_path": "<LOCAL_ERROR_SITE_ROOT>/site004",
+      "runtime_role": "TEST"
+    }
+  ]
+}
